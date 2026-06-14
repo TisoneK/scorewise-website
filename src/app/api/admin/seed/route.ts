@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { createClient } from "@libsql/client";
+
+const seedClient = createClient({
+  url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL!,
+  authToken: process.env.TURSO_AUTH_TOKEN,
+});
 
 // POST /api/admin/seed — Seed the database with a default admin and user
 export async function POST(request: Request) {
@@ -14,31 +19,41 @@ export async function POST(request: Request) {
     }
 
     // Check if admin already exists
-    const existingAdmin = await db.user.findUnique({ where: { email: "admin@scorewise.com" } });
-    if (existingAdmin) {
+    const existing = await seedClient.execute({
+      sql: "SELECT id FROM User WHERE email = ?",
+      args: ["admin@scorewise.com"],
+    });
+    if (existing.rows.length > 0) {
       return NextResponse.json({ message: "Admin user already exists" }, { status: 200 });
     }
 
     const passwordHash = await bcrypt.hash("admin123", 10);
     const userPasswordHash = await bcrypt.hash("user123", 10);
 
-    const admin = await db.user.create({
-      data: {
-        email: "admin@scorewise.com",
-        name: "Admin",
+    const adminResult = await seedClient.execute({
+      sql: "INSERT INTO User (id, email, name, passwordHash, role, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now')) RETURNING id, email, role",
+      args: [
+        crypto.randomUUID(),
+        "admin@scorewise.com",
+        "Admin",
         passwordHash,
-        role: "ADMIN",
-      },
+        "ADMIN",
+      ],
     });
 
-    const user = await db.user.create({
-      data: {
-        email: "user@scorewise.com",
-        name: "Demo User",
-        passwordHash: userPasswordHash,
-        role: "USER",
-      },
+    const userResult = await seedClient.execute({
+      sql: "INSERT INTO User (id, email, name, passwordHash, role, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now')) RETURNING id, email, role",
+      args: [
+        crypto.randomUUID(),
+        "user@scorewise.com",
+        "Demo User",
+        userPasswordHash,
+        "USER",
+      ],
     });
+
+    const admin = adminResult.rows[0] as { id: string; email: string; role: string };
+    const user = userResult.rows[0] as { id: string; email: string; role: string };
 
     return NextResponse.json({
       message: "Database seeded successfully",
