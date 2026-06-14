@@ -18,12 +18,6 @@ function createPrismaClient() {
     throw new Error('TURSO_AUTH_TOKEN environment variable is not set')
   }
 
-  // Prisma engine spawns a child process that reads DATABASE_URL from the environment.
-  // Even with a driver adapter, it must be set to a valid SQLite URL for startup validation.
-  if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = 'file:./dev.db'
-  }
-
   // Turso / LibSQL adapter for Vercel serverless
   const libsql = createClient({ url, authToken })
 
