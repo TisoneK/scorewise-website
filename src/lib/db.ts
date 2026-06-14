@@ -22,7 +22,15 @@ function createPrismaClient() {
   const libsql = createClient({ url, authToken })
 
   const adapter = new PrismaLibSQL(libsql)
-  return new PrismaClient({ adapter, log: ['query'] })
+  return new PrismaClient({
+    adapter,
+    log: ['query'],
+    datasources: {
+      db: {
+        url: process.env.DATABASE_URL || 'file:./dev.db',
+      },
+    },
+  })
 }
 
 export const db = globalForPrisma.prisma ?? createPrismaClient()
