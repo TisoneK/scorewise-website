@@ -7,11 +7,19 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createPrismaClient() {
+  const url = process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL
+  const authToken = process.env.TURSO_AUTH_TOKEN
+
+  if (!url) {
+    throw new Error('TURSO_DATABASE_URL or DATABASE_URL environment variable is not set')
+  }
+
+  if (!authToken) {
+    throw new Error('TURSO_AUTH_TOKEN environment variable is not set')
+  }
+
   // Turso / LibSQL adapter for Vercel serverless
-  const libsql = createClient({
-    url: process.env.TURSO_DATABASE_URL!,
-    authToken: process.env.TURSO_AUTH_TOKEN!,
-  })
+  const libsql = createClient({ url, authToken })
 
   const adapter = new PrismaLibSQL(libsql)
   return new PrismaClient({ adapter, log: ['query'] })
