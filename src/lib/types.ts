@@ -1,0 +1,113 @@
+export interface WinningStreakData {
+  home_team_h2h_wins: number;
+  away_team_h2h_wins: number;
+  home_team_recent_wins: number;
+  away_team_recent_wins: number;
+  home_team_winning_streak: number;
+  away_team_winning_streak: number;
+  total_h2h_matches: number;
+}
+
+export interface Prediction {
+  match_id: string;
+  scope: string;
+  success: boolean;
+  validation_errors: string[];
+  recommendation: string | null;
+  team_winner: string | null;
+  recommendation_confidence: string | null;
+  team_winner_confidence: string | null;
+  confidence: string | null;
+  bookmaker_line: number | null;
+  average_rate: number;
+  matches_above: number;
+  matches_below: number;
+  decrement_test: number;
+  increment_test: number;
+  h2h_totals: number[];
+  rate_values: number[];
+  winning_streak_data: WinningStreakData | null;
+  created_at: string | null;
+}
+
+export interface StoredPredictions {
+  updated_at: string;
+  source: string | null;
+  total: number;
+  succeeded: number;
+  failed: number;
+  predictions: Prediction[];
+}
+
+export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
+export type Recommendation = "OVER" | "UNDER";
+export type UserRole = "ADMIN" | "USER";
+
+export interface AppUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  createdAt: string;
+}
+
+export interface ServiceStatus {
+  status: "online" | "offline" | "error" | "degraded";
+  statusCode?: number | null;
+  message?: string;
+  // Scraper-specific fields
+  scraperStatus?: "idle" | "running" | "error" | "unknown";
+  lastRun?: {
+    status: string;
+    error?: string | null;
+    scrape_type?: string | null;
+    day?: string | null;
+    complete_matches: number;
+    incomplete_matches: number;
+    started_at?: string | null;
+    finished_at?: string | null;
+  } | null;
+  currentDay?: string | null;
+  progress?: {
+    busy: boolean;
+    scrape_id?: string | null;
+    scrape_type?: string | null;
+    day?: string | null;
+    started_at?: string | null;
+    current_match_index: number;
+    total_matches: number;
+    complete_matches: number;
+    incomplete_matches: number;
+    progress_message?: string | null;
+    status_message?: string | null;
+    stop_requested: boolean;
+    error?: string | null;
+  } | null;
+  predictions?: number;
+}
+
+export interface ServiceConfigEntry {
+  id: string;
+  service: string;
+  key: string;
+  value: string;
+  secret: boolean;
+  _hasValue: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  userId: string;
+  action: string;
+  service: string | null;
+  details: string | null;
+  createdAt: string;
+  user: {
+    email: string;
+    name: string | null;
+  };
+}
+
+export type ServiceName = "scraper" | "engine" | "website";

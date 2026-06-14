@@ -1,0 +1,44 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { db } from "@/lib/db";
+
+// GET /api/admin/logs — Get activity logs
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200);
+    const offset = parseInt(searchParams.get("offset") || "0");
+    const service = searchParams.get("service");
+    const action = searchParams.get("action");
+
+    const where: Record<string, unknown> = {};
+    if (service) where.service = service;
+    if (action) where.action = action;
+
+    const [logs, total] = await Promise.all([
+      db.activityLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+        include: {
+          user: {
+            select: { email: true, name: true },
+          },
+        },
+      }),
+      db.activityLog.count({ where }),
+    ]);
+
+    return NextResponse.json({ logs, total, limit, offset });
+  } catch (error) {
+    console.error("[admin/logs] GET error:", error);
+    return NextResponse.json({ error: "Failed to fetch logs" }, { status: 500 });
+  }
+}

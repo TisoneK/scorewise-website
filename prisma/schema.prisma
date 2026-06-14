@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  name          String?
+  passwordHash  String
+  role          String       @default("USER") // ADMIN or USER
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  activityLogs  ActivityLog[]
+}
+
+model ServiceConfig {
+  id        String   @id @default(cuid())
+  service   String   // "scraper", "engine", "website"
+  key       String   // "url", "api_key", "cron_schedule", any custom var
+  value     String
+  secret    Boolean  @default(false) // if true, mask value in API responses
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([service, key])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // "CONFIG_UPDATE", "CONFIG_CREATE", "CONFIG_DELETE", "USER_CREATE", "USER_DELETE", "SERVICE_CHECK", "SERVICE_TRIGGER"
+  service   String?  // which service was affected ("scraper", "engine", "website")
+  details   String?  // JSON string with change details
+  createdAt DateTime @default(now())
+}
