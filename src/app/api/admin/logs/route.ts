@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db } from "@/lib/db-libsql";
 
 // GET /api/admin/logs — Get activity logs
 export async function GET(request: Request) {

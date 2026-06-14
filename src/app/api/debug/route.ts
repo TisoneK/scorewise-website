@@ -44,7 +44,7 @@ export async function GET() {
 
   // Test Prisma
   try {
-    const { db } = await import("@/lib/db");
+    const { db } = await import("@/lib/db-libsql");
     const count = await db.user.count();
     debug.prisma = { ok: true, userCount: count };
   } catch (err: any) {
