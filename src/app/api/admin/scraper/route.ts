@@ -4,12 +4,14 @@ import { authOptions } from "@/lib/auth";
 import { getScraperUrl, getEngineUrl, getEngineApiKey } from "@/lib/service-config";
 import { db } from "@/lib/db-libsql";
 
-// POST /api/admin/scraper — Trigger a manual scrape run
+export const dynamic = 'force-dynamic';
+
+// POST /api/admin/scraper — Trigger a manual scrape run (admin only)
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
     }
 
     const body = await request.json().catch(() => ({}));
@@ -73,12 +75,13 @@ export async function POST(request: Request) {
   }
 }
 
-// GET /api/admin/scraper — Check scraper and engine status
+// GET /api/admin/scraper — Check scraper and engine status (operator and above)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const role = (session?.user as { role: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Unauthorized — operator access or above required" }, { status: 401 });
     }
 
     const scraperUrl = await getScraperUrl();

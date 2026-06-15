@@ -4,12 +4,15 @@ import { authOptions } from "@/lib/auth";
 import { getEngineUrl, getEngineApiKey } from "@/lib/service-config";
 import { db } from "@/lib/db-libsql";
 
-// GET /api/admin/engine — Get engine status (all predictions, not just successful)
+export const dynamic = 'force-dynamic';
+
+// GET /api/admin/engine — Get engine status (all predictions, not just successful) — operator and above
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const role = (session?.user as { role: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Unauthorized — operator access or above required" }, { status: 401 });
     }
 
     const ENGINE_URL = await getEngineUrl();
@@ -41,12 +44,12 @@ export async function GET() {
   }
 }
 
-// DELETE /api/admin/engine — Clear all predictions
+// DELETE /api/admin/engine — Clear all predictions (admin only)
 export async function DELETE() {
   try {
     const session = await getServerSession(authOptions);
     if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
     }
 
     const ENGINE_URL = await getEngineUrl();

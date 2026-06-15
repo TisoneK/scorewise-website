@@ -478,6 +478,11 @@ function UserPredictionsView() {
 // ===================== ADMIN DASHBOARD =====================
 
 function AdminDashboard() {
+  // --- Get current user's role ---
+  const { data: adminSession } = useSession();
+  const currentUserRole = (adminSession?.user as { role: string })?.role || "USER";
+  const isAdmin = currentUserRole === "ADMIN";
+
   // --- Prediction state ---
   const [allPredictionsData, setAllPredictionsData] = useState<StoredPredictions | null>(null);
   const [loadingPred, setLoadingPred] = useState(false);
@@ -503,6 +508,7 @@ function AdminDashboard() {
   const [newUserPassword, setNewUserPassword] = useState("");
   const [newUserRole, setNewUserRole] = useState<UserRole>("USER");
   const [creatingUser, setCreatingUser] = useState(false);
+  const [changingRole, setChangingRole] = useState<string | null>(null);
 
   // --- Configuration state ---
   const [configs, setConfigs] = useState<ServiceConfigEntry[]>([]);
@@ -719,6 +725,25 @@ function AdminDashboard() {
     }
   };
 
+  const handleChangeRole = async (userId: string, newRole: UserRole) => {
+    setChangingRole(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, newRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to change role");
+      toast.success(`Role changed to ${newRole}`);
+      fetchUsers();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to change role");
+    } finally {
+      setChangingRole(null);
+    }
+  };
+
   const handleDeleteUser = async (userId: string, email: string) => {
     if (!confirm(`Delete user ${email}?`)) return;
     try {
@@ -898,12 +923,12 @@ function AdminDashboard() {
           <div className="flex items-center gap-2">
             <BasketballIcon className="w-5 h-5 text-neon-green" />
             <span className="font-black text-lg">ScoreWise</span>
-            <Badge className="ml-2 bg-neon-green/15 text-neon-green border-neon-green/30 text-[10px] font-bold">
-              <Shield className="w-3 h-3 mr-1" />ADMIN
+            <Badge className={`ml-2 text-[10px] font-bold ${isAdmin ? "bg-neon-green/15 text-neon-green border-neon-green/30" : "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30"}`}>
+              {isAdmin ? <Shield className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}{currentUserRole}
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => { fetchAllPredictions(); fetchServiceStatus(); fetchConfigs(); fetchLogs(); }} className="gap-1.5 text-muted-foreground hover:text-foreground">
+            <Button variant="ghost" size="sm" onClick={() => { fetchAllPredictions(); fetchServiceStatus(); if (isAdmin) { fetchConfigs(); fetchLogs(); } }} className="gap-1.5 text-muted-foreground hover:text-foreground">
               <RefreshCw className="w-3.5 h-3.5" />Refresh All
             </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut()} className="gap-1.5 text-muted-foreground hover:text-foreground">
@@ -928,12 +953,16 @@ function AdminDashboard() {
             <TabsTrigger value="services" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
               <Server className="w-3.5 h-3.5" />Services
             </TabsTrigger>
-            <TabsTrigger value="configuration" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan">
-              <Settings className="w-3.5 h-3.5" />Configuration
-            </TabsTrigger>
-            <TabsTrigger value="logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow">
-              <FileText className="w-3.5 h-3.5" />Activity Log
-            </TabsTrigger>
+            {isAdmin && (
+              <TabsTrigger value="configuration" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan">
+                <Settings className="w-3.5 h-3.5" />Configuration
+              </TabsTrigger>
+            )}
+            {isAdmin && (
+              <TabsTrigger value="logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow">
+                <FileText className="w-3.5 h-3.5" />Activity Log
+              </TabsTrigger>
+            )}
             <TabsTrigger value="users" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
               <Users className="w-3.5 h-3.5" />Users
             </TabsTrigger>
@@ -1544,8 +1573,8 @@ function AdminDashboard() {
                     <div className="flex justify-between"><span>Endpoint</span><span className="font-mono text-[10px] truncate ml-2">{serviceStatus?.scraperUrl || "—"}</span></div>
                   </div>
 
-                  {/* Trigger controls */}
-                  <div className="space-y-2">
+                  {/* Trigger controls (admin only) */}
+                  {isAdmin && <div className="space-y-2">
                     {serviceStatus?.scraper?.scraperStatus === "running" ? (
                       <Button variant="outline" onClick={handleStopScraper} disabled={stopLoading}
                         className="w-full gap-2 border-neon-red/30 text-neon-red hover:bg-neon-red/10">
@@ -1570,11 +1599,11 @@ function AdminDashboard() {
                         </Button>
                       </div>
                     )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => { setSelectedService("scraper"); }} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
+                  </div>}
+                  <div className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                    {isAdmin && <Button variant="outline" onClick={() => { setSelectedService("scraper"); }} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
                       <Settings className="w-4 h-4" />Configure
-                    </Button>
+                    </Button>}
                     <Button variant="outline" onClick={fetchServiceStatus} disabled={loadingStatus} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                       <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin" : ""}`} />Refresh
                     </Button>
@@ -1662,16 +1691,16 @@ function AdminDashboard() {
                   </div>
 
                   <Separator className="bg-border/30" />
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                     <Button variant="outline" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                       <RefreshCw className={`w-4 h-4 ${loadingPred ? "animate-spin" : ""}`} />Reload
                     </Button>
                     <Button variant="outline" onClick={handleDownloadPredictions} disabled={!allPredictionsData} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                       <Download className="w-4 h-4" />Export
                     </Button>
-                    <Button variant="outline" onClick={() => { setSelectedService("engine"); }} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
+                    {isAdmin && <Button variant="outline" onClick={() => { setSelectedService("engine"); }} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
                       <Settings className="w-4 h-4" />Config
-                    </Button>
+                    </Button>}
                   </div>
                 </CardContent>
               </Card>
@@ -1701,8 +1730,8 @@ function AdminDashboard() {
             </Card>
           </TabsContent>
 
-          {/* ============ CONFIGURATION TAB ============ */}
-          <TabsContent value="configuration" className="space-y-6">
+          {/* ============ CONFIGURATION TAB (ADMIN ONLY) ============ */}
+          {isAdmin && <TabsContent value="configuration" className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">Service Configuration</h2>
@@ -1966,10 +1995,10 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          </TabsContent>}
 
-          {/* ============ ACTIVITY LOG TAB ============ */}
-          <TabsContent value="logs" className="space-y-6">
+          {/* ============ ACTIVITY LOG TAB (ADMIN ONLY) ============ */}
+          {isAdmin && <TabsContent value="logs" className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">Activity Log</h2>
@@ -2067,17 +2096,17 @@ function AdminDashboard() {
                 )}
               </CardContent>
             </Card>
-          </TabsContent>
+          </TabsContent>}
 
           {/* ============ USERS TAB ============ */}
           <TabsContent value="users" className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold">User Management</h2>
-                <p className="text-sm text-muted-foreground">Manage admin and user accounts</p>
+                <p className="text-sm text-muted-foreground">{isAdmin ? "Manage admin, operator, and user accounts" : "View user accounts and activity"}</p>
               </div>
               <div className="flex gap-2">
-                <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+                {isAdmin && <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
                   <DialogTrigger asChild>
                     <Button size="sm" className="gap-1.5 bg-neon-green text-background hover:bg-neon-green/90 font-bold"><UserPlus className="w-3.5 h-3.5" /> Add User</Button>
                   </DialogTrigger>
@@ -2093,6 +2122,7 @@ function AdminDashboard() {
                           <SelectTrigger className="bg-background border-border/50"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="USER">User — View predictions only</SelectItem>
+                            <SelectItem value="OPERATOR">Operator — Manage users & monitor services</SelectItem>
                             <SelectItem value="ADMIN">Admin — Full control</SelectItem>
                           </SelectContent>
                         </Select>
@@ -2105,19 +2135,22 @@ function AdminDashboard() {
                       </Button>
                     </DialogFooter>
                   </DialogContent>
-                </Dialog>
+                </Dialog>}
                 <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loadingUsers} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
                   <RefreshCw className={`w-3.5 h-3.5 ${loadingUsers ? "animate-spin" : ""}`} /> Refresh
                 </Button>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black">{users.length}</p><p className="text-[10px] text-muted-foreground">Total Users</p>
+                <p className="text-xl font-black">{users.length}</p><p className="text-[10px] text-muted-foreground">Total</p>
               </div>
               <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
                 <p className="text-xl font-black text-neon-green">{users.filter(u => u.role === "ADMIN").length}</p><p className="text-[10px] text-muted-foreground">Admins</p>
+              </div>
+              <div className="bg-card/60 border border-neon-yellow/20 rounded-lg px-3 py-2 text-center">
+                <p className="text-xl font-black text-neon-yellow">{users.filter(u => u.role === "OPERATOR").length}</p><p className="text-[10px] text-muted-foreground">Operators</p>
               </div>
               <div className="bg-card/60 border border-neon-cyan/20 rounded-lg px-3 py-2 text-center">
                 <p className="text-xl font-black text-neon-cyan">{users.filter(u => u.role === "USER").length}</p><p className="text-[10px] text-muted-foreground">Users</p>
@@ -2129,27 +2162,43 @@ function AdminDashboard() {
                 <Table>
                   <TableHeader>
                     <TableRow className="border-border/40 hover:bg-transparent">
-                      <TableHead className="text-xs">Email</TableHead><TableHead className="text-xs">Name</TableHead><TableHead className="text-xs">Role</TableHead><TableHead className="text-xs">Created</TableHead><TableHead className="text-xs text-right">Actions</TableHead>
+                      <TableHead className="text-xs">Email</TableHead><TableHead className="text-xs">Name</TableHead><TableHead className="text-xs">Role</TableHead><TableHead className="text-xs">Created</TableHead>{isAdmin && <TableHead className="text-xs text-right">Actions</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {loadingUsers ? (
-                      <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
                     ) : users.length === 0 ? (
-                      <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No users found</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground">No users found</TableCell></TableRow>
                     ) : (
                       users.map((u) => (
                         <TableRow key={u.id} className="border-border/20 hover:bg-card/80">
                           <TableCell className="text-sm font-medium">{u.email}</TableCell>
                           <TableCell className="text-sm text-muted-foreground">{u.name || "—"}</TableCell>
                           <TableCell>
-                            <Badge className={u.role === "ADMIN" ? "bg-neon-green/15 text-neon-green border-neon-green/30" : "bg-neon-cyan/15 text-neon-cyan border-neon-cyan/30"} variant="outline">
-                              {u.role === "ADMIN" ? <Shield className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}{u.role}
+                            <Badge className={u.role === "ADMIN" ? "bg-neon-green/15 text-neon-green border-neon-green/30" : u.role === "OPERATOR" ? "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30" : "bg-neon-cyan/15 text-neon-cyan border-neon-cyan/30"} variant="outline">
+                              {u.role === "ADMIN" ? <Shield className="w-3 h-3 mr-1" /> : u.role === "OPERATOR" ? <Eye className="w-3 h-3 mr-1" /> : <Users className="w-3 h-3 mr-1" />}{u.role}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">{formatTime(u.createdAt)}</TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteUser(u.id, u.email)} className="text-muted-foreground hover:text-neon-red h-8 w-8"><Trash2 className="w-4 h-4" /></Button>
+                            <div className="flex items-center justify-end gap-1">
+                              {isAdmin && u.role !== "ADMIN" && (
+                                <Tooltip><TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => handleChangeRole(u.id, u.role === "OPERATOR" ? "ADMIN" : "OPERATOR")} disabled={changingRole === u.id} className="text-neon-yellow hover:text-neon-green h-8 w-8">
+                                    {changingRole === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
+                                  </Button>
+                                </TooltipTrigger><TooltipContent>Promote to {u.role === "OPERATOR" ? "Admin" : "Operator"}</TooltipContent></Tooltip>
+                              )}
+                              {isAdmin && u.role !== "USER" && (
+                                <Tooltip><TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => handleChangeRole(u.id, u.role === "ADMIN" ? "OPERATOR" : "USER")} disabled={changingRole === u.id} className="text-muted-foreground hover:text-neon-red h-8 w-8">
+                                    {changingRole === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownRight className="w-4 h-4" />}
+                                  </Button>
+                                </TooltipTrigger><TooltipContent>Demote to {u.role === "ADMIN" ? "Operator" : "User"}</TooltipContent></Tooltip>
+                              )}
+                              {isAdmin && <Button variant="ghost" size="icon" onClick={() => handleDeleteUser(u.id, u.email)} className="text-muted-foreground hover:text-neon-red h-8 w-8"><Trash2 className="w-4 h-4" /></Button>}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -2159,34 +2208,44 @@ function AdminDashboard() {
               </CardContent>
             </Card>
 
-            <Card className="bg-card/60 border-border/40">
+            {isAdmin && <Card className="bg-card/60 border-border/40">
               <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold">Role Permissions</CardTitle></CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-3 gap-4">
                   <div className="bg-background/50 rounded-lg p-4 space-y-2">
                     <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-neon-green" /><span className="font-bold text-neon-green">Admin</span></div>
                     <ul className="text-sm text-muted-foreground space-y-1 ml-7">
                       <li>Full dashboard with overview & analytics</li><li>All predictions (including failed)</li><li>Charts and data visualizations</li>
-                      <li>Service monitoring and controls</li><li>User management (create/delete)</li><li>Export predictions data</li>
-                      <li className="text-neon-cyan">Service configuration (URLs, API keys, variables)</li>
+                      <li>Service monitoring and controls</li><li>User management (create/delete)</li>
+                      <li>Promote/demote user roles</li><li>Export predictions data</li>
+                      <li className="text-neon-cyan">Service configuration (URLs, API keys)</li>
                       <li className="text-neon-cyan">Activity log and audit trail</li>
                     </ul>
                   </div>
                   <div className="bg-background/50 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center gap-2"><Eye className="w-5 h-5 text-neon-cyan" /><span className="font-bold text-neon-cyan">User</span></div>
+                    <div className="flex items-center gap-2"><Eye className="w-5 h-5 text-neon-yellow" /><span className="font-bold text-neon-yellow">Operator</span></div>
+                    <ul className="text-sm text-muted-foreground space-y-1 ml-7">
+                      <li>Dashboard overview & analytics</li><li>Successful predictions</li>
+                      <li>Service monitoring (view only)</li>
+                      <li>View user accounts</li>
+                      <li>Track user activity</li>
+                    </ul>
+                  </div>
+                  <div className="bg-background/50 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center gap-2"><Users className="w-5 h-5 text-neon-cyan" /><span className="font-bold text-neon-cyan">User</span></div>
                     <ul className="text-sm text-muted-foreground space-y-1 ml-7">
                       <li>Successful predictions only</li><li>Search and filter predictions</li><li>Confidence and recommendation filters</li><li>Auto-refresh every 60 seconds</li>
                     </ul>
                   </div>
                 </div>
               </CardContent>
-            </Card>
+            </Card>}
           </TabsContent>
         </Tabs>
       </main>
 
       <footer className="border-t border-border/30 bg-card/30 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 py-4 text-center text-xs text-muted-foreground/60">ScoreWise Admin — Data-driven basketball predictions</div>
+        <div className="max-w-7xl mx-auto px-4 py-4 text-center text-xs text-muted-foreground/60">ScoreWise {isAdmin ? "Admin" : "Dashboard"} — Data-driven basketball predictions</div>
       </footer>
     </div>
   );
@@ -2208,6 +2267,7 @@ function renderLogDetails(action: string, details: Record<string, unknown>): str
   }
   if (action === "USER_CREATE") return `Created user ${details.createdEmail || ""} (${details.createdRole || ""})`;
   if (action === "USER_DELETE") return `Deleted user ${details.deletedEmail || ""} (${details.deletedRole || ""})`;
+  if (action === "USER_ROLE_CHANGE") return `Changed ${details.targetEmail || ""}: ${details.oldRole || ""} → ${details.newRole || ""}`;
   if (action === "SERVICE_CHECK") return `Checked ${details.url || "service"}`;
   if (action === "SERVICE_TRIGGER") return `Triggered: ${details.operation || "unknown"}`;
   return JSON.stringify(details);
@@ -2236,6 +2296,6 @@ export default function Home() {
   if (!session) return <SignInPage />;
 
   const role = (session.user as { role: string })?.role;
-  if (role === "ADMIN") return <AdminDashboard />;
+  if (role === "ADMIN" || role === "OPERATOR") return <AdminDashboard />;
   return <UserPredictionsView />;
 }

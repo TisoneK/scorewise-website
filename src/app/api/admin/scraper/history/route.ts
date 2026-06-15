@@ -4,12 +4,15 @@ import { authOptions } from "@/lib/auth";
 import { getScraperUrl } from "@/lib/service-config";
 import { db } from "@/lib/db-libsql";
 
-// GET /api/admin/scraper/history — Get scraper run history
+export const dynamic = 'force-dynamic';
+
+// GET /api/admin/scraper/history — Get scraper run history (operator and above)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const role = (session?.user as { role: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Unauthorized — operator access or above required" }, { status: 401 });
     }
 
     const scraperUrl = await getScraperUrl();

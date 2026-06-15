@@ -3,22 +3,27 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 
-// GET /api/admin/users — List all users (admin only)
+export const dynamic = 'force-dynamic';
+
+const VALID_ROLES = ["ADMIN", "OPERATOR", "USER"];
+
+// Helper: check role from session
+function getRole(session: any): string | null {
+  if (!session?.user) return null;
+  return (session.user as any).role || null;
+}
+
+// GET /api/admin/users — List all users (operator and above)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
+    const role = getRole(session);
+    if (role !== "ADMIN" && role !== "OPERATOR") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const users = await db.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-      },
+      select: { id: true, email: true, name: true, role: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -33,8 +38,8 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (getRole(session) !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
     }
 
     const { email, name, password, role } = await request.json();
@@ -43,8 +48,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Email, password, and role are required" }, { status: 400 });
     }
 
-    if (!["ADMIN", "USER"].includes(role)) {
-      return NextResponse.json({ error: "Role must be ADMIN or USER" }, { status: 400 });
+    if (!VALID_ROLES.includes(role)) {
+      return NextResponse.json({ error: `Role must be one of: ${VALID_ROLES.join(", ")}` }, { status: 400 });
     }
 
     const existing = await db.user.findUnique({ where: { email } });
@@ -62,7 +67,7 @@ export async function POST(request: Request) {
     // Log the action
     await db.activityLog.create({
       data: {
-        userId: (session.user as { id: string }).id,
+        userId: (session!.user as { id: string }).id,
         action: "USER_CREATE",
         service: "website",
         details: JSON.stringify({ createdEmail: email, createdRole: role }),
@@ -76,12 +81,70 @@ export async function POST(request: Request) {
   }
 }
 
+// PATCH /api/admin/users — Change a user's role (admin only)
+export async function PATCH(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (getRole(session) !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
+    }
+
+    const { userId, newRole } = await request.json();
+
+    if (!userId || !newRole) {
+      return NextResponse.json({ error: "userId and newRole are required" }, { status: 400 });
+    }
+
+    if (!VALID_ROLES.includes(newRole)) {
+      return NextResponse.json({ error: `Role must be one of: ${VALID_ROLES.join(", ")}` }, { status: 400 });
+    }
+
+    // Prevent changing your own role
+    if (userId === (session!.user as { id: string }).id) {
+      return NextResponse.json({ error: "Cannot change your own role" }, { status: 400 });
+    }
+
+    const existingUser = await db.user.findUnique({ where: { id: userId }, select: { email: true, role: true } });
+    if (!existingUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const oldRole = existingUser.role;
+
+    const updatedUser = await db.user.update({
+      where: { id: userId },
+      data: { role: newRole },
+      select: { id: true, email: true, name: true, role: true, createdAt: true },
+    });
+
+    // Log the role change
+    await db.activityLog.create({
+      data: {
+        userId: (session!.user as { id: string }).id,
+        action: "USER_ROLE_CHANGE",
+        service: "website",
+        details: JSON.stringify({
+          targetUserId: userId,
+          targetEmail: existingUser.email,
+          oldRole,
+          newRole,
+        }),
+      },
+    });
+
+    return NextResponse.json({ user: updatedUser });
+  } catch (error) {
+    console.error("[admin/users] PATCH error:", error);
+    return NextResponse.json({ error: "Failed to update user role" }, { status: 500 });
+  }
+}
+
 // DELETE /api/admin/users — Delete a user (admin only)
 export async function DELETE(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (getRole(session) !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
     }
 
     const { userId } = await request.json();
@@ -90,7 +153,7 @@ export async function DELETE(request: Request) {
     }
 
     // Prevent deleting yourself
-    if (userId === (session.user as { id: string }).id) {
+    if (userId === (session!.user as { id: string }).id) {
       return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
     }
 
@@ -103,7 +166,7 @@ export async function DELETE(request: Request) {
     if (userToDelete) {
       await db.activityLog.create({
         data: {
-          userId: (session.user as { id: string }).id,
+          userId: (session!.user as { id: string }).id,
           action: "USER_DELETE",
           service: "website",
           details: JSON.stringify({ deletedEmail: userToDelete.email, deletedRole: userToDelete.role }),

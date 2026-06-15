@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db-libsql";
 
+export const dynamic = 'force-dynamic';
+
 // POST /api/admin/seed — Seed the database with a default admin
 // Requires admin auth OR a one-time BOOTSTRAP_SECRET env var for first-run setup
 export async function POST(request: Request) {

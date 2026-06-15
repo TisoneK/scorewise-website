@@ -9,10 +9,15 @@ const publicPaths = ["/"];
 // /api/admin/seed is allowed through so it can check if zero admins exist (first-run bootstrap)
 const publicApiPrefixes = ["/api/auth/", "/api/debug", "/api/admin/seed"];
 
+// Role hierarchy: ADMIN > OPERATOR > USER
+// API route access levels
+const adminOnlyPrefixes = ["/api/admin/config", "/api/admin/seed", "/api/admin/logs"];
+const operatorAndAbovePrefixes = ["/api/admin/users", "/api/admin/scraper", "/api/admin/engine"];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow all NextAuth API routes (login, callback, session, etc.)
+  // Allow all public API routes (login, callback, session, etc.)
   if (publicApiPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
@@ -35,19 +40,25 @@ export async function middleware(request: NextRequest) {
 
   // If no token, block access
   if (!token) {
-    // For API routes, return 401
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    // For page routes, redirect to login page
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // For admin-only API routes, check role
-  if (pathname.startsWith("/api/admin/")) {
-    const role = token.role as string;
+  const role = token.role as string;
+
+  // Admin-only routes (config, seed, logs)
+  if (adminOnlyPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     if (role !== "ADMIN") {
       return NextResponse.json({ error: "Admin access required" }, { status: 403 });
+    }
+  }
+
+  // Operator and above routes (user management, scraper controls)
+  if (operatorAndAbovePrefixes.some((prefix) => pathname.startsWith(prefix))) {
+    if (role !== "ADMIN" && role !== "OPERATOR") {
+      return NextResponse.json({ error: "Operator access or above required" }, { status: 403 });
     }
   }
 
@@ -56,13 +67,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     * - public files
-     */
     "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

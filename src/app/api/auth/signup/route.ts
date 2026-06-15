@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db-libsql";
 
+export const dynamic = 'force-dynamic';
+
 // POST /api/auth/signup — Public self-registration
 // New users are always created with role "USER" (never ADMIN).
 export async function POST(request: Request) {

@@ -1,9 +1,16 @@
-import { createClient, ResultSet } from "@libsql/client"
+import { createClient, Client, ResultSet } from "@libsql/client"
 
-const libsql = createClient({
-  url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-})
+let _libsql: Client | null = null
+
+function getClient(): Client {
+  if (!_libsql) {
+    _libsql = createClient({
+      url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL!,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    })
+  }
+  return _libsql
+}
 
 // Helper: convert a row to a plain object
 function row<T>(rs: ResultSet): T | null {
@@ -44,7 +51,7 @@ export const db = {
     async findUnique({ where, select }: { where: { id?: string; email?: string }; select?: Record<string, boolean> }) {
       const w = buildWhere(where)
       const cols = select ? Object.keys(select).join(", ") : "*"
-      const rs = await libsql.execute(`SELECT ${cols} FROM User${w.clause} LIMIT 1`, w.args)
+      const rs = await getClient().execute(`SELECT ${cols} FROM User${w.clause} LIMIT 1`, w.args)
       return row<any>(rs)
     },
     async findMany({ select, orderBy }: { select?: Record<string, boolean>; orderBy?: Record<string, string> }) {
@@ -54,7 +61,7 @@ export const db = {
         const orders = Object.entries(orderBy).map(([k, v]) => `${k} ${v}`).join(", ")
         sql += ` ORDER BY ${orders}`
       }
-      const rs = await libsql.execute(sql)
+      const rs = await getClient().execute(sql)
       return rows<any>(rs)
     },
     async create({ data, select }: { data: { id?: string; email: string; name?: string; passwordHash: string; role: string; createdAt?: string; updatedAt?: string }; select?: Record<string, boolean> }) {
@@ -66,25 +73,60 @@ export const db = {
       const vals = Object.values(insertData)
       const placeholders = vals.map(() => "?").join(", ")
 
-      await libsql.execute(
+      await getClient().execute(
         `INSERT INTO User (${keys.join(", ")}) VALUES (${placeholders})`,
         vals
       )
 
       if (select) {
         const cols = Object.keys(select).join(", ")
-        const rs = await libsql.execute(`SELECT ${cols} FROM User WHERE id = ?`, [id])
+        const rs = await getClient().execute(`SELECT ${cols} FROM User WHERE id = ?`, [id])
         return row<any>(rs)
       }
       return { id, ...data }
     },
     async delete({ where }: { where: { id: string } }) {
-      const rs = await libsql.execute("DELETE FROM User WHERE id = ?", [where.id])
+      const rs = await getClient().execute("DELETE FROM User WHERE id = ?", [where.id])
       return rs
     },
-    async count() {
-      const rs = await libsql.execute("SELECT COUNT(*) as count FROM User")
+    async count({ where }: { where?: Record<string, unknown> } = {}) {
+      let sql = "SELECT COUNT(*) as count FROM User"
+      const w: string[] = []
+      const args: any[] = []
+      if (where) {
+        for (const [key, value] of Object.entries(where)) {
+          if (value !== undefined && value !== null && value !== "") {
+            w.push(`${key} = ?`)
+            args.push(value)
+          }
+        }
+        if (w.length) sql += " WHERE " + w.join(" AND ")
+      }
+      const rs = await getClient().execute(sql, args)
       return Number((rs.rows[0] as any).count)
+    },
+    async update({ where, data, select }: { where: { id: string }; data: Record<string, any>; select?: Record<string, boolean> }) {
+      const sets: string[] = []
+      const args: any[] = []
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== undefined) {
+          sets.push(`${k} = ?`)
+          args.push(v)
+        }
+      }
+      sets.push("updatedAt = ?")
+      args.push(now())
+      args.push(where.id)
+      await getClient().execute(
+        `UPDATE User SET ${sets.join(", ")} WHERE id = ?`,
+        args
+      )
+      if (select) {
+        const cols = Object.keys(select).join(", ")
+        const rs = await getClient().execute(`SELECT ${cols} FROM User WHERE id = ?`, [where.id])
+        return row<any>(rs)
+      }
+      return { id: where.id, ...data }
     },
   },
 
@@ -98,7 +140,7 @@ export const db = {
         sql = "SELECT * FROM ServiceConfig WHERE id = ? LIMIT 1"
         args = [where.id]
       }
-      const rs = await libsql.execute(sql, args)
+      const rs = await getClient().execute(sql, args)
       return row<any>(rs)
     },
     async findMany({ where, orderBy }: { where?: { service?: string }; orderBy?: { service?: string; key?: string }[] }) {
@@ -114,12 +156,12 @@ export const db = {
         const orders = orderBy.map(o => Object.entries(o).map(([k, v]) => `${k} ${v}`).join(", ")).join(", ")
         sql += ` ORDER BY ${orders}`
       }
-      const rs = await libsql.execute(sql, args)
+      const rs = await getClient().execute(sql, args)
       return rows<any>(rs)
     },
     async upsert({ where, update, create }: { where: { service_key: { service: string; key: string } }; update: Record<string, any>; create: Record<string, any> }) {
       const { service, key } = where.service_key
-      const existing = await libsql.execute(
+      const existing = await getClient().execute(
         "SELECT id FROM ServiceConfig WHERE service = ? AND key = ? LIMIT 1",
         [service, key]
       )
@@ -135,7 +177,7 @@ export const db = {
         sets.push("updatedAt = ?")
         args.push(now())
         args.push(service, key)
-        await libsql.execute(
+        await getClient().execute(
           `UPDATE ServiceConfig SET ${sets.join(", ")} WHERE service = ? AND key = ?`,
           args
         )
@@ -143,19 +185,19 @@ export const db = {
         const insertData = { ...create, id: create.id || crypto.randomUUID(), createdAt: now(), updatedAt: now() }
         const keys = Object.keys(insertData)
         const vals = Object.values(insertData)
-        await libsql.execute(
+        await getClient().execute(
           `INSERT INTO ServiceConfig (${keys.join(", ")}) VALUES (${vals.map(() => "?").join(", ")})`,
           vals
         )
       }
-      const rs = await libsql.execute(
+      const rs = await getClient().execute(
         "SELECT * FROM ServiceConfig WHERE service = ? AND key = ? LIMIT 1",
         [service, key]
       )
       return row<any>(rs)
     },
     async delete({ where }: { where: { id: string } }) {
-      await libsql.execute("DELETE FROM ServiceConfig WHERE id = ?", [where.id])
+      await getClient().execute("DELETE FROM ServiceConfig WHERE id = ?", [where.id])
     },
   },
 
@@ -171,7 +213,7 @@ export const db = {
       }
       const keys = Object.keys(insertData)
       const vals = Object.values(insertData)
-      await libsql.execute(
+      await getClient().execute(
         `INSERT INTO ActivityLog (${keys.join(", ")}) VALUES (${vals.map(() => "?").join(", ")})`,
         vals
       )
@@ -205,14 +247,14 @@ export const db = {
       if (take !== undefined) sql += ` LIMIT ${take}`
       if (skip !== undefined) sql += ` OFFSET ${skip}`
 
-      const rs = await libsql.execute(sql, args)
+      const rs = await getClient().execute(sql, args)
       const logs = rows<any>(rs)
 
       // Handle include: user select
       if (include?.user?.select && logs.length > 0) {
         const userIds = [...new Set(logs.map(l => l.userId))]
         const userCols = Object.keys(include.user.select).join(", ")
-        const userRs = await libsql.execute(
+        const userRs = await getClient().execute(
           `SELECT id, ${userCols} FROM User WHERE id IN (${userIds.map(() => "?").join(",")})`,
           userIds
         )
@@ -240,7 +282,7 @@ export const db = {
         }
         if (w.length) sql += " WHERE " + w.join(" AND ")
       }
-      const rs = await libsql.execute(sql, args)
+      const rs = await getClient().execute(sql, args)
       return Number((rs.rows[0] as any).count)
     },
   },

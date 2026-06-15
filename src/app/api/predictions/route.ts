@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getEngineUrl, getEngineApiKey } from "@/lib/service-config";
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/predictions — Proxy to engine (successful predictions only, for regular users)
 export async function GET() {
   try {

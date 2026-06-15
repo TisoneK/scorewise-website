@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 import { seedDefaultConfigs } from "@/lib/service-config";
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/admin/config — Get all service configurations
 export async function GET() {
   try {

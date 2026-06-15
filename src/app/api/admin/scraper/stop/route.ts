@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import { getScraperUrl } from "@/lib/service-config";
 import { db } from "@/lib/db-libsql";
 
+export const dynamic = 'force-dynamic';
+
 // POST /api/admin/scraper/stop — Send stop signal to running scraper
 export async function POST() {
   try {

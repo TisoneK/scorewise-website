@@ -41,7 +41,7 @@ export interface StoredPredictions {
 
 export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";
 export type Recommendation = "OVER" | "UNDER";
-export type UserRole = "ADMIN" | "USER";
+export type UserRole = "ADMIN" | "OPERATOR" | "USER";
 
 export interface AppUser {
   id: string;

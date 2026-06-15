@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/admin/logs — Get activity logs
 export async function GET(request: Request) {
   try {
