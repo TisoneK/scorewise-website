@@ -406,11 +406,6 @@ function AdminDashboard() {
   const [scraperLoading, setScraperLoading] = useState(false);
   const [scraperDay, setScraperDay] = useState<"Today" | "Tomorrow">("Today");
   const [stopLoading, setStopLoading] = useState(false);
-  const [scrapeHistory, setScrapeHistory] = useState<{ scrape_id: string; type: string; day?: string | null; date?: string | null; finished_at: string; success: boolean; complete_matches?: number; incomplete_matches?: number }[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [resultsDate, setResultsDate] = useState("");
-  const [resultsLoading, setResultsLoading] = useState(false);
 
   // --- Users state ---
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -461,19 +456,6 @@ function AdminDashboard() {
     try { return new Date(t).toLocaleString(); } catch { return t; }
   };
 
-  const formatDuration = (start: string | null | undefined, end: string | null | undefined) => {
-    if (!start || !end) return null;
-    try {
-      const ms = new Date(end).getTime() - new Date(start).getTime();
-      if (ms < 0) return null;
-      const seconds = Math.floor(ms / 1000);
-      if (seconds < 60) return `${seconds}s`;
-      const mins = Math.floor(seconds / 60);
-      const secs = seconds % 60;
-      return `${mins}m ${secs}s`;
-    } catch { return null; }
-  };
-
   // --- Fetch functions ---
   const fetchAllPredictions = useCallback(async () => {
     setLoadingPred(true);
@@ -504,46 +486,6 @@ function AdminDashboard() {
       setLoadingStatus(false);
     }
   }, []);
-
-  const fetchScrapeHistory = useCallback(async () => {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch("/api/admin/scraper/history");
-      if (!res.ok) throw new Error("Failed to fetch history");
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setScrapeHistory(data.history || []);
-    } catch {
-      toast.error("Failed to fetch scrape history");
-    } finally {
-      setLoadingHistory(false);
-    }
-  }, []);
-
-  const handleResultsScrape = async () => {
-    if (!resultsDate) { toast.error("Select a date first"); return; }
-    const m = resultsDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-    if (!m) { toast.error("Date must be in DD.MM.YYYY format"); return; }
-    setResultsLoading(true);
-    try {
-      const res = await fetch("/api/admin/scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day: "Results", date: resultsDate }),
-      });
-      const data = await res.json();
-      if (data.status === "triggered") {
-        toast.success(`Results scrape started for ${resultsDate}`);
-      } else {
-        toast.error(data.message || "Failed to trigger results scrape");
-      }
-      fetchServiceStatus();
-    } catch {
-      toast.error("Failed to trigger results scrape");
-    } finally {
-      setResultsLoading(false);
-    }
-  };
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
@@ -1348,15 +1290,15 @@ function AdminDashboard() {
             </div>
 
             <div className="grid md:grid-cols-2 gap-6">
-              {/* Scraper card */}
+              {/* Scraper card — full-width on mobile, half on desktop */}
               <Card className="bg-card/60 border-border/40">
-                <CardHeader>
+                <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <StatusDot status={serviceStatus?.scraper?.status || "offline"} />
+                      <div className={`w-2.5 h-2.5 rounded-full ${serviceStatus?.scraper?.status === "online" ? "bg-neon-green" : serviceStatus?.scraper?.status === "degraded" ? "bg-neon-yellow" : serviceStatus?.scraper?.status === "error" ? "bg-neon-red" : "bg-muted-foreground"} animate-pulse`} />
                       <CardTitle className="text-base">FlashScore Scraper</CardTitle>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {serviceStatus?.scraper?.scraperStatus === "running" && (
                         <Badge className="bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30 text-[10px] animate-pulse">
                           <Loader2 className="w-3 h-3 mr-1 animate-spin" />RUNNING
@@ -1372,82 +1314,149 @@ function AdminDashboard() {
                       </Badge>
                     </div>
                   </div>
-                  <CardDescription>Scraper with API server for remote control. Collects basketball match data from FlashScore and posts to the Engine.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">URL</span><span className="font-mono text-xs">{serviceStatus?.scraperUrl || "—"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">HTTP Status</span><span className="font-mono text-xs">{serviceStatus?.scraper?.statusCode ?? "N/A"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">State</span>
-                      <span className={`text-xs font-semibold ${serviceStatus?.scraper?.scraperStatus === "idle" ? "text-neon-green" : serviceStatus?.scraper?.scraperStatus === "running" ? "text-neon-yellow" : serviceStatus?.scraper?.scraperStatus === "error" ? "text-neon-red" : "text-muted-foreground"}`}>
-                        {serviceStatus?.scraper?.scraperStatus?.toUpperCase() || (serviceStatus?.scraper?.status === "online" ? "IDLE" : "N/A")}
-                      </span>
+                  {/* Stat blocks row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">HTTP</div>
+                      <div className={`text-lg font-bold font-mono ${serviceStatus?.scraper?.statusCode === 200 ? "text-neon-green" : "text-foreground"}`}>
+                        {serviceStatus?.scraper?.statusCode ?? "—"}
+                      </div>
                     </div>
-                    {serviceStatus?.scraper?.currentDay && (
-                      <div className="flex justify-between"><span className="text-muted-foreground">Scraping</span><span className="text-xs text-neon-yellow">{serviceStatus.scraper.currentDay}</span></div>
-                    )}
-                    {serviceStatus?.scraper?.lastRun && (
-                      <>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Last Run</span>
-                          <span className={`text-xs font-semibold ${serviceStatus.scraper.lastRun.status === "success" ? "text-neon-green" : "text-neon-red"}`}>
-                            {serviceStatus.scraper.lastRun.status === "success" ? "Success" : "Failed"}
-                          </span>
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">STATE</div>
+                      <div className={`text-sm font-bold ${serviceStatus?.scraper?.scraperStatus === "idle" ? "text-neon-green" : serviceStatus?.scraper?.scraperStatus === "running" ? "text-neon-yellow" : serviceStatus?.scraper?.scraperStatus === "error" ? "text-neon-red" : "text-muted-foreground"}`}>
+                        {serviceStatus?.scraper?.scraperStatus?.toUpperCase() || (serviceStatus?.scraper?.status === "online" ? "IDLE" : "N/A")}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">SCRAPE</div>
+                      <div className="text-sm font-bold text-neon-yellow">
+                        {serviceStatus?.scraper?.currentDay || serviceStatus?.scraper?.lastRun?.day || "—"}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Last Run summary */}
+                  {serviceStatus?.scraper?.lastRun && (
+                    <div className={`rounded-lg border p-3 ${serviceStatus.scraper.lastRun.status === "success" ? "bg-neon-green/5 border-neon-green/20" : "bg-neon-red/5 border-neon-red/20"}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-1.5">
+                          {serviceStatus.scraper.lastRun.status === "success"
+                            ? <CheckCircle2 className="w-3.5 h-3.5 text-neon-green" />
+                            : <XCircle className="w-3.5 h-3.5 text-neon-red" />}
+                          <span className="text-xs font-semibold">Last Run</span>
                         </div>
-                        {serviceStatus.scraper.lastRun.day && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Scraped</span>
-                            <Badge variant="outline" className="text-[10px] h-5 border-neon-cyan/30 text-neon-cyan">{serviceStatus.scraper.lastRun.day}</Badge>
-                          </div>
+                        {serviceStatus.scraper.lastRun.scrape_type && (
+                          <Badge variant="outline" className="text-[9px] h-4 border-border/40">
+                            {serviceStatus.scraper.lastRun.scrape_type === "scheduled" ? "Scheduled" : "Results"}
+                          </Badge>
                         )}
-                        {serviceStatus.scraper.lastRun.status === "success" && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Matches</span>
-                            <span className="text-xs">
-                              <span className="text-neon-green font-semibold">{serviceStatus.scraper.lastRun.complete_matches}</span>
-                              <span className="text-muted-foreground"> complete, </span>
-                              <span className="text-neon-yellow font-semibold">{serviceStatus.scraper.lastRun.incomplete_matches}</span>
-                              <span className="text-muted-foreground"> skipped</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        {serviceStatus.scraper.lastRun.status === "success" ? (
+                          <>
+                            <div><span className="text-muted-foreground">Complete: </span><span className="text-neon-green font-semibold">{serviceStatus.scraper.lastRun.complete_matches}</span></div>
+                            <div><span className="text-muted-foreground">Skipped: </span><span className="text-neon-yellow font-semibold">{serviceStatus.scraper.lastRun.incomplete_matches}</span></div>
+                          </>
+                        ) : (
+                          <div className="col-span-2 text-neon-red break-all">{serviceStatus.scraper.lastRun.error || "Failed"}</div>
+                        )}
+                        {serviceStatus.scraper.lastRun.started_at && (
+                          <div><span className="text-muted-foreground">Started: </span><span className="font-mono">{new Date(serviceStatus.scraper.lastRun.started_at).toLocaleTimeString()}</span></div>
+                        )}
+                        {serviceStatus.scraper.lastRun.finished_at && serviceStatus.scraper.lastRun.started_at && (
+                          <div><span className="text-muted-foreground">Duration: </span>
+                            <span className="font-mono">
+                              {(() => {
+                                const start = new Date(serviceStatus.scraper.lastRun.started_at!).getTime();
+                                const end = new Date(serviceStatus.scraper.lastRun.finished_at!).getTime();
+                                const secs = Math.round((end - start) / 1000);
+                                if (secs < 60) return `${secs}s`;
+                                const mins = Math.floor(secs / 60);
+                                const remSecs = secs % 60;
+                                return `${mins}m ${remSecs}s`;
+                              })()}
                             </span>
                           </div>
                         )}
-                        {serviceStatus.scraper.lastRun.status === "error" && serviceStatus.scraper.lastRun.error && (
-                          <div className="mt-1 p-2 rounded bg-neon-red/5 border border-neon-red/15">
-                            <p className="text-xs text-neon-red font-mono break-all">{serviceStatus.scraper.lastRun.error}</p>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">Duration</span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatTime(serviceStatus.scraper.lastRun.started_at)}
-                            {formatDuration(serviceStatus.scraper.lastRun.started_at, serviceStatus.scraper.lastRun.finished_at) && (
-                              <span className="ml-1.5 text-neon-cyan">({formatDuration(serviceStatus.scraper.lastRun.started_at, serviceStatus.scraper.lastRun.finished_at)})</span>
-                            )}
-                          </span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {/* Live progress bar when running */}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* No runs yet message */}
+                  {!serviceStatus?.scraper?.lastRun && serviceStatus?.scraper?.scraperStatus !== "running" && (
+                    <div className="rounded-lg border border-border/30 bg-background/30 p-3 text-center">
+                      <div className="text-xs text-muted-foreground">No scrape runs recorded yet</div>
+                    </div>
+                  )}
+
+                  {/* Live progress section when running */}
                   {serviceStatus?.scraper?.scraperStatus === "running" && serviceStatus?.scraper?.progress && (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span className="truncate mr-2 max-w-[70%]">{serviceStatus.scraper.progress.progress_message || serviceStatus.scraper.progress.status_message || "Processing..."}</span>
-                        <span className="shrink-0 font-mono">{serviceStatus.scraper.progress.current_match_index}/{serviceStatus.scraper.progress.total_matches || "?"} matches</span>
+                    <div className="rounded-lg border border-neon-yellow/20 bg-neon-yellow/5 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-neon-yellow flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5" /> Live Progress
+                        </span>
+                        <span className="text-xs font-mono text-neon-yellow">
+                          {serviceStatus.scraper.progress.current_match_index}/{serviceStatus.scraper.progress.total_matches || "?"}
+                        </span>
                       </div>
                       <Progress
                         value={serviceStatus.scraper.progress.total_matches > 0
                           ? Math.round((serviceStatus.scraper.progress.current_match_index / serviceStatus.scraper.progress.total_matches) * 100)
                           : 0
                         }
-                        className="h-2"
+                        className="h-2.5"
                       />
-                      {serviceStatus.scraper.progress.status_message && serviceStatus.scraper.progress.progress_message && (
-                        <p className="text-[10px] text-muted-foreground truncate">{serviceStatus.scraper.progress.status_message}</p>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {serviceStatus.scraper.progress.progress_message || serviceStatus.scraper.progress.status_message || "Processing..."}
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                        {serviceStatus.scraper.progress.day && (
+                          <div><span className="text-muted-foreground/60">Day: </span>{serviceStatus.scraper.progress.day}</div>
+                        )}
+                        {serviceStatus.scraper.progress.started_at && (
+                          <>
+                            <div><span className="text-muted-foreground/60">Started: </span><span className="font-mono">{new Date(serviceStatus.scraper.progress.started_at).toLocaleTimeString()}</span></div>
+                            <div><span className="text-muted-foreground/60">Elapsed: </span>
+                              <span className="font-mono">
+                                {(() => {
+                                  const start = new Date(serviceStatus.scraper.progress.started_at!).getTime();
+                                  const elapsed = Math.round((Date.now() - start) / 1000);
+                                  if (elapsed < 60) return `${elapsed}s`;
+                                  const mins = Math.floor(elapsed / 60);
+                                  const remSecs = elapsed % 60;
+                                  return `${mins}m ${remSecs}s`;
+                                })()}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                        {serviceStatus.scraper.progress.scrape_id && (
+                          <div className="col-span-2"><span className="text-muted-foreground/60">Run: </span><span className="font-mono text-[10px]">{serviceStatus.scraper.progress.scrape_id}</span></div>
+                        )}
+                      </div>
+                      {serviceStatus.scraper.progress.stop_requested && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-neon-yellow">
+                          <AlertTriangle className="w-3 h-3" /><span>Stop requested — finishing current match</span>
+                        </div>
+                      )}
+                      {serviceStatus.scraper.progress.error && (
+                        <div className="p-1.5 rounded bg-neon-red/10 border border-neon-red/20">
+                          <span className="text-[11px] text-neon-red break-all">{serviceStatus.scraper.progress.error}</span>
+                        </div>
                       )}
                     </div>
                   )}
+
                   <Separator className="bg-border/30" />
+                  {/* Service info */}
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="flex justify-between"><span>Endpoint</span><span className="font-mono text-[10px] truncate ml-2">{serviceStatus?.scraperUrl || "—"}</span></div>
+                  </div>
+
                   {/* Trigger controls */}
                   <div className="space-y-2">
                     {serviceStatus?.scraper?.scraperStatus === "running" ? (
@@ -1457,42 +1466,22 @@ function AdminDashboard() {
                         Stop Scraper
                       </Button>
                     ) : (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <Label className="text-xs text-muted-foreground shrink-0">Scrape Day:</Label>
-                          <Select value={scraperDay} onValueChange={(v) => setScraperDay(v as "Today" | "Tomorrow")}>
-                            <SelectTrigger className="h-8 text-xs bg-background border-border/50 w-[130px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Today">Today</SelectItem>
-                              <SelectItem value="Tomorrow">Tomorrow</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      <div className="flex gap-2">
+                        <Select value={scraperDay} onValueChange={(v) => setScraperDay(v as "Today" | "Tomorrow")}>
+                          <SelectTrigger className="h-9 text-xs bg-background border-border/50 w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Today">Today</SelectItem>
+                            <SelectItem value="Tomorrow">Tomorrow</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <Button variant="outline" onClick={handleTriggerScraper} disabled={scraperLoading}
-                          className="w-full gap-2 border-neon-green/30 text-neon-green hover:bg-neon-green/10">
+                          className="shrink-0 gap-2 border-neon-green/30 text-neon-green hover:bg-neon-green/10">
                           {scraperLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                          Run Scraper ({scraperDay})
+                          Run
                         </Button>
-                        <Separator className="bg-border/30" />
-                        <div className="space-y-1.5">
-                          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Results Scrape (historical)</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              placeholder="DD.MM.YYYY"
-                              value={resultsDate}
-                              onChange={(e) => setResultsDate(e.target.value)}
-                              className="h-7 text-[11px] font-mono bg-background border-border/50"
-                            />
-                            <Button variant="outline" onClick={handleResultsScrape} disabled={resultsLoading}
-                              className="shrink-0 gap-1 border-neon-yellow/30 text-neon-yellow hover:bg-neon-yellow/10 text-[11px] h-7 px-2">
-                              {resultsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
-                              Go
-                            </Button>
-                          </div>
-                        </div>
-                      </>
+                      </div>
                     )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -1503,75 +1492,15 @@ function AdminDashboard() {
                       <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin" : ""}`} />Refresh
                     </Button>
                   </div>
-                  {/* Scrape History */}
-                  <Separator className="bg-border/30" />
-                  <div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (!showHistory) fetchScrapeHistory();
-                        setShowHistory(!showHistory);
-                      }}
-                      className="w-full gap-2 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      <Clock className="w-3.5 h-3.5" />
-                      Scrape History
-                      {showHistory ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
-                    </Button>
-                    {showHistory && (
-                      <div className="mt-2">
-                        {loadingHistory ? (
-                          <div className="py-3 text-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground mx-auto" /></div>
-                        ) : scrapeHistory.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-3">No history available</p>
-                        ) : (
-                          <ScrollArea className="max-h-[200px]">
-                            <div className="space-y-1.5">
-                              {scrapeHistory.map((run) => (
-                                <div
-                                  key={run.scrape_id}
-                                  className="flex items-center justify-between p-2 rounded bg-background/50 border border-border/20"
-                                >
-                                  <div className="flex items-center gap-2">
-                                    {run.success
-                                      ? <CheckCircle2 className="w-3 h-3 text-neon-green shrink-0" />
-                                      : <XCircle className="w-3 h-3 text-neon-red shrink-0" />
-                                    }
-                                    <div>
-                                      <div className="flex items-center gap-1.5">
-                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-border/30">
-                                          {run.type === "results" ? "RESULTS" : (run.day || "SCHEDULED")}
-                                        </Badge>
-                                        {run.complete_matches !== undefined && (
-                                          <span className="text-[10px] text-muted-foreground">
-                                            {run.complete_matches}/{(run.complete_matches || 0) + (run.incomplete_matches || 0)}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                                        {formatTime(run.finished_at)}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground font-mono">{run.scrape_id.slice(-6)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </ScrollArea>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 </CardContent>
               </Card>
 
               {/* Engine card */}
               <Card className="bg-card/60 border-border/40">
-                <CardHeader>
+                <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <StatusDot status={serviceStatus?.engine?.status || "offline"} />
+                      <div className={`w-2.5 h-2.5 rounded-full ${serviceStatus?.engine?.status === "online" ? "bg-neon-green" : serviceStatus?.engine?.status === "error" ? "bg-neon-red" : serviceStatus?.engine?.status === "degraded" ? "bg-neon-yellow" : "bg-muted-foreground"} animate-pulse`} />
                       <CardTitle className="text-base">ScoreWise Engine</CardTitle>
                     </div>
                     <Badge variant="outline" className={
@@ -1583,19 +1512,68 @@ function AdminDashboard() {
                       {serviceStatus?.engine?.status?.toUpperCase() || "UNKNOWN"}
                     </Badge>
                   </div>
-                  <CardDescription>Prediction engine that processes match data and generates OVER/UNDER predictions</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between"><span className="text-muted-foreground">URL</span><span className="font-mono text-xs">{serviceStatus?.engineUrl || "—"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">HTTP Status</span>
-                      <span className={`font-mono text-xs ${serviceStatus?.engine?.statusCode === 200 ? "text-neon-green" : serviceStatus?.engine?.statusCode === 401 ? "text-neon-yellow" : ""}`}>
-                        {serviceStatus?.engine?.statusCode ?? "N/A"}{serviceStatus?.engine?.statusCode === 401 && " (auth)"}
-                      </span>
+                  {/* Stat blocks row */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">HTTP</div>
+                      <div className={`text-lg font-bold font-mono ${serviceStatus?.engine?.statusCode === 200 ? "text-neon-green" : serviceStatus?.engine?.statusCode === 401 ? "text-neon-yellow" : "text-foreground"}`}>
+                        {serviceStatus?.engine?.statusCode ?? "—"}
+                      </div>
                     </div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Predictions</span><span className="text-xs">{allPredictionsData?.total ?? "N/A"}</span></div>
-                    <div className="flex justify-between"><span className="text-muted-foreground">Last Updated</span><span className="text-xs">{formatTime(allPredictionsData?.updated_at)}</span></div>
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">PREDICTIONS</div>
+                      <div className="text-lg font-bold text-neon-green">{allPredictionsData?.total ?? "—"}</div>
+                    </div>
+                    <div className="rounded-lg bg-background/50 border border-border/30 p-2.5 text-center">
+                      <div className="text-[10px] text-muted-foreground mb-0.5">SUCCESS</div>
+                      <div className="text-lg font-bold font-mono">
+                        {allPredictionsData && allPredictionsData.total > 0
+                          ? `${Math.round((allPredictionsData.succeeded / allPredictionsData.total) * 100)}%`
+                          : "—"}
+                      </div>
+                    </div>
                   </div>
+
+                  {/* Prediction health breakdown */}
+                  {allPredictionsData && allPredictionsData.total > 0 && (
+                    <div className="rounded-lg border border-neon-green/20 bg-neon-green/5 p-3">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-neon-green" />
+                        <span className="text-xs font-semibold">Prediction Health</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                        <div>
+                          <div className="text-neon-green font-bold text-sm">{allPredictionsData.succeeded}</div>
+                          <div className="text-muted-foreground text-[10px]">Succeeded</div>
+                        </div>
+                        <div>
+                          <div className="text-neon-red font-bold text-sm">{allPredictionsData.failed}</div>
+                          <div className="text-muted-foreground text-[10px]">Failed</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-sm">{allPredictionsData.total}</div>
+                          <div className="text-muted-foreground text-[10px]">Total</div>
+                        </div>
+                      </div>
+                      {/* Mini progress bar showing success rate */}
+                      <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-neon-green transition-all"
+                          style={{ width: `${Math.round((allPredictionsData.succeeded / allPredictionsData.total) * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last updated info */}
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <div className="flex justify-between"><span>Last Updated</span><span className="font-mono">{formatTime(allPredictionsData?.updated_at)}</span></div>
+                    <div className="flex justify-between"><span>Source</span><span className="font-mono text-[10px] truncate ml-2">{allPredictionsData?.source || "N/A"}</span></div>
+                    <div className="flex justify-between"><span>Endpoint</span><span className="font-mono text-[10px] truncate ml-2">{serviceStatus?.engineUrl || "—"}</span></div>
+                  </div>
+
                   <Separator className="bg-border/30" />
                   <div className="grid grid-cols-3 gap-2">
                     <Button variant="outline" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getScraperUrl, getEngineUrl, getEngineApiKey } from "@/lib/service-config";
-import { db } from "@/lib/db-libsql";
+import { db } from "@/lib/db";
 
 // POST /api/admin/scraper — Trigger a manual scrape run
 export async function POST(request: Request) {
@@ -14,41 +14,6 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const day = body.day || "Today";
-    const date = body.date || null;
-
-    // Handle Results scrape (historical date)
-    if (day === "Results") {
-      if (!date) {
-        return NextResponse.json({ error: "date is required for Results scrape" }, { status: 400 });
-      }
-      const scraperUrl = await getScraperUrl();
-      const scraperApiKey = await getScraperApiKey();
-      try {
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (scraperApiKey) headers["X-API-Key"] = scraperApiKey;
-        const res = await fetch(`${scraperUrl}/api/scrape/results`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ date }),
-          signal: AbortSignal.timeout(15000),
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          return NextResponse.json({ status: "error", message: data.detail || `Scraper returned ${res.status}` }, { status: res.status });
-        }
-        await db.activityLog.create({
-          data: {
-            userId: (session.user as { id: string }).id,
-            action: "SERVICE_TRIGGER",
-            service: "scraper",
-            details: JSON.stringify({ operation: "results_scrape", date, scrape_id: data.scrape_id }),
-          },
-        });
-        return NextResponse.json({ status: "triggered", message: data.message || `Results scrape started for ${date}`, run_id: data.scrape_id, day: "Results" });
-      } catch {
-        return NextResponse.json({ status: "offline", message: `Could not reach scraper at ${scraperUrl}` });
-      }
-    }
 
     if (!["Today", "Tomorrow"].includes(day)) {
       return NextResponse.json({ error: "day must be 'Today' or 'Tomorrow'" }, { status: 400 });
@@ -87,6 +52,8 @@ export async function POST(request: Request) {
         },
       });
 
+      // Map GitHub scraper response → frontend-expected format
+      // GitHub scraper returns: { status: "accepted", scrape_id, message }
       return NextResponse.json({
         status: "triggered",
         message: data.message || `Scrape started for ${day}`,
@@ -157,6 +124,7 @@ export async function GET() {
               error: lastScrape.error || null,
               scrape_type: lastScrape.scrape_type || null,
               day: lastScrape.day || null,
+              date: lastScrape.date || null,
               complete_matches: lastScrape.complete_matches || 0,
               incomplete_matches: lastScrape.incomplete_matches || 0,
               started_at: lastScrape.started_at || null,

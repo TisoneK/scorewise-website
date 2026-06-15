@@ -62,6 +62,7 @@ export interface ServiceStatus {
     error?: string | null;
     scrape_type?: string | null;
     day?: string | null;
+    date?: string | null;
     complete_matches: number;
     incomplete_matches: number;
     started_at?: string | null;
