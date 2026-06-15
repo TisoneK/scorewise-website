@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSQL } from '@prisma/adapter-libsql'
-import { createClient } from '@libsql/client'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -12,12 +11,12 @@ function createPrismaClient() {
 
   // Turso / LibSQL adapter for Vercel serverless
   if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
-    const libsql = createClient({
+    // PrismaLibSQL is a factory that takes a Config object (url + authToken)
+    // and creates the libsql client internally — do NOT pass a Client instance
+    const adapter = new PrismaLibSQL({
       url: process.env.TURSO_DATABASE_URL,
       authToken: process.env.TURSO_AUTH_TOKEN,
     })
-
-    const adapter = new PrismaLibSQL(libsql)
     return new PrismaClient({ adapter, log: logLevel })
   }
 
