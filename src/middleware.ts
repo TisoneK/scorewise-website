@@ -6,7 +6,8 @@ import type { NextRequest } from "next/server";
 const publicPaths = ["/"];
 
 // API routes that don't require authentication
-const publicApiPrefixes = ["/api/auth/", "/api/debug"];
+// /api/admin/seed is allowed through so it can check if zero admins exist (first-run bootstrap)
+const publicApiPrefixes = ["/api/auth/", "/api/debug", "/api/admin/seed"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
