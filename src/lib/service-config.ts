@@ -1,4 +1,4 @@
-import { db } from "@/lib/db-libsql";
+import { db } from "@/lib/db";
 
 /**
  * Get a config value from the database, falling back to the provided default.

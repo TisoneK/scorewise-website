@@ -1,13 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { createClient } from "@libsql/client";
-
-// Direct libsql client for auth — bypasses Prisma engine startup issues on Vercel
-const authClient = createClient({
-  url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+import { db } from "@/lib/db";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -20,25 +14,23 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const result = await authClient.execute({
-          sql: "SELECT id, email, name, passwordHash, role FROM User WHERE email = ?",
-          args: [credentials.email],
+        const user = await db.user.findUnique({
+          where: { email: credentials.email },
         });
 
-        const row = result.rows[0] as
-          | { id: string; email: string; name: string | null; passwordHash: string; role: string }
-          | undefined;
+        if (!user) return null;
 
-        if (!row) return null;
-
-        const isValid = await bcrypt.compare(credentials.password, row.passwordHash);
+        const isValid = await bcrypt.compare(
+          credentials.password,
+          user.passwordHash
+        );
         if (!isValid) return null;
 
         return {
-          id: row.id,
-          email: row.email,
-          name: row.name,
-          role: row.role,
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
         };
       },
     }),
@@ -67,5 +59,5 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 24 * 60 * 60, // 24 hours
   },
-  secret: process.env.NEXTAUTH_SECRET || "scorewise-dev-secret-change-in-production",
+  secret: process.env.NEXTAUTH_SECRET,
 };

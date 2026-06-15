@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db-libsql";
+import { db } from "@/lib/db";
 import { seedDefaultConfigs } from "@/lib/service-config";
 
 // GET /api/admin/config — Get all service configurations
