@@ -3,6 +3,13 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 
+// Warn if NEXTAUTH_SECRET is not set — tokens will use a fallback secret
+// In production, always set NEXTAUTH_SECRET in your hosting environment
+const nextAuthSecret = process.env.NEXTAUTH_SECRET || "scorewise-fallback-secret-2024";
+if (!process.env.NEXTAUTH_SECRET && process.env.NODE_ENV === "production") {
+  console.warn("⚠️ NEXTAUTH_SECRET is not set. Using fallback secret — set NEXTAUTH_SECRET in your deployment environment for security.");
+}
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -59,5 +66,5 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 24 * 60 * 60, // 24 hours
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: nextAuthSecret,
 };

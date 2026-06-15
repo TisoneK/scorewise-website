@@ -29,7 +29,7 @@ export async function middleware(request: NextRequest) {
   // Check for JWT token
   const token = await getToken({
     req: request,
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: process.env.NEXTAUTH_SECRET || "scorewise-fallback-secret-2024",
   });
 
   // If no token, block access
