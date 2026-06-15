@@ -6,7 +6,7 @@ import type { NextRequest } from "next/server";
 const publicPaths = ["/"];
 
 // API routes that don't require authentication
-const publicApiPrefixes = ["/api/auth/"];
+const publicApiPrefixes = ["/api/auth/", "/api/debug"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
