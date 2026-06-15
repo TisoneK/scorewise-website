@@ -2,19 +2,22 @@ import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 
-// Routes that don't require authentication
-const publicRoutes = ["/api/auth/signup", "/api/auth/_next", "/api/auth/callback", "/api/auth/session"];
+// Pages that don't require authentication (login/signup are at root "/")
+const publicPaths = ["/"];
+
+// API routes that don't require authentication
+const publicApiPrefixes = ["/api/auth/"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow NextAuth internal routes
-  if (pathname.startsWith("/api/auth/") && !publicRoutes.includes(pathname)) {
+  // Allow all NextAuth API routes (login, callback, session, etc.)
+  if (publicApiPrefixes.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 
-  // Allow public auth routes
-  if (publicRoutes.some((route) => pathname.startsWith(route))) {
+  // Allow public pages (root "/" is the login page)
+  if (publicPaths.includes(pathname)) {
     return NextResponse.next();
   }
 
@@ -29,14 +32,13 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // If no token and trying to access protected routes, redirect to login
-  // The login page is at "/" so unauthenticated users see it by default
+  // If no token, block access
   if (!token) {
     // For API routes, return 401
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
-    // For page routes, redirect to home (which shows login form)
+    // For page routes, redirect to login page
     return NextResponse.redirect(new URL("/", request.url));
   }
 
