@@ -406,6 +406,11 @@ function AdminDashboard() {
   const [scraperLoading, setScraperLoading] = useState(false);
   const [scraperDay, setScraperDay] = useState<"Today" | "Tomorrow">("Today");
   const [stopLoading, setStopLoading] = useState(false);
+  const [scrapeHistory, setScrapeHistory] = useState<{ scrape_id: string; type: string; day?: string | null; date?: string | null; finished_at: string; success: boolean; complete_matches?: number; incomplete_matches?: number }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [resultsDate, setResultsDate] = useState("");
+  const [resultsLoading, setResultsLoading] = useState(false);
 
   // --- Users state ---
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -456,6 +461,19 @@ function AdminDashboard() {
     try { return new Date(t).toLocaleString(); } catch { return t; }
   };
 
+  const formatDuration = (start: string | null | undefined, end: string | null | undefined) => {
+    if (!start || !end) return null;
+    try {
+      const ms = new Date(end).getTime() - new Date(start).getTime();
+      if (ms < 0) return null;
+      const seconds = Math.floor(ms / 1000);
+      if (seconds < 60) return `${seconds}s`;
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}m ${secs}s`;
+    } catch { return null; }
+  };
+
   // --- Fetch functions ---
   const fetchAllPredictions = useCallback(async () => {
     setLoadingPred(true);
@@ -486,6 +504,46 @@ function AdminDashboard() {
       setLoadingStatus(false);
     }
   }, []);
+
+  const fetchScrapeHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch("/api/admin/scraper/history");
+      if (!res.ok) throw new Error("Failed to fetch history");
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setScrapeHistory(data.history || []);
+    } catch {
+      toast.error("Failed to fetch scrape history");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  const handleResultsScrape = async () => {
+    if (!resultsDate) { toast.error("Select a date first"); return; }
+    const m = resultsDate.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!m) { toast.error("Date must be in DD.MM.YYYY format"); return; }
+    setResultsLoading(true);
+    try {
+      const res = await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ day: "Results", date: resultsDate }),
+      });
+      const data = await res.json();
+      if (data.status === "triggered") {
+        toast.success(`Results scrape started for ${resultsDate}`);
+      } else {
+        toast.error(data.message || "Failed to trigger results scrape");
+      }
+      fetchServiceStatus();
+    } catch {
+      toast.error("Failed to trigger results scrape");
+    } finally {
+      setResultsLoading(false);
+    }
+  };
 
   const fetchUsers = useCallback(async () => {
     setLoadingUsers(true);
@@ -1329,27 +1387,64 @@ function AdminDashboard() {
                       <div className="flex justify-between"><span className="text-muted-foreground">Scraping</span><span className="text-xs text-neon-yellow">{serviceStatus.scraper.currentDay}</span></div>
                     )}
                     {serviceStatus?.scraper?.lastRun && (
-                      <div className="flex justify-between"><span className="text-muted-foreground">Last Run</span>
-                        <span className={`text-xs ${serviceStatus.scraper.lastRun.status === "success" ? "text-neon-green" : "text-neon-red"}`}>
-                          {serviceStatus.scraper.lastRun.status === "success" ? `${serviceStatus.scraper.lastRun.complete_matches} complete, ${serviceStatus.scraper.lastRun.incomplete_matches} skipped` : serviceStatus.scraper.lastRun.error || "Failed"}
-                        </span>
-                      </div>
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Last Run</span>
+                          <span className={`text-xs font-semibold ${serviceStatus.scraper.lastRun.status === "success" ? "text-neon-green" : "text-neon-red"}`}>
+                            {serviceStatus.scraper.lastRun.status === "success" ? "Success" : "Failed"}
+                          </span>
+                        </div>
+                        {serviceStatus.scraper.lastRun.day && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Scraped</span>
+                            <Badge variant="outline" className="text-[10px] h-5 border-neon-cyan/30 text-neon-cyan">{serviceStatus.scraper.lastRun.day}</Badge>
+                          </div>
+                        )}
+                        {serviceStatus.scraper.lastRun.status === "success" && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Matches</span>
+                            <span className="text-xs">
+                              <span className="text-neon-green font-semibold">{serviceStatus.scraper.lastRun.complete_matches}</span>
+                              <span className="text-muted-foreground"> complete, </span>
+                              <span className="text-neon-yellow font-semibold">{serviceStatus.scraper.lastRun.incomplete_matches}</span>
+                              <span className="text-muted-foreground"> skipped</span>
+                            </span>
+                          </div>
+                        )}
+                        {serviceStatus.scraper.lastRun.status === "error" && serviceStatus.scraper.lastRun.error && (
+                          <div className="mt-1 p-2 rounded bg-neon-red/5 border border-neon-red/15">
+                            <p className="text-xs text-neon-red font-mono break-all">{serviceStatus.scraper.lastRun.error}</p>
+                          </div>
+                        )}
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Duration</span>
+                          <span className="text-xs text-muted-foreground">
+                            {formatTime(serviceStatus.scraper.lastRun.started_at)}
+                            {formatDuration(serviceStatus.scraper.lastRun.started_at, serviceStatus.scraper.lastRun.finished_at) && (
+                              <span className="ml-1.5 text-neon-cyan">({formatDuration(serviceStatus.scraper.lastRun.started_at, serviceStatus.scraper.lastRun.finished_at)})</span>
+                            )}
+                          </span>
+                        </div>
+                      </>
                     )}
                   </div>
                   {/* Live progress bar when running */}
                   {serviceStatus?.scraper?.scraperStatus === "running" && serviceStatus?.scraper?.progress && (
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>{serviceStatus.scraper.progress.status_message || "Processing..."}</span>
-                        <span>{serviceStatus.scraper.progress.complete_matches}/{serviceStatus.scraper.progress.total_matches || "?"} matches</span>
+                        <span className="truncate mr-2 max-w-[70%]">{serviceStatus.scraper.progress.progress_message || serviceStatus.scraper.progress.status_message || "Processing..."}</span>
+                        <span className="shrink-0 font-mono">{serviceStatus.scraper.progress.current_match_index}/{serviceStatus.scraper.progress.total_matches || "?"} matches</span>
                       </div>
                       <Progress
                         value={serviceStatus.scraper.progress.total_matches > 0
-                          ? Math.round((serviceStatus.scraper.progress.complete_matches / serviceStatus.scraper.progress.total_matches) * 100)
+                          ? Math.round((serviceStatus.scraper.progress.current_match_index / serviceStatus.scraper.progress.total_matches) * 100)
                           : 0
                         }
                         className="h-2"
                       />
+                      {serviceStatus.scraper.progress.status_message && serviceStatus.scraper.progress.progress_message && (
+                        <p className="text-[10px] text-muted-foreground truncate">{serviceStatus.scraper.progress.status_message}</p>
+                      )}
                     </div>
                   )}
                   <Separator className="bg-border/30" />
@@ -1380,6 +1475,23 @@ function AdminDashboard() {
                           {scraperLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                           Run Scraper ({scraperDay})
                         </Button>
+                        <Separator className="bg-border/30" />
+                        <div className="space-y-1.5">
+                          <Label className="text-[10px] text-muted-foreground uppercase tracking-wider">Results Scrape (historical)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="DD.MM.YYYY"
+                              value={resultsDate}
+                              onChange={(e) => setResultsDate(e.target.value)}
+                              className="h-7 text-[11px] font-mono bg-background border-border/50"
+                            />
+                            <Button variant="outline" onClick={handleResultsScrape} disabled={resultsLoading}
+                              className="shrink-0 gap-1 border-neon-yellow/30 text-neon-yellow hover:bg-neon-yellow/10 text-[11px] h-7 px-2">
+                              {resultsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />}
+                              Go
+                            </Button>
+                          </div>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1390,6 +1502,66 @@ function AdminDashboard() {
                     <Button variant="outline" onClick={fetchServiceStatus} disabled={loadingStatus} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                       <RefreshCw className={`w-4 h-4 ${loadingStatus ? "animate-spin" : ""}`} />Refresh
                     </Button>
+                  </div>
+                  {/* Scrape History */}
+                  <Separator className="bg-border/30" />
+                  <div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (!showHistory) fetchScrapeHistory();
+                        setShowHistory(!showHistory);
+                      }}
+                      className="w-full gap-2 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      Scrape History
+                      {showHistory ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                    </Button>
+                    {showHistory && (
+                      <div className="mt-2">
+                        {loadingHistory ? (
+                          <div className="py-3 text-center"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground mx-auto" /></div>
+                        ) : scrapeHistory.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-3">No history available</p>
+                        ) : (
+                          <ScrollArea className="max-h-[200px]">
+                            <div className="space-y-1.5">
+                              {scrapeHistory.map((run) => (
+                                <div
+                                  key={run.scrape_id}
+                                  className="flex items-center justify-between p-2 rounded bg-background/50 border border-border/20"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {run.success
+                                      ? <CheckCircle2 className="w-3 h-3 text-neon-green shrink-0" />
+                                      : <XCircle className="w-3 h-3 text-neon-red shrink-0" />
+                                    }
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-border/30">
+                                          {run.type === "results" ? "RESULTS" : (run.day || "SCHEDULED")}
+                                        </Badge>
+                                        {run.complete_matches !== undefined && (
+                                          <span className="text-[10px] text-muted-foreground">
+                                            {run.complete_matches}/{(run.complete_matches || 0) + (run.incomplete_matches || 0)}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                                        {formatTime(run.finished_at)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground font-mono">{run.scrape_id.slice(-6)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
