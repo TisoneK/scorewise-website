@@ -15,8 +15,16 @@ export async function POST(request: Request) {
     const envSecret = process.env.BOOTSTRAP_SECRET;
     const isBootstrap = envSecret && body.bootstrapSecret === envSecret;
 
+    // If not authenticated as admin and not using bootstrap secret,
+    // check if there are zero admins — allow first-run seeding
+    let isFirstAdmin = false;
     if (!isAdmin && !isBootstrap) {
-      return NextResponse.json({ error: "Unauthorized — admin access or BOOTSTRAP_SECRET required" }, { status: 401 });
+      const adminCount = await db.user.count({ where: { role: "ADMIN" } });
+      if (adminCount === 0) {
+        isFirstAdmin = true;
+      } else {
+        return NextResponse.json({ error: "Unauthorized — admin access or BOOTSTRAP_SECRET required" }, { status: 401 });
+      }
     }
 
     // Check if admin already exists
@@ -38,8 +46,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Log the action (only when authenticated as admin, not bootstrap)
-    if (session) await db.activityLog.create({
+    // Log the action (only when authenticated as admin, not bootstrap/first-run)
+    if (session && !isFirstAdmin) await db.activityLog.create({
       data: {
         userId: (session.user as { id: string }).id,
         action: "USER_CREATE",
