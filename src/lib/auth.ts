@@ -1,7 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { db } from "@/lib/db-libsql";
 
 // Warn if NEXTAUTH_SECRET is not set — tokens will use a fallback secret
 // In production, always set NEXTAUTH_SECRET in your hosting environment

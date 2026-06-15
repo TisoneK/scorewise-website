@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getScraperUrl } from "@/lib/service-config";
-import { db } from "@/lib/db";
+import { db } from "@/lib/db-libsql";
 
 // POST /api/admin/scraper/stop — Send stop signal to running scraper
 export async function POST() {

@@ -2,15 +2,21 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { db } from "@/lib/db-libsql";
 
 // POST /api/admin/seed — Seed the database with a default admin
-// Requires admin authentication (not publicly accessible)
+// Requires admin auth OR a one-time BOOTSTRAP_SECRET env var for first-run setup
 export async function POST(request: Request) {
   try {
+    const body = await request.json().catch(() => ({}));
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
+
+    const isAdmin = session && (session.user as { role: string })?.role === "ADMIN";
+    const envSecret = process.env.BOOTSTRAP_SECRET;
+    const isBootstrap = envSecret && body.bootstrapSecret === envSecret;
+
+    if (!isAdmin && !isBootstrap) {
+      return NextResponse.json({ error: "Unauthorized — admin access or BOOTSTRAP_SECRET required" }, { status: 401 });
     }
 
     // Check if admin already exists
@@ -32,8 +38,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Log the action
-    await db.activityLog.create({
+    // Log the action (only when authenticated as admin, not bootstrap)
+    if (session) await db.activityLog.create({
       data: {
         userId: (session.user as { id: string }).id,
         action: "USER_CREATE",

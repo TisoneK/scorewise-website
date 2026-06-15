@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { db } from "@/lib/db";
+import { db } from "@/lib/db-libsql";
 
 // POST /api/auth/signup — Public self-registration
 // New users are always created with role "USER" (never ADMIN).
