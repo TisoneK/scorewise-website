@@ -499,6 +499,21 @@ function AdminDashboard() {
   const [scraperDay, setScraperDay] = useState<"Today" | "Tomorrow">("Today");
   const [stopLoading, setStopLoading] = useState(false);
 
+  // --- Manual match entry state (admin-only, Services tab) ---
+  const [manualMatch, setManualMatch] = useState({
+    match_id: "",
+    home_team: "",
+    away_team: "",
+    match_total: "",
+    over_odds: "",
+    under_odds: "",
+    home_odds: "",
+    away_odds: "",
+  });
+  const [manualH2H, setManualH2H] = useState<string>("");
+  const [manualLoading, setManualLoading] = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
+
   // --- Users state ---
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
@@ -691,6 +706,120 @@ function AdminDashboard() {
       toast.error("Could not reach server to stop scraper");
     } finally {
       setStopLoading(false);
+    }
+  };
+
+  // --- Manual match entry → POST /api/admin/engine ---
+  // Builds a single-match ingest payload and forwards to the engine. The
+  // engine stores the prediction + fires Phase 4 webhooks back to us (cache
+  // invalidation + activity log). See /api/admin/engine/route.ts for validation.
+  const handleManualSubmit = async () => {
+    // Client-side validation mirroring the server-side checks
+    const matchId = manualMatch.match_id.trim();
+    const homeTeam = manualMatch.home_team.trim();
+    const awayTeam = manualMatch.away_team.trim();
+    if (!matchId || !homeTeam || !awayTeam) {
+      toast.error("Missing required fields", { description: "Match ID, Home Team, and Away Team are required" });
+      return;
+    }
+
+    const matchTotal = parseFloat(manualMatch.match_total);
+    if (!isFinite(matchTotal) || matchTotal <= 0) {
+      toast.error("Invalid match total", { description: "Match total must be a positive number" });
+      return;
+    }
+    if (Math.abs((matchTotal % 1) - 0.5) > 1e-9) {
+      toast.error("Match total must end in .5", { description: "Bookmaker lines must end in .5 (e.g. 174.5, 217.5)" });
+      return;
+    }
+
+    // Parse optional odds — empty string means "not provided"
+    const parseOptionalOdds = (s: string): number | undefined => {
+      const t = s.trim();
+      if (!t) return undefined;
+      const n = parseFloat(t);
+      return isFinite(n) && n > 0 ? n : undefined;
+    };
+
+    const odds: Record<string, number> = { match_total: matchTotal };
+    const overOdds = parseOptionalOdds(manualMatch.over_odds);
+    const underOdds = parseOptionalOdds(manualMatch.under_odds);
+    const homeOdds = parseOptionalOdds(manualMatch.home_odds);
+    const awayOdds = parseOptionalOdds(manualMatch.away_odds);
+    if (overOdds !== undefined) odds.over_odds = overOdds;
+    if (underOdds !== undefined) odds.under_odds = underOdds;
+    if (homeOdds !== undefined) odds.home_odds = homeOdds;
+    if (awayOdds !== undefined) odds.away_odds = awayOdds;
+
+    // Parse optional H2H JSON
+    let h2hMatches: unknown = [];
+    if (manualH2H.trim()) {
+      try {
+        h2hMatches = JSON.parse(manualH2H);
+        if (!Array.isArray(h2hMatches)) {
+          throw new Error("H2H must be a JSON array");
+        }
+      } catch (e) {
+        toast.error("Invalid H2H JSON", { description: e instanceof Error ? e.message : "Could not parse JSON" });
+        return;
+      }
+    }
+
+    const payload = {
+      match_id: matchId,
+      home_team: homeTeam,
+      away_team: awayTeam,
+      odds,
+      h2h_matches: h2hMatches,
+    };
+
+    setManualLoading(true);
+    try {
+      const res = await fetch("/api/admin/engine", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(30000),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        const detail = data.detail || data.error || `HTTP ${res.status}`;
+        toast.error("Engine rejected the submission", { description: detail });
+        return;
+      }
+
+      const eng = data.engine_response || {};
+      const succeeded = eng.succeeded ?? 0;
+      const failed = eng.failed ?? 0;
+
+      if (succeeded > 0) {
+        toast.success("Prediction generated", {
+          description: `${homeTeam} vs ${awayTeam} — succeeded: ${succeeded}, failed: ${failed}, store total: ${eng.store_total ?? "?"}`,
+        });
+      } else {
+        toast.warning("Match submitted but prediction failed", {
+          description: "The engine stored the match but its validation pipeline rejected it. Check engine logs for details.",
+        });
+      }
+
+      // Clear form + collapse card on success
+      setManualMatch({
+        match_id: "", home_team: "", away_team: "",
+        match_total: "", over_odds: "", under_odds: "", home_odds: "", away_odds: "",
+      });
+      setManualH2H("");
+      setShowManualEntry(false);
+
+      // Refresh predictions list — the engine webhook will also fire and
+      // invalidate the cache, but we proactively refresh for instant feedback.
+      fetchAllPredictions();
+    } catch (e) {
+      toast.error("Failed to submit match", {
+        description: e instanceof Error ? e.message : "Could not reach the engine",
+      });
+    } finally {
+      setManualLoading(false);
     }
   };
 
@@ -1728,6 +1857,180 @@ function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Manual match entry (admin only) — Phase 6 */}
+            {isAdmin && (
+              <Card className="bg-card/60 border-border/40">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-neon-purple/10 flex items-center justify-center">
+                        <TestTube className="w-4 h-4 text-neon-purple" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-semibold">Manual Match Entry</CardTitle>
+                        <CardDescription className="text-xs">Bypass the scraper — submit a single match directly to the engine</CardDescription>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowManualEntry(!showManualEntry)} className="gap-1.5 text-xs">
+                      {showManualEntry ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      {showManualEntry ? "Hide" : "Show"}
+                    </Button>
+                  </div>
+                </CardHeader>
+                {showManualEntry && (
+                  <CardContent className="space-y-4">
+                    <div className="rounded-lg border border-neon-cyan/20 bg-neon-cyan/5 p-2.5 text-[11px] text-muted-foreground">
+                      <Info className="w-3 h-3 inline mr-1 text-neon-cyan" />
+                      The match is sent to <code className="text-neon-cyan">POST /api/ingest</code> with <code className="text-neon-cyan">source="manual_entry"</code>.
+                      It runs the full prediction pipeline, merges into the store, and triggers the website webhook (cache invalidation + activity log).
+                    </div>
+
+                    {/* Required fields */}
+                    <div className="grid sm:grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Match ID <span className="text-neon-red">*</span></Label>
+                        <Input
+                          value={manualMatch.match_id}
+                          onChange={(e) => setManualMatch({ ...manualMatch, match_id: e.target.value })}
+                          placeholder="e.g. manual-2026-001"
+                          className="h-9 text-xs bg-background/50"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Home Team <span className="text-neon-red">*</span></Label>
+                        <Input
+                          value={manualMatch.home_team}
+                          onChange={(e) => setManualMatch({ ...manualMatch, home_team: e.target.value })}
+                          placeholder="e.g. Lakers"
+                          className="h-9 text-xs bg-background/50"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Away Team <span className="text-neon-red">*</span></Label>
+                        <Input
+                          value={manualMatch.away_team}
+                          onChange={(e) => setManualMatch({ ...manualMatch, away_team: e.target.value })}
+                          placeholder="e.g. Celtics"
+                          className="h-9 text-xs bg-background/50"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Odds fields */}
+                    <div>
+                      <Label className="text-xs mb-1.5 block">Odds</Label>
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Match Total <span className="text-neon-red">*</span></Label>
+                          <Input
+                            type="number" step="0.5" min="0"
+                            value={manualMatch.match_total}
+                            onChange={(e) => setManualMatch({ ...manualMatch, match_total: e.target.value })}
+                            placeholder="174.5"
+                            className="h-9 text-xs bg-background/50"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Over Odds</Label>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            value={manualMatch.over_odds}
+                            onChange={(e) => setManualMatch({ ...manualMatch, over_odds: e.target.value })}
+                            placeholder="1.90"
+                            className="h-9 text-xs bg-background/50"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Under Odds</Label>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            value={manualMatch.under_odds}
+                            onChange={(e) => setManualMatch({ ...manualMatch, under_odds: e.target.value })}
+                            placeholder="1.90"
+                            className="h-9 text-xs bg-background/50"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Home Odds</Label>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            value={manualMatch.home_odds}
+                            onChange={(e) => setManualMatch({ ...manualMatch, home_odds: e.target.value })}
+                            placeholder="1.85"
+                            className="h-9 text-xs bg-background/50"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] text-muted-foreground">Away Odds</Label>
+                          <Input
+                            type="number" step="0.01" min="0"
+                            value={manualMatch.away_odds}
+                            onChange={(e) => setManualMatch({ ...manualMatch, away_odds: e.target.value })}
+                            placeholder="1.95"
+                            className="h-9 text-xs bg-background/50"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        Match total must end in <code className="text-neon-cyan">.5</code> — bookmaker lines cannot push.
+                      </p>
+                    </div>
+
+                    {/* H2H JSON (optional, power-user) */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">
+                        H2H Matches <span className="text-muted-foreground">(optional — JSON array)</span>
+                      </Label>
+                      <Textarea
+                        value={manualH2H}
+                        onChange={(e) => setManualH2H(e.target.value)}
+                        placeholder={`[
+  {
+    "home_team": "Lakers",
+    "away_team": "Celtics",
+    "home_score": 112,
+    "away_score": 108,
+    "date": "2025-12-10"
+  }
+]`}
+                        className="font-mono text-[11px] bg-background/50 min-h-[100px]"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Dates must be <code className="text-neon-cyan">YYYY-MM-DD</code>. Scores must be integers in [0, 300].
+                      </p>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex justify-end gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setManualMatch({
+                            match_id: "", home_team: "", away_team: "",
+                            match_total: "", over_odds: "", under_odds: "", home_odds: "", away_odds: "",
+                          });
+                          setManualH2H("");
+                        }}
+                        className="text-xs"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />Clear
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleManualSubmit}
+                        disabled={manualLoading}
+                        className="gap-2 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25"
+                      >
+                        {manualLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                        Submit to Engine
+                      </Button>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            )}
           </TabsContent>
 
           {/* ============ CONFIGURATION TAB (ADMIN ONLY) ============ */}
