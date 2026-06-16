@@ -58,6 +58,12 @@ export async function seedDefaultConfigs(): Promise<void> {
     { service: "scraper", key: "webhook_url", value: "https://scorewise-engine.up.railway.app/api/ingest", secret: false },
     { service: "website", key: "auto_refresh_seconds", value: "60", secret: false },
     { service: "website", key: "max_predictions_display", value: "50", secret: false },
+    // Phase 4: shared HMAC secret for verifying engine → website webhooks.
+    // When empty, all inbound webhooks are rejected (fail-closed).
+    { service: "website", key: "webhook_secret", value: process.env.WEBHOOK_SECRET || "", secret: true },
+    // Phase 4: where the engine should POST its push notifications.
+    // Defaults to the public website URL so it works out-of-the-box on Vercel.
+    { service: "website", key: "webhook_url", value: process.env.WEBSITE_WEBHOOK_URL || process.env.NEXTAUTH_URL || "", secret: false },
   ];
 
   for (const d of defaults) {
