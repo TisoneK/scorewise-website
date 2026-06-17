@@ -32,7 +32,7 @@ import {
   Target, Percent, Layers, Cpu, Wifi, WifiOff, GitBranch, Timer,
   Calendar, ZapOff, Flame, Gauge, BarChart2, PieChart as PieIcon,
   Save, Plus, X, EyeOff, TestTube, FileText, Globe, Key, Link,
-  ChevronDown, ChevronUp, Copy, RotateCcw, ExternalLink, Info,
+  ChevronDown, ChevronUp, Copy, RotateCcw, ExternalLink, Info, Upload,
 } from "lucide-react";
 import type { StoredPredictions, Prediction, AppUser, UserRole, ServiceStatus, ServiceConfigEntry, ActivityLogEntry, ServiceName } from "@/lib/types";
 
@@ -539,6 +539,10 @@ function AdminDashboard() {
   const [newConfigSecret, setNewConfigSecret] = useState(false);
   const [testResult, setTestResult] = useState<{ service: string; success: boolean; message: string; status?: string } | null>(null);
   const [testingService, setTestingService] = useState(false);
+  // Push-to-service state (Phase: Configuration tab enhancement)
+  const [pushingService, setPushingService] = useState<string | null>(null);
+  const [pushResult, setPushResult] = useState<{ service: string; pushed: string[]; failed: { key: string; error: string }[]; message?: string } | null>(null);
+  const [remoteConfigs, setRemoteConfigs] = useState<Record<string, { key: string; value: string; has_override: boolean; is_secret: boolean }[]>>({});
 
   // --- Activity logs state ---
   const [logs, setLogs] = useState<ActivityLogEntry[]>([]);
@@ -962,6 +966,75 @@ function AdminDashboard() {
       toast.error("Connection test failed");
     } finally {
       setTestingService(false);
+    }
+  };
+
+  // Push website DB config values to engine/scraper
+  const handlePushConfig = async (service: "engine" | "scraper", keys?: string[]) => {
+    // If keys not provided, push ALL keys for the currently-selected service
+    let keysToPush = keys;
+    if (!keysToPush) {
+      keysToPush = serviceConfigs
+        .filter(c => c.service === service)
+        .map(c => `${c.service}:${c.key}`);
+    }
+    if (keysToPush.length === 0) {
+      toast.error("No config keys to push", { description: `Add some variables under the ${service} service first.` });
+      return;
+    }
+    setPushingService(service);
+    setPushResult(null);
+    try {
+      const res = await fetch("/api/admin/config/push", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service, keys: keysToPush }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPushResult({ service, pushed: [], failed: [], message: data.error || `HTTP ${res.status}` });
+        toast.error(`Push to ${service} failed`, { description: data.error || `HTTP ${res.status}` });
+        return;
+      }
+      setPushResult(data);
+      if (data.pushed?.length > 0 && data.failed?.length === 0) {
+        toast.success(`Pushed ${data.pushed.length} key${data.pushed.length === 1 ? "" : "s"} to ${service}`, {
+          description: data.pushed.join(", "),
+        });
+      } else if (data.pushed?.length > 0 && data.failed?.length > 0) {
+        toast.warning(`Partial push to ${service}`, {
+          description: `${data.pushed.length} succeeded, ${data.failed.length} failed`,
+        });
+      } else if (data.unreachable) {
+        toast.error(`Could not reach ${service}`, { description: data.message });
+      } else if (data.failed?.length > 0) {
+        toast.error(`Push to ${service} failed`, {
+          description: data.failed.map((f: { key: string; error: string }) => `${f.key}: ${f.error}`).join("; "),
+        });
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error";
+      setPushResult({ service, pushed: [], failed: [], message: msg });
+      toast.error(`Push to ${service} failed`, { description: msg });
+    } finally {
+      setPushingService(null);
+    }
+  };
+
+  // Fetch current values FROM engine/scraper (for side-by-side comparison)
+  const handleFetchRemoteConfig = async (service: "engine" | "scraper") => {
+    try {
+      const res = await fetch(`/api/admin/config/push?service=${service}`, { method: "GET" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(`Failed to fetch ${service} config`, { description: data.error });
+        return;
+      }
+      setRemoteConfigs(prev => ({ ...prev, [service]: data.configs || [] }));
+      toast.success(`Loaded live config from ${service}`, { description: `${data.total ?? 0} keys` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Network error";
+      toast.error(`Failed to fetch ${service} config`, { description: msg });
     }
   };
 
@@ -2073,7 +2146,21 @@ function AdminDashboard() {
                     <h3 className="font-bold text-sm">{SERVICE_META[selectedService].label}</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">{SERVICE_META[selectedService].description}</p>
                   </div>
-                  <div className="ml-auto">
+                  <div className="ml-auto flex gap-2">
+                    {(selectedService === "engine" || selectedService === "scraper") && (
+                      <>
+                        <Button variant="outline" size="sm" onClick={() => handleFetchRemoteConfig(selectedService)}
+                          className="gap-1.5 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10">
+                          <RefreshCw className="w-3.5 h-3.5" />Fetch Live
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handlePushConfig(selectedService)}
+                          disabled={pushingService === selectedService}
+                          className="gap-1.5 border-neon-green/30 text-neon-green hover:bg-neon-green/10">
+                          {pushingService === selectedService ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                          Push All to {SERVICE_META[selectedService].label.split(" ").pop()}
+                        </Button>
+                      </>
+                    )}
                     <Button variant="outline" size="sm" onClick={() => handleTestConnection(selectedService)} disabled={testingService}
                       className={`gap-1.5 ${selectedService === "website" ? "hidden" : ""} border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10`}>
                       {testingService ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TestTube className="w-3.5 h-3.5" />}Test Connection
@@ -2090,6 +2177,38 @@ function AdminDashboard() {
                         {testResult.success ? "Connection Successful" : "Connection Failed"}
                       </p>
                       <p className="text-muted-foreground mt-0.5">{testResult.message}</p>
+                    </div>
+                  </div>
+                )}
+                {pushResult && pushResult.service === selectedService && (
+                  <div className={`mt-3 p-3 rounded-lg text-xs flex items-start gap-2 ${
+                    pushResult.failed.length === 0 && pushResult.pushed.length > 0
+                      ? "bg-neon-green/10 border border-neon-green/20"
+                      : pushResult.pushed.length > 0
+                      ? "bg-neon-yellow/10 border border-neon-yellow/20"
+                      : "bg-neon-red/10 border border-neon-red/20"
+                  }`}>
+                    {pushResult.failed.length === 0 && pushResult.pushed.length > 0
+                      ? <CheckCircle2 className="w-4 h-4 text-neon-green shrink-0 mt-0.5" />
+                      : <AlertTriangle className="w-4 h-4 text-neon-yellow shrink-0 mt-0.5" />}
+                    <div className="flex-1">
+                      <p className={`font-semibold ${
+                        pushResult.failed.length === 0 && pushResult.pushed.length > 0 ? "text-neon-green" : "text-neon-yellow"
+                      }`}>
+                        Pushed {pushResult.pushed.length} key{pushResult.pushed.length === 1 ? "" : "s"}
+                        {pushResult.failed.length > 0 && `, ${pushResult.failed.length} failed`}
+                      </p>
+                      {pushResult.pushed.length > 0 && (
+                        <p className="text-muted-foreground mt-0.5">OK: {pushResult.pushed.join(", ")}</p>
+                      )}
+                      {pushResult.failed.length > 0 && (
+                        <p className="text-muted-foreground mt-0.5">
+                          Failed: {pushResult.failed.map(f => `${f.key} (${f.error})`).join("; ")}
+                        </p>
+                      )}
+                      {pushResult.message && (
+                        <p className="text-muted-foreground mt-0.5 italic">{pushResult.message}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2121,13 +2240,41 @@ function AdminDashboard() {
                     <TableHeader>
                       <TableRow className="border-border/40 hover:bg-transparent">
                         <TableHead className="text-xs w-[180px]">Key</TableHead>
-                        <TableHead className="text-xs">Value</TableHead>
+                        <TableHead className="text-xs">Value (local DB)</TableHead>
+                        {(selectedService === "engine" || selectedService === "scraper") && remoteConfigs[selectedService] && (
+                          <TableHead className="text-xs">Live on {SERVICE_META[selectedService].label.split(" ").pop()}</TableHead>
+                        )}
                         <TableHead className="text-xs w-[80px]">Secret</TableHead>
-                        <TableHead className="text-xs w-[120px] text-right">Actions</TableHead>
+                        <TableHead className="text-xs w-[160px] text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {serviceConfigs.map(cfg => (
+                      {serviceConfigs.map(cfg => {
+                        // Look up the live value on the remote service (if fetched)
+                        const remoteEntry = remoteConfigs[selectedService]?.find(r => {
+                          // Map back from remote key to website key — for display only
+                          if (selectedService === "engine") {
+                            const engineToWebsite: Record<string, string> = {
+                              "SCRAPER_URL": "scraper_url",
+                              "SCRAPER_API_KEY": "scraper_api_key",
+                              "WEBSITE_WEBHOOK_URL": "website_webhook_url",
+                              "WEBSITE_WEBHOOK_SECRET": "website_webhook_secret",
+                              "CORS_ALLOWED_ORIGINS": "cors_allowed_origins",
+                            };
+                            return engineToWebsite[r.key] === cfg.key;
+                          }
+                          if (selectedService === "scraper") {
+                            const scraperToWebsite: Record<string, string> = {
+                              "SCOREWISE_WEBHOOK_URL": "webhook_url",
+                              "SCOREWISE_API_KEY": "api_key",
+                              "SCRAPER_CRON_SCHEDULE": "cron_schedule",
+                              "SCRAPER_LOG_LEVEL": "log_level",
+                            };
+                            return scraperToWebsite[r.key] === cfg.key;
+                          }
+                          return false;
+                        });
+                        return (
                         <TableRow key={cfg.id} className="border-border/20 hover:bg-card/80">
                           <TableCell>
                             <div className="flex items-center gap-2">
@@ -2169,6 +2316,25 @@ function AdminDashboard() {
                               </div>
                             )}
                           </TableCell>
+                          {(selectedService === "engine" || selectedService === "scraper") && remoteConfigs[selectedService] && (
+                            <TableCell>
+                              {remoteEntry ? (
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-mono text-xs ${remoteEntry.has_override ? "text-neon-cyan" : "text-muted-foreground/70"}`}>
+                                    {remoteEntry.is_secret ? maskDisplay(remoteEntry.value, remoteEntry.value.length > 0) : (remoteEntry.value || "(empty)")}
+                                  </span>
+                                  {remoteEntry.has_override && (
+                                    <Badge variant="outline" className="text-[9px] border-neon-cyan/40 text-neon-cyan">override</Badge>
+                                  )}
+                                  {!remoteEntry.has_override && remoteEntry.value && (
+                                    <Badge variant="outline" className="text-[9px] border-border text-muted-foreground/70">env</Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground/40 italic">—</span>
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell>
                             {cfg.secret ? (
                               <Badge variant="outline" className="text-[10px] border-neon-yellow/40 text-neon-yellow">Secret</Badge>
@@ -2178,6 +2344,20 @@ function AdminDashboard() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
+                              {(selectedService === "engine" || selectedService === "scraper") && editingConfig !== cfg.id && (
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-neon-green"
+                                        onClick={() => handlePushConfig(selectedService, [`${cfg.service}:${cfg.key}`])}
+                                        disabled={pushingService === selectedService}>
+                                        {pushingService === selectedService ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Push this value to {SERVICE_META[selectedService].label.split(" ").pop()}</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              )}
                               {editingConfig !== cfg.id && (
                                 <TooltipProvider>
                                   <Tooltip>
@@ -2205,7 +2385,8 @@ function AdminDashboard() {
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 )}
