@@ -219,6 +219,19 @@ export async function GET() {
           if (res.status === 401 || res.status === 403) {
             return { status: "error" as const, statusCode: res.status, message: "Auth failed — check API key" };
           }
+          // 404 from /api/predictions means the engine is up but the store
+          // is empty (older engine builds return 404 instead of 200 with
+          // total=0). Treat this as ONLINE with zero predictions so the
+          // dashboard doesn't show a false "DEGRADED" state right after
+          // a fresh engine deploy.
+          if (res.status === 404) {
+            return {
+              status: "online" as const,
+              statusCode: 404,
+              predictions: 0,
+              message: "Online — store empty (waiting for first ingest)",
+            };
+          }
           return { status: "degraded" as const, statusCode: res.status };
         } catch {
           return { status: "offline" as const, statusCode: null };
