@@ -952,7 +952,19 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
       const data = await res.json();
       const incoming: LogEntry[] = Array.isArray(data?.logs) ? data.logs : [];
       if (incoming.length > 0) {
-        setLogs(prev => [...prev, ...incoming].slice(-200));
+        // Dedupe by composite key (timestamp + level + logger + message).
+        // The backend uses `>=` for the since filter (to avoid missing entries
+        // with identical timestamps), which means each poll re-returns the
+        // last entry from the previous response. Without dedupe, a single log
+        // line gets duplicated once per poll and the panel fills with copies.
+        setLogs(prev => {
+          const seen = new Set(prev.map(l => `${l.timestamp}|${l.level}|${l.logger}|${l.message}`));
+          const fresh = incoming.filter(l => !seen.has(`${l.timestamp}|${l.level}|${l.logger}|${l.message}`));
+          if (fresh.length === 0) return prev;
+          return [...prev, ...fresh].slice(-200);
+        });
+        // Advance the cursor to the newest entry we received (even if deduped),
+        // so we don't keep re-fetching the same slice forever.
         setSince(incoming[incoming.length - 1].timestamp);
       }
     } catch (err) {
@@ -1121,10 +1133,12 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
             </Button>
           </div>
 
-          {/* Log entries */}
+          {/* Log entries — fixed height + internal scroll. Inline style to
+              guarantee the height cap regardless of parent flex layout. */}
           <div
             ref={scrollRef}
-            className="max-h-[400px] overflow-y-auto font-mono text-[11px]"
+            style={{ height: '400px', overflowY: 'auto' }}
+            className="font-mono text-[11px]"
           >
             {logs.length === 0 && !initialLoading ? (
               <div className="p-6 text-center text-muted-foreground/70">
@@ -1405,8 +1419,16 @@ function AdminDashboard() {
       if (mode === "initial" || !svcLogsSince) {
         setSvcLogs(incoming);
       } else {
-        // Append only new entries to keep existing scroll position stable
-        setSvcLogs((prev) => [...prev, ...incoming].slice(-500));
+        // Append only new entries to keep existing scroll position stable.
+        // Dedupe by composite key — the backend uses `>=` for the since
+        // filter, so each poll re-returns the last entry from the previous
+        // response. Without dedupe, single log lines get duplicated per poll.
+        setSvcLogs((prev) => {
+          const seen = new Set(prev.map(l => `${l.timestamp}|${l.level}|${l.logger}|${l.message}`));
+          const fresh = incoming.filter(l => !seen.has(`${l.timestamp}|${l.level}|${l.logger}|${l.message}`));
+          if (fresh.length === 0) return prev;
+          return [...prev, ...fresh].slice(-500);
+        });
       }
       if (incoming.length > 0) {
         const newest = incoming[incoming.length - 1].timestamp;
