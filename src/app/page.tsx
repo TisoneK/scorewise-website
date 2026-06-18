@@ -38,6 +38,14 @@ import {
 } from "lucide-react";
 import type { StoredPredictions, Prediction, AppUser, UserRole, ServiceStatus, ServiceConfigEntry, ActivityLogEntry, ServiceName } from "@/lib/types";
 
+// Phase A modularization — extracted leaf components + helpers
+import { BasketballIcon } from "@/components/admin/icons";
+import { ConfidenceBadge, RecommendationBadge } from "@/components/admin/badges";
+import { StatCard, StatusDot, MiniProgressBar } from "@/components/admin/primitives";
+import { formatTime, relativeTime, maskDisplay, renderLogDetails } from "@/lib/admin/formatters";
+import { severityIcon, severityColor } from "@/lib/admin/feed-helpers";
+import type { FeedEvent, ServiceLogEntry } from "@/lib/admin/types";
+
 // ===================== CONFIG =====================
 
 type ConfFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
@@ -79,39 +87,6 @@ const SERVICE_META: Record<ServiceName, { label: string; icon: React.ReactNode; 
 };
 
 // ===================== SUB-COMPONENTS =====================
-
-function ConfidenceBadge({ level }: { level: string | null }) {
-  if (!level) return null;
-  const up = level.toUpperCase();
-  const styles: Record<string, string> = {
-    HIGH: "bg-neon-green/15 text-neon-green border-neon-green/30",
-    MEDIUM: "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30",
-    LOW: "bg-neon-red/15 text-neon-red border-neon-red/30",
-  };
-  const icons: Record<string, React.ReactNode> = {
-    HIGH: <Shield className="w-3 h-3" />,
-    MEDIUM: <Zap className="w-3 h-3" />,
-    LOW: <Activity className="w-3 h-3" />,
-  };
-  return (
-    <Badge variant="outline" className={`gap-1 text-xs font-bold ${styles[up] || "border-border text-muted-foreground"}`}>
-      {icons[up]}{up}
-    </Badge>
-  );
-}
-
-function RecommendationBadge({ rec }: { rec: string | null }) {
-  if (!rec) return <Badge className="bg-muted text-muted-foreground">—</Badge>;
-  const up = rec.toUpperCase();
-  const isOver = up === "OVER";
-  return (
-    <Badge className={`text-sm font-black px-3 py-1 ${
-      isOver ? "bg-neon-green/20 text-neon-green border border-neon-green/40" : "bg-neon-red/20 text-neon-red border border-neon-red/40"
-    }`}>
-      {isOver ? <TrendingUp className="w-4 h-4 mr-1" /> : <TrendingDown className="w-4 h-4 mr-1" />}{up}
-    </Badge>
-  );
-}
 
 function PredictionCard({ prediction, detailed }: { prediction: Prediction; detailed?: boolean }) {
   return (
@@ -164,43 +139,6 @@ function PredictionCardSkeleton() {
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function StatusDot({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    online: "bg-neon-green shadow-[0_0_6px_rgba(0,255,136,0.5)]",
-    offline: "bg-muted-foreground/40",
-    degraded: "bg-neon-yellow shadow-[0_0_6px_rgba(255,204,0,0.5)]",
-    error: "bg-neon-red shadow-[0_0_6px_rgba(255,51,102,0.5)]",
-  };
-  return <div className={`w-2.5 h-2.5 rounded-full ${colors[status] || colors.offline} animate-pulse`} />;
-}
-
-function StatCard({ title, value, icon, color, sub }: { title: string; value: string | number; icon: React.ReactNode; color: string; sub?: string }) {
-  return (
-    <Card className="bg-card/60 border-border/40">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">{title}</span>
-          <div className={`${color}`}>{icon}</div>
-        </div>
-        <p className="text-2xl font-black">{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
-      </CardContent>
-    </Card>
-  );
-}
-
-function MiniProgressBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-muted/50 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-[10px] font-mono text-muted-foreground w-8 text-right">{pct}%</span>
-    </div>
   );
 }
 
@@ -350,17 +288,6 @@ function SignupPage({ onBack }: { onBack: () => void }) {
   );
 }
 
-function BasketballIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 2a14.5 14.5 0 0 0 0 20" />
-      <path d="M12 2a14.5 14.5 0 0 1 0 20" />
-      <path d="M2 12h20" />
-    </svg>
-  );
-}
-
 // ===================== USER PREDICTIONS VIEW =====================
 
 function UserPredictionsView() {
@@ -478,44 +405,6 @@ function UserPredictionsView() {
 }
 
 // ===================== NEW SUB-COMPONENTS (Overview command center + Predictions drawer) =====================
-
-type FeedEvent = {
-  id: string;
-  timestamp: string;
-  type: string;
-  service: string | null;
-  title: string;
-  detail?: string;
-  severity: "info" | "success" | "warning" | "error";
-};
-
-function severityIcon(sev: FeedEvent["severity"], type: string) {
-  if (type.startsWith("PREDICTION_")) return <Target className="w-3.5 h-3.5 text-neon-green" />;
-  if (type.startsWith("CONFIG_")) return <Settings className="w-3.5 h-3.5 text-neon-cyan" />;
-  if (type.startsWith("USER_")) return <Users className="w-3.5 h-3.5 text-neon-yellow" />;
-  if (type.startsWith("SERVICE_")) return <Server className="w-3.5 h-3.5 text-neon-green" />;
-  if (sev === "error") return <XCircle className="w-3.5 h-3.5 text-destructive" />;
-  if (sev === "warning") return <AlertTriangle className="w-3.5 h-3.5 text-neon-yellow" />;
-  if (sev === "success") return <CheckCircle2 className="w-3.5 h-3.5 text-neon-green" />;
-  return <ActivityIcon className="w-3.5 h-3.5 text-muted-foreground" />;
-}
-
-function severityColor(sev: FeedEvent["severity"]) {
-  if (sev === "error") return "border-l-destructive";
-  if (sev === "warning") return "border-l-neon-yellow";
-  if (sev === "success") return "border-l-neon-green";
-  return "border-l-muted-foreground/50";
-}
-
-function relativeTime(iso: string) {
-  const now = Date.now();
-  const t = new Date(iso).getTime();
-  const diff = Math.max(0, now - t);
-  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
-}
 
 function LiveEventFeed({ events, loading }: { events: FeedEvent[]; loading: boolean }) {
   return (
@@ -1318,12 +1207,6 @@ function AdminDashboard() {
   const underRecs = preds.filter(p => p.recommendation?.toUpperCase() === "UNDER").length;
 
   const serviceConfigs = useMemo(() => configs.filter(c => c.service === selectedService), [configs, selectedService]);
-
-  // --- Format time ---
-  const formatTime = (t: string | null | undefined) => {
-    if (!t) return "—";
-    try { return new Date(t).toLocaleString(); } catch { return t; }
-  };
 
   // --- Fetch functions ---
   const fetchAllPredictions = useCallback(async () => {
@@ -3785,28 +3668,6 @@ function AdminDashboard() {
       />
     </div>
   );
-}
-
-// ===================== HELPER FUNCTIONS =====================
-
-function maskDisplay(masked: string, hasValue: boolean): string {
-  if (!hasValue) return "(not set)";
-  return masked || "••••••••";
-}
-
-function renderLogDetails(action: string, details: Record<string, unknown>): string {
-  if (action.startsWith("CONFIG_")) {
-    const key = details.key as string;
-    if (action === "CONFIG_CREATE") return `Created "${key}"`;
-    if (action === "CONFIG_UPDATE") return `Updated "${key}"`;
-    if (action === "CONFIG_DELETE") return `Deleted "${key}"`;
-  }
-  if (action === "USER_CREATE") return `Created user ${details.createdEmail || ""} (${details.createdRole || ""})`;
-  if (action === "USER_DELETE") return `Deleted user ${details.deletedEmail || ""} (${details.deletedRole || ""})`;
-  if (action === "USER_ROLE_CHANGE") return `Changed ${details.targetEmail || ""}: ${details.oldRole || ""} → ${details.newRole || ""}`;
-  if (action === "SERVICE_CHECK") return `Checked ${details.url || "service"}`;
-  if (action === "SERVICE_TRIGGER") return `Triggered: ${details.operation || "unknown"}`;
-  return JSON.stringify(details);
 }
 
 // ===================== MAIN PAGE =====================
