@@ -538,9 +538,9 @@ export function ConfigurationTab({
                         {cfg.secret ? (
                           <Badge
                             variant="outline"
-                            className="text-[10px] border-neon-yellow/40 text-neon-yellow"
+                            className="text-[10px] bg-neon-yellow/10 border-neon-yellow/40 text-neon-yellow font-semibold"
                           >
-                            Secret
+                            <Lock className="w-2.5 h-2.5 mr-1" />Secret
                           </Badge>
                         ) : (
                           <Badge

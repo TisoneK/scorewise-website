@@ -313,11 +313,13 @@ export function ServiceLogStream({
             className="font-mono text-[11px]"
           >
             {logs.length === 0 && !initialLoading ? (
-              <div className="p-6 text-center text-muted-foreground/70">
-                <Terminal className="w-5 h-5 mx-auto mb-1.5 opacity-30" />
-                <p className="text-[10px]">No log entries yet</p>
-                <p className="text-[9px] mt-0.5">
-                  Waiting for {service} to log something...
+              <div className="empty-state" style={{ padding: '3rem 1rem' }}>
+                <Terminal className="empty-state-icon" style={{ width: '2rem', height: '2rem' }} />
+                <p className="empty-state-title">No log entries yet</p>
+                <p className="empty-state-subtitle">
+                  {autoScroll
+                    ? `Waiting for ${service} to log something...`
+                    : `Auto-refresh is off. Click Refresh to fetch latest logs.`}
                 </p>
               </div>
             ) : (
