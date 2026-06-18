@@ -407,6 +407,17 @@ function AdminDashboard() {
     return () => clearInterval(interval);
   }, [serviceStatus?.scraper?.scraperStatus, fetchServiceStatus]);
 
+  // Auto-refresh predictions + service status every 30s so the dashboard
+  // picks up new predictions after a scrape finishes (without the user
+  // having to click Reload manually).
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchAllPredictions();
+      fetchServiceStatus();
+    }, 30000);
+    return () => clearInterval(id);
+  }, [fetchAllPredictions, fetchServiceStatus]);
+
   // --- Handlers ---
   const handleTriggerScraper = async () => {
     setScraperLoading(true);
