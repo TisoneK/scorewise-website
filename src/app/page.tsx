@@ -51,6 +51,11 @@ import { ServiceHealthCard, ServiceHealthBar } from "@/components/admin/service-
 import { PipelineFlow } from "@/components/admin/pipeline-flow";
 import { PredictionDetailDrawer } from "@/components/admin/prediction-detail-drawer";
 import { ServiceLogStream } from "@/components/admin/service-log-stream";
+// Phase C modularization — extracted tab content components
+import { OverviewTab } from "@/components/admin/tabs/overview-tab";
+import { PredictionsTab } from "@/components/admin/tabs/predictions-tab";
+import { ActivityLogTab } from "@/components/admin/tabs/activity-log-tab";
+import { UsersTab } from "@/components/admin/tabs/users-tab";
 
 // ===================== CONFIG =====================
 
@@ -1172,23 +1177,6 @@ function AdminDashboard() {
   const renderCustomLabel = ({ name, percent }: { name: string; percent: number }) =>
     `${name} ${(percent * 100).toFixed(0)}%`;
 
-  // --- Action icon map for logs ---
-  const actionIcon = (action: string) => {
-    if (action.startsWith("CONFIG_")) return <Settings className="w-4 h-4 text-neon-cyan" />;
-    if (action.startsWith("USER_")) return <Users className="w-4 h-4 text-neon-yellow" />;
-    if (action.startsWith("SERVICE_")) return <Server className="w-4 h-4 text-neon-green" />;
-    return <Activity className="w-4 h-4 text-muted-foreground" />;
-  };
-
-  const actionBadgeColor = (action: string) => {
-    if (action.includes("CREATE")) return "border-neon-green/40 text-neon-green";
-    if (action.includes("UPDATE")) return "border-neon-cyan/40 text-neon-cyan";
-    if (action.includes("DELETE")) return "border-neon-red/40 text-neon-red";
-    if (action.includes("CHECK")) return "border-neon-yellow/40 text-neon-yellow";
-    if (action.includes("TRIGGER")) return "border-neon-green/40 text-neon-green";
-    return "border-border text-muted-foreground";
-  };
-
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border/30 bg-card/50 backdrop-blur-sm sticky top-0 z-40">
@@ -1248,190 +1236,37 @@ function AdminDashboard() {
 
           {/* ============ OVERVIEW TAB ============ */}
           <TabsContent value="overview" className="space-y-6">
-            {/* Row 1: 6 KPI cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-              <StatCard title="Total Predictions" value={totalPreds} icon={<Database className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={`${successCount}✓ ${failCount}✗`} />
-              <StatCard title="Success Rate" value={`${successRate}%`} icon={<Target className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={`${successCount} of ${totalPreds}`} />
-              <StatCard title="High Confidence" value={highConf} icon={<Shield className="w-4 h-4 text-neon-yellow" />} color="text-neon-yellow" sub={totalPreds > 0 ? `${Math.round((highConf / totalPreds) * 100)}%` : "—"} />
-              <StatCard title="OVER Recs" value={overRecs} icon={<TrendingUp className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={totalPreds > 0 ? `${Math.round((overRecs / totalPreds) * 100)}%` : "—"} />
-              <StatCard title="UNDER Recs" value={underRecs} icon={<TrendingDown className="w-4 h-4 text-neon-red" />} color="text-neon-red" sub={totalPreds > 0 ? `${Math.round((underRecs / totalPreds) * 100)}%` : "—"} />
-              <StatCard
-                title="Services Online"
-                value={[serviceStatus?.scraper?.status === "online" ? 1 : 0, serviceStatus?.engine?.status === "online" ? 1 : 0, 1].reduce((a, b) => a + b, 0)}
-                icon={<Wifi className="w-4 h-4 text-neon-cyan" />}
-                color="text-neon-cyan"
-                sub="of 3 services"
-              />
-            </div>
-
-            {/* Row 2: Live Event Feed (left) + Service Health cards (right) */}
-            <div className="grid lg:grid-cols-2 gap-4">
-              <LiveEventFeed events={feedEvents} loading={feedLoading} />
-
-              <div className="space-y-3">
-                <ServiceHealthCard
-                  label="FlashScore Scraper"
-                  icon={<Search className="w-4 h-4 text-neon-cyan" />}
-                  status={serviceStatus?.scraper?.status || "offline"}
-                  lastRun={serviceStatus?.scraper?.lastRun || null}
-                />
-                <ServiceHealthCard
-                  label="ScoreWise Engine"
-                  icon={<Cpu className="w-4 h-4 text-neon-green" />}
-                  status={serviceStatus?.engine?.status || "offline"}
-                  predictions={serviceStatus?.engine?.predictions ?? 0}
-                />
-                <ServiceHealthCard
-                  label="Website (Vercel)"
-                  icon={<Globe className="w-4 h-4 text-neon-yellow" />}
-                  status="online"
-                />
-              </div>
-            </div>
-
-            {/* Row 3: Pipeline flow */}
-            <PipelineFlow
-              scrapeCount={serviceStatus?.scraper?.lastRun?.complete_matches ?? 0}
-              ingestCount={serviceStatus?.engine?.predictions ?? 0}
-              predictCount={totalPreds}
-              pushCount={totalPreds}
+            <OverviewTab
+              preds={preds}
+              totalPreds={totalPreds}
+              successCount={successCount}
+              failCount={failCount}
+              successRate={successRate}
+              highConf={highConf}
+              overRecs={overRecs}
+              underRecs={underRecs}
+              loadingPred={loadingPred}
+              fetchAllPredictions={fetchAllPredictions}
+              serviceStatus={serviceStatus}
+              feedEvents={feedEvents}
+              feedLoading={feedLoading}
+              setDrawerPrediction={setDrawerPrediction}
             />
-
-            {/* Row 4: Compact recent predictions table with click-to-detail */}
-            <Card className="bg-card/60 border-border/40">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-neon-cyan" />Recent Predictions
-                    <span className="text-[10px] text-muted-foreground font-normal">
-                      click any row for full pipeline detail
-                    </span>
-                  </CardTitle>
-                  <Button variant="ghost" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1 text-xs text-muted-foreground">
-                    <RefreshCw className={`w-3 h-3 ${loadingPred ? "animate-spin" : ""}`} />Reload
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="max-h-[300px]">
-                  {loadingPred ? (
-                    <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full bg-muted/30" />)}</div>
-                  ) : preds.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Database className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">No predictions yet</p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">Run a scrape to populate the pipeline</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-border/40 hover:bg-transparent">
-                          <TableHead className="text-xs">Match</TableHead>
-                          <TableHead className="text-xs">Recommendation</TableHead>
-                          <TableHead className="text-xs">Confidence</TableHead>
-                          <TableHead className="text-xs">Line</TableHead>
-                          <TableHead className="text-xs">Avg Rate</TableHead>
-                          <TableHead className="text-xs">Result</TableHead>
-                          <TableHead className="text-xs w-8"></TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {preds.slice(0, 15).map(p => (
-                          <TableRow
-                            key={p.match_id}
-                            className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
-                            onClick={() => setDrawerPrediction(p)}
-                          >
-                            <TableCell className="font-mono text-xs">{p.match_id.slice(0, 12)}</TableCell>
-                            <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
-                            <TableCell><ConfidenceBadge level={p.confidence} /></TableCell>
-                            <TableCell className="text-neon-cyan font-mono text-xs">{p.bookmaker_line ?? "—"}</TableCell>
-                            <TableCell className="font-mono text-xs text-muted-foreground">{p.average_rate.toFixed(2)}</TableCell>
-                            <TableCell>{p.success ? <CheckCircle2 className="w-4 h-4 text-neon-green" /> : <XCircle className="w-4 h-4 text-neon-red" />}</TableCell>
-                            <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           {/* ============ PREDICTIONS TAB ============ */}
           <TabsContent value="predictions" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold">All Predictions</h2>
-                <p className="text-sm text-muted-foreground">Complete prediction data including failed validations</p>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingPred ? "animate-spin" : ""}`} />Reload
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleDownloadPredictions} disabled={!allPredictionsData} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
-                  <Download className="w-3.5 h-3.5" />Export JSON
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black">{totalPreds}</p><p className="text-[10px] text-muted-foreground">Total</p>
-              </div>
-              <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-green">{successCount}</p><p className="text-[10px] text-muted-foreground">Passed</p>
-              </div>
-              <div className="bg-card/60 border border-neon-red/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-red">{failCount}</p><p className="text-[10px] text-muted-foreground">Failed</p>
-              </div>
-            </div>
-
-            <Card className="bg-card/60 border-border/40">
-              <CardContent className="p-0">
-                <ScrollArea className="max-h-[500px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border/40 hover:bg-transparent">
-                        <TableHead className="text-xs">Match ID</TableHead>
-                        <TableHead className="text-xs">Rec</TableHead>
-                        <TableHead className="text-xs">Conf</TableHead>
-                        <TableHead className="text-xs">Line</TableHead>
-                        <TableHead className="text-xs">Winner</TableHead>
-                        <TableHead className="text-xs">Above/Below</TableHead>
-                        <TableHead className="text-xs">Result</TableHead>
-                        <TableHead className="text-xs w-8"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {loadingPred ? (
-                        <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
-                      ) : preds.length === 0 ? (
-                        <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No predictions available</TableCell></TableRow>
-                      ) : (
-                        preds.map(p => (
-                          <TableRow
-                            key={p.match_id}
-                            className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
-                            onClick={() => setDrawerPrediction(p)}
-                          >
-                            <TableCell className="font-mono text-xs">{p.match_id.slice(0, 12)}</TableCell>
-                            <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
-                            <TableCell><ConfidenceBadge level={p.confidence} /></TableCell>
-                            <TableCell className="text-neon-cyan font-mono text-xs">{p.bookmaker_line ?? "—"}</TableCell>
-                            <TableCell className="text-xs">{p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? p.team_winner.replace(/_/g, " ") : "—"}</TableCell>
-                            <TableCell className="text-xs"><span className="text-neon-green">{p.matches_above}</span>/<span className="text-neon-red">{p.matches_below}</span></TableCell>
-                            <TableCell>{p.success ? <CheckCircle2 className="w-4 h-4 text-neon-green" /> : <XCircle className="w-4 h-4 text-neon-red" />}</TableCell>
-                            <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </CardContent>
-            </Card>
+            <PredictionsTab
+              preds={preds}
+              totalPreds={totalPreds}
+              successCount={successCount}
+              failCount={failCount}
+              loadingPred={loadingPred}
+              allPredictionsData={allPredictionsData}
+              fetchAllPredictions={fetchAllPredictions}
+              handleDownloadPredictions={handleDownloadPredictions}
+              setDrawerPrediction={setDrawerPrediction}
+            />
           </TabsContent>
 
           {/* ============ ANALYTICS TAB ============ */}
@@ -2548,103 +2383,14 @@ function AdminDashboard() {
 
           {/* ============ ACTIVITY LOG TAB (ADMIN ONLY) ============ */}
           {isAdmin && <TabsContent value="logs" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold">Activity Log</h2>
-                <p className="text-sm text-muted-foreground">Audit trail of all admin actions and configuration changes</p>
-              </div>
-              <div className="flex gap-2">
-                <Select value={logServiceFilter} onValueChange={setLogServiceFilter}>
-                  <SelectTrigger className="w-[140px] bg-card border-border/50 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Services</SelectItem>
-                    <SelectItem value="scraper">Scraper</SelectItem>
-                    <SelectItem value="engine">Engine</SelectItem>
-                    <SelectItem value="website">Website</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loadingLogs} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? "animate-spin" : ""}`} />Refresh
-                </Button>
-              </div>
-            </div>
-
-            {/* Log stats */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black">{logsTotal}</p><p className="text-[10px] text-muted-foreground">Total Events</p>
-              </div>
-              <div className="bg-card/60 border border-neon-cyan/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-cyan">{logs.filter(l => l.action.startsWith("CONFIG_")).length}</p><p className="text-[10px] text-muted-foreground">Config Changes</p>
-              </div>
-              <div className="bg-card/60 border border-neon-yellow/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-yellow">{logs.filter(l => l.action.startsWith("USER_")).length}</p><p className="text-[10px] text-muted-foreground">User Actions</p>
-              </div>
-            </div>
-
-            {/* Log entries */}
-            <Card className="bg-card/60 border-border/40">
-              <CardContent className="p-0">
-                {loadingLogs ? (
-                  <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground mx-auto" /></div>
-                ) : logs.length === 0 ? (
-                  <div className="p-8 text-center">
-                    <FileText className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">No activity recorded yet</p>
-                  </div>
-                ) : (
-                  <ScrollArea className="max-h-[600px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-border/40 hover:bg-transparent">
-                          <TableHead className="text-xs w-[40px]">Type</TableHead>
-                          <TableHead className="text-xs w-[150px]">Action</TableHead>
-                          <TableHead className="text-xs w-[90px]">Service</TableHead>
-                          <TableHead className="text-xs">Details</TableHead>
-                          <TableHead className="text-xs w-[130px]">User</TableHead>
-                          <TableHead className="text-xs w-[160px]">Time</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {logs.map(log => {
-                          let details: Record<string, unknown> = {};
-                          try { details = JSON.parse(log.details || "{}"); } catch {}
-
-                          return (
-                            <TableRow key={log.id} className="border-border/20 hover:bg-card/80">
-                              <TableCell>{actionIcon(log.action)}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline" className={`text-[10px] ${actionBadgeColor(log.action)}`}>
-                                  {log.action}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {log.service ? (
-                                  <Badge variant="outline" className="text-[10px] border-border text-muted-foreground capitalize">
-                                    {log.service}
-                                  </Badge>
-                                ) : "—"}
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground font-mono max-w-[300px] truncate">
-                                {renderLogDetails(log.action, details)}
-                              </TableCell>
-                              <TableCell className="text-xs">
-                                <span className="text-muted-foreground">{log.user?.name || log.user?.email || "—"}</span>
-                              </TableCell>
-                              <TableCell className="text-xs text-muted-foreground font-mono">
-                                {formatTime(log.createdAt)}
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                )}
-              </CardContent>
-            </Card>
+            <ActivityLogTab
+              logs={logs}
+              logsTotal={logsTotal}
+              loadingLogs={loadingLogs}
+              logServiceFilter={logServiceFilter}
+              setLogServiceFilter={setLogServiceFilter}
+              fetchLogs={fetchLogs}
+            />
           </TabsContent>}
 
           {/* ============ SERVICE LOGS TAB ============ */}
@@ -2826,146 +2572,27 @@ function AdminDashboard() {
 
           {/* ============ USERS TAB ============ */}
           <TabsContent value="users" className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold">User Management</h2>
-                <p className="text-sm text-muted-foreground">{isAdmin ? "Manage admin, operator, and user accounts" : "View user accounts and activity"}</p>
-              </div>
-              <div className="flex gap-2">
-                {isAdmin && <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" className="gap-1.5 bg-neon-green text-background hover:bg-neon-green/90 font-bold"><UserPlus className="w-3.5 h-3.5" /> Add User</Button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-card border-border/50">
-                    <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
-                    <div className="space-y-4 py-4">
-                      <div className="space-y-2"><Label>Email</Label><Input placeholder="user@example.com" value={newUserEmail} onChange={(e) => setNewUserEmail(e.target.value)} className="bg-background border-border/50" /></div>
-                      <div className="space-y-2"><Label>Name (optional)</Label><Input placeholder="John Doe" value={newUserName} onChange={(e) => setNewUserName(e.target.value)} className="bg-background border-border/50" /></div>
-                      <div className="space-y-2"><Label>Password</Label><Input type="password" placeholder="••••••••" value={newUserPassword} onChange={(e) => setNewUserPassword(e.target.value)} className="bg-background border-border/50" /></div>
-                      <div className="space-y-2">
-                        <Label>Role</Label>
-                        <Select value={newUserRole} onValueChange={(v) => setNewUserRole(v as UserRole)}>
-                          <SelectTrigger className="bg-background border-border/50"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="USER">User — View predictions only</SelectItem>
-                            <SelectItem value="OPERATOR">Operator — Manage users & monitor services</SelectItem>
-                            <SelectItem value="ADMIN">Admin — Full control</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    <DialogFooter>
-                      <DialogClose asChild><Button variant="ghost">Cancel</Button></DialogClose>
-                      <Button onClick={handleCreateUser} disabled={creatingUser} className="bg-neon-green text-background hover:bg-neon-green/90">
-                        {creatingUser && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Create User
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>}
-                <Button variant="outline" size="sm" onClick={fetchUsers} disabled={loadingUsers} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingUsers ? "animate-spin" : ""}`} /> Refresh
-                </Button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-4 gap-3">
-              <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black">{users.length}</p><p className="text-[10px] text-muted-foreground">Total</p>
-              </div>
-              <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-green">{users.filter(u => u.role === "ADMIN").length}</p><p className="text-[10px] text-muted-foreground">Admins</p>
-              </div>
-              <div className="bg-card/60 border border-neon-yellow/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-yellow">{users.filter(u => u.role === "OPERATOR").length}</p><p className="text-[10px] text-muted-foreground">Operators</p>
-              </div>
-              <div className="bg-card/60 border border-neon-cyan/20 rounded-lg px-3 py-2 text-center">
-                <p className="text-xl font-black text-neon-cyan">{users.filter(u => u.role === "USER").length}</p><p className="text-[10px] text-muted-foreground">Users</p>
-              </div>
-            </div>
-
-            <Card className="bg-card/60 border-border/40">
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="border-border/40 hover:bg-transparent">
-                      <TableHead className="text-xs">Email</TableHead><TableHead className="text-xs">Name</TableHead><TableHead className="text-xs">Role</TableHead><TableHead className="text-xs">Created</TableHead>{isAdmin && <TableHead className="text-xs text-right">Actions</TableHead>}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loadingUsers ? (
-                      <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
-                    ) : users.length === 0 ? (
-                      <TableRow><TableCell colSpan={isAdmin ? 5 : 4} className="text-center py-8 text-muted-foreground">No users found</TableCell></TableRow>
-                    ) : (
-                      users.map((u) => (
-                        <TableRow key={u.id} className="border-border/20 hover:bg-card/80">
-                          <TableCell className="text-sm font-medium">{u.email}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{u.name || "—"}</TableCell>
-                          <TableCell>
-                            <Badge className={u.role === "ADMIN" ? "bg-neon-green/15 text-neon-green border-neon-green/30" : u.role === "OPERATOR" ? "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30" : "bg-neon-cyan/15 text-neon-cyan border-neon-cyan/30"} variant="outline">
-                              {u.role === "ADMIN" ? <Shield className="w-3 h-3 mr-1" /> : u.role === "OPERATOR" ? <Eye className="w-3 h-3 mr-1" /> : <Users className="w-3 h-3 mr-1" />}{u.role}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">{formatTime(u.createdAt)}</TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {isAdmin && u.role !== "ADMIN" && (
-                                <Tooltip><TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => handleChangeRole(u.id, u.role === "OPERATOR" ? "ADMIN" : "OPERATOR")} disabled={changingRole === u.id} className="text-neon-yellow hover:text-neon-green h-8 w-8">
-                                    {changingRole === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUpRight className="w-4 h-4" />}
-                                  </Button>
-                                </TooltipTrigger><TooltipContent>Promote to {u.role === "OPERATOR" ? "Admin" : "Operator"}</TooltipContent></Tooltip>
-                              )}
-                              {isAdmin && u.role !== "USER" && (
-                                <Tooltip><TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" onClick={() => handleChangeRole(u.id, u.role === "ADMIN" ? "OPERATOR" : "USER")} disabled={changingRole === u.id} className="text-muted-foreground hover:text-neon-red h-8 w-8">
-                                    {changingRole === u.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownRight className="w-4 h-4" />}
-                                  </Button>
-                                </TooltipTrigger><TooltipContent>Demote to {u.role === "ADMIN" ? "Operator" : "User"}</TooltipContent></Tooltip>
-                              )}
-                              {isAdmin && <Button variant="ghost" size="icon" onClick={() => handleDeleteUser(u.id, u.email)} className="text-muted-foreground hover:text-neon-red h-8 w-8"><Trash2 className="w-4 h-4" /></Button>}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-
-            {isAdmin && <Card className="bg-card/60 border-border/40">
-              <CardHeader className="pb-3"><CardTitle className="text-sm font-semibold">Role Permissions</CardTitle></CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div className="bg-background/50 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center gap-2"><Shield className="w-5 h-5 text-neon-green" /><span className="font-bold text-neon-green">Admin</span></div>
-                    <ul className="text-sm text-muted-foreground space-y-1 ml-7">
-                      <li>Full dashboard with overview & analytics</li><li>All predictions (including failed)</li><li>Charts and data visualizations</li>
-                      <li>Service monitoring and controls</li><li>User management (create/delete)</li>
-                      <li>Promote/demote user roles</li><li>Export predictions data</li>
-                      <li className="text-neon-cyan">Service configuration (URLs, API keys)</li>
-                      <li className="text-neon-cyan">Activity log and audit trail</li>
-                    </ul>
-                  </div>
-                  <div className="bg-background/50 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center gap-2"><Eye className="w-5 h-5 text-neon-yellow" /><span className="font-bold text-neon-yellow">Operator</span></div>
-                    <ul className="text-sm text-muted-foreground space-y-1 ml-7">
-                      <li>Dashboard overview & analytics</li><li>Successful predictions</li>
-                      <li>Service monitoring (view only)</li>
-                      <li>View user accounts</li>
-                      <li>Track user activity</li>
-                    </ul>
-                  </div>
-                  <div className="bg-background/50 rounded-lg p-4 space-y-2">
-                    <div className="flex items-center gap-2"><Users className="w-5 h-5 text-neon-cyan" /><span className="font-bold text-neon-cyan">User</span></div>
-                    <ul className="text-sm text-muted-foreground space-y-1 ml-7">
-                      <li>Successful predictions only</li><li>Search and filter predictions</li><li>Confidence and recommendation filters</li><li>Auto-refresh every 60 seconds</li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>}
+            <UsersTab
+              isAdmin={isAdmin}
+              users={users}
+              loadingUsers={loadingUsers}
+              fetchUsers={fetchUsers}
+              addUserOpen={addUserOpen}
+              setAddUserOpen={setAddUserOpen}
+              newUserEmail={newUserEmail}
+              setNewUserEmail={setNewUserEmail}
+              newUserName={newUserName}
+              setNewUserName={setNewUserName}
+              newUserPassword={newUserPassword}
+              setNewUserPassword={setNewUserPassword}
+              newUserRole={newUserRole}
+              setNewUserRole={setNewUserRole}
+              creatingUser={creatingUser}
+              handleCreateUser={handleCreateUser}
+              changingRole={changingRole}
+              handleChangeRole={handleChangeRole}
+              handleDeleteUser={handleDeleteUser}
+            />
           </TabsContent>
         </Tabs>
       </main>
