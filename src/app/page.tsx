@@ -792,16 +792,18 @@ function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border/30 bg-card/50 backdrop-blur-sm sticky top-0 z-40">
+      <header className="border-b border-border/40 bg-card/60 backdrop-blur-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <BasketballIcon className="w-5 h-5 text-neon-green" />
-            <span className="font-black text-lg">ScoreWise</span>
-            <Badge className={`ml-2 text-[10px] font-bold ${isAdmin ? "bg-neon-green/15 text-neon-green border-neon-green/30" : "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30"}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-neon-green/10 border border-neon-green/20">
+              <BasketballIcon className="w-4 h-4 text-neon-green" />
+            </div>
+            <span className="font-black text-lg tracking-tight">ScoreWise</span>
+            <Badge className={`ml-1 text-[10px] font-bold ${isAdmin ? "bg-neon-green/15 text-neon-green border-neon-green/30" : "bg-neon-yellow/15 text-neon-yellow border-neon-yellow/30"}`}>
               {isAdmin ? <Shield className="w-3 h-3 mr-1" /> : <Eye className="w-3 h-3 mr-1" />}{currentUserRole}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => { fetchAllPredictions(); fetchServiceStatus(); if (isAdmin) { fetchConfigs(); fetchLogs(); } }} className="gap-1.5 text-muted-foreground hover:text-foreground">
               <RefreshCw className="w-3.5 h-3.5" />Refresh All
             </Button>
@@ -814,38 +816,40 @@ function AdminDashboard() {
 
       <main className="flex-1 max-w-7xl mx-auto px-4 py-6 w-full">
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="bg-card/60 border border-border/40 p-1 h-auto flex-wrap gap-1">
-            <TabsTrigger value="overview" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
-              <Gauge className="w-3.5 h-3.5" />Overview
-            </TabsTrigger>
-            <TabsTrigger value="predictions" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
-              <Database className="w-3.5 h-3.5" />Predictions
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
-              <BarChart3 className="w-3.5 h-3.5" />Analytics
-            </TabsTrigger>
-            <TabsTrigger value="services" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
-              <Server className="w-3.5 h-3.5" />Services
-            </TabsTrigger>
-            {isAdmin && (
-              <TabsTrigger value="configuration" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan">
-                <Settings className="w-3.5 h-3.5" />Configuration
+          <div className="overflow-x-auto">
+            <TabsList className="bg-card/40 border border-border/30 p-1 h-auto flex-wrap gap-0.5 inline-flex">
+              <TabsTrigger value="overview" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+                <Gauge className="w-3.5 h-3.5" />Overview
+              </TabsTrigger>
+              <TabsTrigger value="predictions" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+                <Database className="w-3.5 h-3.5" />Predictions
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+                <BarChart3 className="w-3.5 h-3.5" />Analytics
+              </TabsTrigger>
+              <TabsTrigger value="services" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+                <Server className="w-3.5 h-3.5" />Services
+              </TabsTrigger>
+              {isAdmin && (
+                <TabsTrigger value="configuration" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md">
+                  <Settings className="w-3.5 h-3.5" />Configuration
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow">
+              <TabsTrigger value="logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow rounded-md">
                 <FileText className="w-3.5 h-3.5" />Activity Log
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="service-logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan">
+              <TabsTrigger value="service-logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md">
                 <Terminal className="w-3.5 h-3.5" />Service Logs
               </TabsTrigger>
             )}
-            <TabsTrigger value="users" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green">
+            <TabsTrigger value="users" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
               <Users className="w-3.5 h-3.5" />Users
             </TabsTrigger>
           </TabsList>
+          </div>
 
           {/* ============ OVERVIEW TAB ============ */}
           <TabsContent value="overview" className="space-y-6">
@@ -1021,8 +1025,10 @@ function AdminDashboard() {
         </Tabs>
       </main>
 
-      <footer className="border-t border-border/30 bg-card/30 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 py-4 text-center text-xs text-muted-foreground/60">ScoreWise {isAdmin ? "Admin" : "Dashboard"} — Data-driven basketball predictions</div>
+      <footer className="border-t border-border/30 bg-card/20 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 py-3 text-center text-[11px] text-muted-foreground/50">
+          ScoreWise {isAdmin ? "Admin" : "Dashboard"} — Data-driven basketball predictions
+        </div>
       </footer>
 
       {/* Prediction detail drawer — global, can be triggered from any tab */}

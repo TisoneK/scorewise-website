@@ -52,14 +52,16 @@ export function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md bg-card/80 border-border/50 shadow-2xl">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-neon-green/10 flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      {/* Subtle background gradient */}
+      <div className="absolute inset-0 bg-gradient-to-br from-neon-green/5 via-transparent to-neon-cyan/5 pointer-events-none" />
+      <Card className="w-full max-w-md bg-card/90 border-border/40 shadow-2xl backdrop-blur-xl relative z-10">
+        <CardHeader className="text-center pb-3">
+          <div className="mx-auto mb-5 w-16 h-16 rounded-2xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center glow-green">
             <BasketballIcon className="w-8 h-8 text-neon-green" />
           </div>
-          <CardTitle className="text-2xl font-black">ScoreWise</CardTitle>
-          <CardDescription>Basketball Predictions Dashboard</CardDescription>
+          <CardTitle className="text-2xl font-black tracking-tight">ScoreWise</CardTitle>
+          <CardDescription className="text-sm">Basketball Predictions Dashboard</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -87,7 +89,7 @@ export function SignInPage() {
             </div>
             <Button
               type="submit"
-              className="w-full bg-neon-green text-background hover:bg-neon-green/90 font-bold"
+              className="w-full bg-neon-green text-background hover:bg-neon-green/85 font-bold h-11 transition-all"
               disabled={loading}
             >
               {loading ? (
@@ -155,14 +157,15 @@ export function SignupPage({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-md bg-card/80 border-border/50 shadow-2xl">
-        <CardHeader className="text-center pb-2">
-          <div className="mx-auto mb-4 w-16 h-16 rounded-2xl bg-neon-green/10 flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4 relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-neon-green/5 via-transparent to-neon-cyan/5 pointer-events-none" />
+      <Card className="w-full max-w-md bg-card/90 border-border/40 shadow-2xl backdrop-blur-xl relative z-10">
+        <CardHeader className="text-center pb-3">
+          <div className="mx-auto mb-5 w-16 h-16 rounded-2xl bg-neon-green/10 border border-neon-green/20 flex items-center justify-center glow-green">
             <BasketballIcon className="w-8 h-8 text-neon-green" />
           </div>
-          <CardTitle className="text-2xl font-black">Create Account</CardTitle>
-          <CardDescription>Join ScoreWise to access predictions</CardDescription>
+          <CardTitle className="text-2xl font-black tracking-tight">Create Account</CardTitle>
+          <CardDescription className="text-sm">Join ScoreWise to access predictions</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-4">
@@ -210,7 +213,7 @@ export function SignupPage({ onBack }: { onBack: () => void }) {
             </div>
             <Button
               type="submit"
-              className="w-full bg-neon-green text-background hover:bg-neon-green/90 font-bold"
+              className="w-full bg-neon-green text-background hover:bg-neon-green/85 font-bold h-11 transition-all"
               disabled={loading}
             >
               {loading ? (
