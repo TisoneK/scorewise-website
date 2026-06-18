@@ -31,9 +31,10 @@ import {
   XCircle, Loader2, Lock, ChevronRight, ArrowUpRight, ArrowDownRight,
   Target, Percent, Layers, Cpu, Wifi, WifiOff, GitBranch, Timer,
   Calendar, ZapOff, Flame, Gauge, BarChart2, PieChart as PieIcon,
-  Save, Plus, X, EyeOff, TestTube, FileText, Globe, Key, Link,
+  Save, Plus, X, EyeOff, TestTube, FileText, Globe, Key, Link, Trophy,
   ChevronDown, ChevronUp, Copy, RotateCcw, ExternalLink, Info, Upload,
-  Terminal, Trash2,
+  Terminal, Maximize2, Radio,
+  Activity as ActivityIcon, ArrowRight,
 } from "lucide-react";
 import type { StoredPredictions, Prediction, AppUser, UserRole, ServiceStatus, ServiceConfigEntry, ActivityLogEntry, ServiceName } from "@/lib/types";
 
@@ -476,6 +477,435 @@ function UserPredictionsView() {
   );
 }
 
+// ===================== NEW SUB-COMPONENTS (Overview command center + Predictions drawer) =====================
+
+type FeedEvent = {
+  id: string;
+  timestamp: string;
+  type: string;
+  service: string | null;
+  title: string;
+  detail?: string;
+  severity: "info" | "success" | "warning" | "error";
+};
+
+function severityIcon(sev: FeedEvent["severity"], type: string) {
+  if (type.startsWith("PREDICTION_")) return <Target className="w-3.5 h-3.5 text-neon-green" />;
+  if (type.startsWith("CONFIG_")) return <Settings className="w-3.5 h-3.5 text-neon-cyan" />;
+  if (type.startsWith("USER_")) return <Users className="w-3.5 h-3.5 text-neon-yellow" />;
+  if (type.startsWith("SERVICE_")) return <Server className="w-3.5 h-3.5 text-neon-green" />;
+  if (sev === "error") return <XCircle className="w-3.5 h-3.5 text-destructive" />;
+  if (sev === "warning") return <AlertTriangle className="w-3.5 h-3.5 text-neon-yellow" />;
+  if (sev === "success") return <CheckCircle2 className="w-3.5 h-3.5 text-neon-green" />;
+  return <ActivityIcon className="w-3.5 h-3.5 text-muted-foreground" />;
+}
+
+function severityColor(sev: FeedEvent["severity"]) {
+  if (sev === "error") return "border-l-destructive";
+  if (sev === "warning") return "border-l-neon-yellow";
+  if (sev === "success") return "border-l-neon-green";
+  return "border-l-muted-foreground/50";
+}
+
+function relativeTime(iso: string) {
+  const now = Date.now();
+  const t = new Date(iso).getTime();
+  const diff = Math.max(0, now - t);
+  if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
+function LiveEventFeed({ events, loading }: { events: FeedEvent[]; loading: boolean }) {
+  return (
+    <Card className="bg-card/60 border-border/40 h-full flex flex-col">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <Radio className="w-4 h-4 text-neon-green animate-pulse" />
+          Live Event Feed
+          <span className="ml-auto text-xs text-muted-foreground font-normal">
+            {events.length} event{events.length === 1 ? "" : "s"}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-hidden p-0">
+        <ScrollArea className="h-[400px]">
+          {loading && events.length === 0 ? (
+            <div className="p-4 space-y-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Skeleton className="w-3.5 h-3.5 rounded-full bg-muted/30" />
+                  <Skeleton className="h-3 flex-1 bg-muted/30" />
+                </div>
+              ))}
+            </div>
+          ) : events.length === 0 ? (
+            <div className="p-6 text-center">
+              <Radio className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">No events yet</p>
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5">Activity will appear here in real time</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/20">
+              {events.map(ev => (
+                <div
+                  key={ev.id}
+                  className={`flex items-start gap-2.5 px-3 py-2 hover:bg-card/80 border-l-2 ${severityColor(ev.severity)}`}
+                >
+                  <div className="mt-0.5 shrink-0">{severityIcon(ev.severity, ev.type)}</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium text-foreground/90 truncate">{ev.title}</span>
+                      {ev.service && (
+                        <Badge variant="outline" className="text-[9px] border-border/50 text-muted-foreground capitalize shrink-0">
+                          {ev.service}
+                        </Badge>
+                      )}
+                    </div>
+                    {ev.detail && (
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5 font-mono">{ev.detail}</p>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground/70 font-mono shrink-0 mt-1">
+                    {relativeTime(ev.timestamp)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ServiceHealthBar({ online }: { online: boolean }) {
+  // 24-segment bar — each segment = 1 hour. Until we have history,
+  // we render the current state across all 24 segments (so the admin
+  // sees green or red at a glance, with a "live" pulse on the last segment).
+  const segments = Array.from({ length: 24 }, (_, i) => i);
+  return (
+    <div className="flex items-center gap-0.5">
+      {segments.map(i => (
+        <div
+          key={i}
+          className={`h-4 flex-1 rounded-sm ${online ? "bg-neon-green/60" : "bg-destructive/60"} ${i === 23 ? "animate-pulse" : "opacity-70"}`}
+          title={`${i}:00 - ${i + 1}:00 UTC`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ServiceHealthCard({
+  label,
+  icon,
+  status,
+  predictions,
+  lastRun,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  status: string;
+  predictions?: number;
+  lastRun?: { complete_matches: number; incomplete_matches: number; started_at: string | null; finished_at: string | null } | null;
+}) {
+  const online = status === "online";
+  return (
+    <Card className={`bg-card/60 border-border/40 ${online ? "border-l-2 border-l-neon-green/60" : "border-l-2 border-l-destructive/60"}`}>
+      <CardContent className="p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {icon}
+            <span className="text-xs font-semibold">{label}</span>
+          </div>
+          <Badge variant="outline" className={`text-[9px] ${online ? "border-neon-green/40 text-neon-green" : "border-destructive/40 text-destructive"}`}>
+            {status.toUpperCase()}
+          </Badge>
+        </div>
+        <ServiceHealthBar online={online} />
+        <div className="grid grid-cols-2 gap-2 text-[10px] text-muted-foreground">
+          <div>
+            <span className="text-muted-foreground/60">24h status:</span>{" "}
+            <span className={online ? "text-neon-green" : "text-destructive"}>{online ? "Operational" : "Down"}</span>
+          </div>
+          {typeof predictions === "number" && (
+            <div className="text-right">
+              <span className="text-muted-foreground/60">Predictions:</span>{" "}
+              <span className="text-foreground font-mono">{predictions}</span>
+            </div>
+          )}
+          {lastRun && (
+            <div className="col-span-2 text-[10px] text-muted-foreground font-mono">
+              Last run: {lastRun.complete_matches} ok / {lastRun.incomplete_matches} skipped
+              {lastRun.started_at && ` · ${relativeTime(lastRun.started_at)}`}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PipelineFlow({
+  scrapeCount,
+  ingestCount,
+  predictCount,
+  pushCount,
+}: {
+  scrapeCount: number;
+  ingestCount: number;
+  predictCount: number;
+  pushCount: number;
+}) {
+  const steps = [
+    { label: "Scrape", count: scrapeCount, icon: <Search className="w-3.5 h-3.5" />, color: "text-neon-cyan", border: "border-neon-cyan/40", bg: "bg-neon-cyan/10" },
+    { label: "Ingest", count: ingestCount, icon: <Download className="w-3.5 h-3.5" />, color: "text-neon-yellow", border: "border-neon-yellow/40", bg: "bg-neon-yellow/10" },
+    { label: "Predict", count: predictCount, icon: <Cpu className="w-3.5 h-3.5" />, color: "text-neon-green", border: "border-neon-green/40", bg: "bg-neon-green/10" },
+    { label: "Push", count: pushCount, icon: <Globe className="w-3.5 h-3.5" />, color: "text-neon-purple", border: "border-neon-purple/40", bg: "bg-neon-purple/10" },
+  ];
+  return (
+    <Card className="bg-card/60 border-border/40">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+          <ActivityIcon className="w-4 h-4 text-neon-cyan" />
+          Pipeline Flow
+          <span className="ml-auto text-[10px] text-muted-foreground font-normal">Last 24h</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-2">
+          {steps.map((s, i) => (
+            <div key={s.label} className="flex items-center gap-2 flex-1">
+              <div className={`flex-1 rounded-md border ${s.border} ${s.bg} px-3 py-2 flex items-center gap-2`}>
+                {s.icon}
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] text-muted-foreground">{s.label}</div>
+                  <div className={`text-base font-bold ${s.color}`}>{s.count}</div>
+                </div>
+              </div>
+              {i < steps.length - 1 && (
+                <ArrowRight className="w-4 h-4 text-muted-foreground/50 shrink-0" />
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground/70 mt-3">
+          Each stage shows the count of items that have passed through in the last 24 hours.
+          Drops between stages indicate failures (e.g. scraper pushed 12 but engine only ingested 10).
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function PredictionDetailDrawer({
+  prediction,
+  onClose,
+}: {
+  prediction: Prediction | null;
+  onClose: () => void;
+}) {
+  if (!prediction) return null;
+
+  const steps = [
+    { num: "01", name: "Validate", icon: <CheckCircle2 className="w-3.5 h-3.5" />, status: prediction.validation_errors.length === 0 ? "ok" : "warn", detail: prediction.validation_errors.length === 0 ? "All checks passed" : `${prediction.validation_errors.length} validation issue(s)` },
+    { num: "02", name: "H2H Totals", icon: <ActivityIcon className="w-3.5 h-3.5" />, status: "ok", detail: `${prediction.h2h_totals.length} H2H match(es) collected` },
+    { num: "03", name: "Rate Values", icon: <Percent className="w-3.5 h-3.5" />, status: "ok", detail: `${prediction.rate_values.length} rate value(s) computed` },
+    { num: "04", name: "Average Rate", icon: <BarChart2 className="w-3.5 h-3.5" />, status: "ok", detail: `Average: ${prediction.average_rate.toFixed(2)}` },
+    { num: "05", name: "Match Counting", icon: <Layers className="w-3.5 h-3.5" />, status: "ok", detail: `${prediction.matches_above} above / ${prediction.matches_below} below line` },
+    { num: "06", name: "Test Adjustments", icon: <TestTube className="w-3.5 h-3.5" />, status: "ok", detail: `+${prediction.increment_test} / -${prediction.decrement_test}` },
+    { num: "07", name: "Winning Patterns", icon: <TrendingUp className="w-3.5 h-3.5" />, status: prediction.winning_streak_data ? "ok" : "warn", detail: prediction.winning_streak_data ? "Pattern data collected" : "No streak data" },
+    { num: "08", name: "Recommendation", icon: <Target className="w-3.5 h-3.5" />, status: prediction.recommendation ? "ok" : "warn", detail: prediction.recommendation || "No recommendation" },
+    { num: "09", name: "Team Winner", icon: <Trophy className="w-3.5 h-3.5" />, status: prediction.team_winner ? "ok" : "warn", detail: prediction.team_winner || "No winner predicted" },
+    { num: "10", name: "Confidence", icon: <Shield className="w-3.5 h-3.5" />, status: prediction.confidence ? "ok" : "warn", detail: prediction.confidence || "No confidence level" },
+  ];
+
+  const stepColor = (s: string) =>
+    s === "ok" ? "text-neon-green border-neon-green/40 bg-neon-green/5" :
+    s === "warn" ? "text-neon-yellow border-neon-yellow/40 bg-neon-yellow/5" :
+    "text-destructive border-destructive/40 bg-destructive/5";
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 animate-in fade-in"
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-card border-l border-border/40 z-50 shadow-2xl flex flex-col animate-in slide-in-from-right">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border/40">
+          <div className="flex items-center gap-2 min-w-0">
+            <BasketballIcon className="w-5 h-5 text-neon-green shrink-0" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold truncate">Prediction Detail</h2>
+              <p className="text-[11px] text-muted-foreground font-mono truncate">{prediction.match_id}</p>
+            </div>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} className="shrink-0">
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Body */}
+        <ScrollArea className="flex-1">
+          <div className="p-4 space-y-4">
+            {/* Top summary cards */}
+            <div className="grid grid-cols-4 gap-2">
+              <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
+                <p className="text-[10px] text-muted-foreground">Recommendation</p>
+                <RecommendationBadge rec={prediction.recommendation} />
+              </div>
+              <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
+                <p className="text-[10px] text-muted-foreground">Confidence</p>
+                <ConfidenceBadge level={prediction.confidence} />
+              </div>
+              <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
+                <p className="text-[10px] text-muted-foreground">Line</p>
+                <p className="text-xs font-mono text-neon-cyan">{prediction.bookmaker_line ?? "—"}</p>
+              </div>
+              <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
+                <p className="text-[10px] text-muted-foreground">Result</p>
+                {prediction.success ? <CheckCircle2 className="w-4 h-4 text-neon-green mx-auto" /> : <XCircle className="w-4 h-4 text-destructive mx-auto" />}
+              </div>
+            </div>
+
+            {/* 10-step pipeline timeline */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <GitBranch className="w-3 h-3" />
+                10-Step Pipeline
+              </h3>
+              <div className="space-y-1.5">
+                {steps.map((s, i) => (
+                  <div key={s.num} className="flex items-center gap-2">
+                    <div className="relative flex flex-col items-center">
+                      <div className={`w-7 h-7 rounded-full border-2 ${stepColor(s.status)} flex items-center justify-center text-[10px] font-bold`}>
+                        {s.num}
+                      </div>
+                      {i < steps.length - 1 && (
+                        <div className="absolute top-7 w-0.5 h-3 bg-border/40" />
+                      )}
+                    </div>
+                    <div className="flex-1 flex items-center justify-between gap-2 pb-3">
+                      <div className="flex items-center gap-2">
+                        {s.icon}
+                        <span className="text-xs font-medium">{s.name}</span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[60%] text-right">{s.detail}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Numerical inputs */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Database className="w-3 h-3" />
+                Numerical Inputs
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Average rate</span>
+                  <p className="font-mono text-neon-green">{prediction.average_rate.toFixed(3)}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Bookmaker line</span>
+                  <p className="font-mono text-neon-cyan">{prediction.bookmaker_line ?? "—"}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Above line</span>
+                  <p className="font-mono">{prediction.matches_above}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Below line</span>
+                  <p className="font-mono">{prediction.matches_below}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Increment test</span>
+                  <p className="font-mono">{prediction.increment_test}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Decrement test</span>
+                  <p className="font-mono">{prediction.decrement_test}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* H2H totals array */}
+            {prediction.h2h_totals.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Layers className="w-3 h-3" />
+                  H2H Totals ({prediction.h2h_totals.length} values)
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40 max-h-32 overflow-y-auto">
+                  <p className="text-[11px] font-mono text-muted-foreground break-all">
+                    [{prediction.h2h_totals.join(", ")}]
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Rate values array */}
+            {prediction.rate_values.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Percent className="w-3 h-3" />
+                  Rate Values ({prediction.rate_values.length} values)
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40 max-h-32 overflow-y-auto">
+                  <p className="text-[11px] font-mono text-muted-foreground break-all">
+                    [{prediction.rate_values.join(", ")}]
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Validation errors */}
+            {prediction.validation_errors.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-destructive uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  Validation Errors
+                </h3>
+                <div className="bg-destructive/5 border border-destructive/30 rounded p-2 space-y-1">
+                  {prediction.validation_errors.map((e, i) => (
+                    <p key={i} className="text-[11px] font-mono text-destructive">{e}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Raw JSON */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <FileText className="w-3 h-3" />
+                Raw JSON
+              </h3>
+              <pre className="bg-background/50 rounded p-2 border border-border/40 text-[10px] font-mono overflow-x-auto max-h-60 text-muted-foreground">
+                {JSON.stringify(prediction, null, 2)}
+              </pre>
+            </div>
+          </div>
+        </ScrollArea>
+
+        {/* Footer */}
+        <div className="p-3 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground">
+          <span className="font-mono">
+            Created: {prediction.created_at ? relativeTime(prediction.created_at) : "—"}
+          </span>
+          <span className="font-mono">Scope: {prediction.scope}</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ===================== ADMIN DASHBOARD =====================
 
 function AdminDashboard() {
@@ -563,6 +993,13 @@ function AdminDashboard() {
   const [svcLogsSince, setSvcLogsSince] = useState<string | null>(null);
   const [svcLogsNewest, setSvcLogsNewest] = useState<string | null>(null);
   const [svcLogsError, setSvcLogsError] = useState<string | null>(null);
+
+  // --- Live event feed state (Overview command center) ---
+  const [feedEvents, setFeedEvents] = useState<FeedEvent[]>([]);
+  const [feedLoading, setFeedLoading] = useState(false);
+
+  // --- Prediction detail drawer state ---
+  const [drawerPrediction, setDrawerPrediction] = useState<Prediction | null>(null);
 
   // --- Computed values ---
   const preds = allPredictionsData?.predictions || [];
@@ -703,7 +1140,16 @@ function AdminDashboard() {
     fetchServiceStatus();
     fetchUsers();
     fetchConfigs();
-  }, [fetchAllPredictions, fetchServiceStatus, fetchUsers, fetchConfigs]);
+    fetchFeedEvents();
+  }, [fetchAllPredictions, fetchServiceStatus, fetchUsers, fetchConfigs, fetchFeedEvents]);
+
+  // Live event feed: auto-poll every 15s
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchFeedEvents();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [fetchFeedEvents]);
 
   useEffect(() => {
     fetchLogs();
@@ -753,6 +1199,20 @@ function AdminDashboard() {
       toast.error(`Failed to clear ${svcLogsService} logs: ${msg}`);
     }
   }, [svcLogsService]);
+
+  // --- Live event feed fetch (Overview command center) ---
+  const fetchFeedEvents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/events/recent?limit=30");
+      if (!res.ok) return;
+      const data = await res.json();
+      setFeedEvents(data.events || []);
+    } catch {
+      // Silent fail — feed is non-critical
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
 
   // Auto-poll scraper status when it's running
   useEffect(() => {
@@ -1274,103 +1734,64 @@ function AdminDashboard() {
 
           {/* ============ OVERVIEW TAB ============ */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <StatCard title="Total Predictions" value={totalPreds} icon={<Database className="w-5 h-5 text-neon-green" />} color="text-neon-green" />
-              <StatCard title="Success Rate" value={`${successRate}%`} icon={<Target className="w-5 h-5 text-neon-green" />} color="text-neon-green" sub={`${successCount} of ${totalPreds}`} />
-              <StatCard title="High Confidence" value={highConf} icon={<Shield className="w-5 h-5 text-neon-yellow" />} color="text-neon-yellow" sub={totalPreds > 0 ? `${Math.round((highConf / totalPreds) * 100)}% of total` : ""} />
-              <StatCard title="Services Online" value={
-                [serviceStatus?.scraper?.status === "online" ? 1 : 0, serviceStatus?.engine?.status === "online" ? 1 : 0, 1].reduce((a, b) => a + b, 0)
-              } icon={<Wifi className="w-5 h-5 text-neon-cyan" />} color="text-neon-cyan" sub="of 3 services" />
+            {/* Row 1: 6 KPI cards */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <StatCard title="Total Predictions" value={totalPreds} icon={<Database className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={`${successCount}✓ ${failCount}✗`} />
+              <StatCard title="Success Rate" value={`${successRate}%`} icon={<Target className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={`${successCount} of ${totalPreds}`} />
+              <StatCard title="High Confidence" value={highConf} icon={<Shield className="w-4 h-4 text-neon-yellow" />} color="text-neon-yellow" sub={totalPreds > 0 ? `${Math.round((highConf / totalPreds) * 100)}%` : "—"} />
+              <StatCard title="OVER Recs" value={overRecs} icon={<TrendingUp className="w-4 h-4 text-neon-green" />} color="text-neon-green" sub={totalPreds > 0 ? `${Math.round((overRecs / totalPreds) * 100)}%` : "—"} />
+              <StatCard title="UNDER Recs" value={underRecs} icon={<TrendingDown className="w-4 h-4 text-neon-red" />} color="text-neon-red" sub={totalPreds > 0 ? `${Math.round((underRecs / totalPreds) * 100)}%` : "—"} />
+              <StatCard
+                title="Services Online"
+                value={[serviceStatus?.scraper?.status === "online" ? 1 : 0, serviceStatus?.engine?.status === "online" ? 1 : 0, 1].reduce((a, b) => a + b, 0)}
+                icon={<Wifi className="w-4 h-4 text-neon-cyan" />}
+                color="text-neon-cyan"
+                sub="of 3 services"
+              />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Service status */}
-              <Card className="bg-card/60 border-border/40">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Server className="w-4 h-4 text-neon-cyan" />Service Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={serviceStatus?.scraper?.status || "offline"} />
-                      <span className="text-sm font-medium">Scraper</span>
-                    </div>
-                    <Badge variant="outline" className={serviceStatus?.scraper?.status === "online" ? "border-neon-green/40 text-neon-green" : "border-muted-foreground/30 text-muted-foreground"}>
-                      {serviceStatus?.scraper?.status?.toUpperCase() || "UNKNOWN"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={serviceStatus?.engine?.status || "offline"} />
-                      <span className="text-sm font-medium">Engine</span>
-                    </div>
-                    <Badge variant="outline" className={
-                      serviceStatus?.engine?.status === "online" ? "border-neon-green/40 text-neon-green"
-                        : serviceStatus?.engine?.status === "error" ? "border-neon-red/40 text-neon-red"
-                        : "border-muted-foreground/30 text-muted-foreground"
-                    }>
-                      {serviceStatus?.engine?.status?.toUpperCase() || "UNKNOWN"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status="online" />
-                      <span className="text-sm font-medium">Website</span>
-                    </div>
-                    <Badge variant="outline" className="border-neon-green/40 text-neon-green">ONLINE</Badge>
-                  </div>
-                  {serviceStatus?.engine?.message && (
-                    <p className="text-xs text-neon-yellow/80 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3 h-3 shrink-0" />{serviceStatus.engine.message}
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+            {/* Row 2: Live Event Feed (left) + Service Health cards (right) */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <LiveEventFeed events={feedEvents} loading={feedLoading} />
 
-              {/* Quick stats */}
-              <Card className="bg-card/60 border-border/40">
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                    <Flame className="w-4 h-4 text-neon-red" />Prediction Breakdown
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span className="text-muted-foreground">Success Rate</span>
-                      <span className="font-mono font-bold text-neon-green">{successRate}%</span>
-                    </div>
-                    <Progress value={successRate} className="h-2 [&>div]:bg-neon-green" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-background/50 rounded-lg p-3">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">OVER</p>
-                      <p className="text-xl font-black text-neon-green">{overRecs}</p>
-                      <MiniProgressBar value={overRecs} max={totalPreds || 1} color="bg-neon-green" />
-                    </div>
-                    <div className="bg-background/50 rounded-lg p-3">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">UNDER</p>
-                      <p className="text-xl font-black text-neon-red">{underRecs}</p>
-                      <MiniProgressBar value={underRecs} max={totalPreds || 1} color="bg-neon-red" />
-                    </div>
-                  </div>
-                  <Separator className="bg-border/30" />
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Last Updated</span>
-                    <span className="text-xs font-mono">{formatTime(allPredictionsData?.updated_at)}</span>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="space-y-3">
+                <ServiceHealthCard
+                  label="FlashScore Scraper"
+                  icon={<Search className="w-4 h-4 text-neon-cyan" />}
+                  status={serviceStatus?.scraper?.status || "offline"}
+                  lastRun={serviceStatus?.scraper?.lastRun || null}
+                />
+                <ServiceHealthCard
+                  label="ScoreWise Engine"
+                  icon={<Cpu className="w-4 h-4 text-neon-green" />}
+                  status={serviceStatus?.engine?.status || "offline"}
+                  predictions={serviceStatus?.engine?.predictions ?? 0}
+                />
+                <ServiceHealthCard
+                  label="Website (Vercel)"
+                  icon={<Globe className="w-4 h-4 text-neon-yellow" />}
+                  status="online"
+                />
+              </div>
             </div>
 
-            {/* Recent predictions */}
+            {/* Row 3: Pipeline flow */}
+            <PipelineFlow
+              scrapeCount={serviceStatus?.scraper?.lastRun?.complete_matches ?? 0}
+              ingestCount={serviceStatus?.engine?.predictions ?? 0}
+              predictCount={totalPreds}
+              pushCount={totalPreds}
+            />
+
+            {/* Row 4: Compact recent predictions table with click-to-detail */}
             <Card className="bg-card/60 border-border/40">
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-sm font-semibold flex items-center gap-2">
                     <Clock className="w-4 h-4 text-neon-cyan" />Recent Predictions
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      click any row for full pipeline detail
+                    </span>
                   </CardTitle>
                   <Button variant="ghost" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1 text-xs text-muted-foreground">
                     <RefreshCw className={`w-3 h-3 ${loadingPred ? "animate-spin" : ""}`} />Reload
@@ -1382,7 +1803,11 @@ function AdminDashboard() {
                   {loadingPred ? (
                     <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full bg-muted/30" />)}</div>
                   ) : preds.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-6">No predictions yet</p>
+                    <div className="text-center py-8">
+                      <Database className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No predictions yet</p>
+                      <p className="text-xs text-muted-foreground/70 mt-1">Run a scrape to populate the pipeline</p>
+                    </div>
                   ) : (
                     <Table>
                       <TableHeader>
@@ -1391,17 +1816,25 @@ function AdminDashboard() {
                           <TableHead className="text-xs">Recommendation</TableHead>
                           <TableHead className="text-xs">Confidence</TableHead>
                           <TableHead className="text-xs">Line</TableHead>
+                          <TableHead className="text-xs">Avg Rate</TableHead>
                           <TableHead className="text-xs">Result</TableHead>
+                          <TableHead className="text-xs w-8"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {preds.slice(0, 10).map(p => (
-                          <TableRow key={p.match_id} className="border-border/20 hover:bg-card/80">
+                        {preds.slice(0, 15).map(p => (
+                          <TableRow
+                            key={p.match_id}
+                            className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
+                            onClick={() => setDrawerPrediction(p)}
+                          >
                             <TableCell className="font-mono text-xs">{p.match_id.slice(0, 12)}</TableCell>
                             <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
                             <TableCell><ConfidenceBadge level={p.confidence} /></TableCell>
                             <TableCell className="text-neon-cyan font-mono text-xs">{p.bookmaker_line ?? "—"}</TableCell>
+                            <TableCell className="font-mono text-xs text-muted-foreground">{p.average_rate.toFixed(2)}</TableCell>
                             <TableCell>{p.success ? <CheckCircle2 className="w-4 h-4 text-neon-green" /> : <XCircle className="w-4 h-4 text-neon-red" />}</TableCell>
+                            <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1454,16 +1887,21 @@ function AdminDashboard() {
                         <TableHead className="text-xs">Winner</TableHead>
                         <TableHead className="text-xs">Above/Below</TableHead>
                         <TableHead className="text-xs">Result</TableHead>
+                        <TableHead className="text-xs w-8"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {loadingPred ? (
-                        <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground"><Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />Loading...</TableCell></TableRow>
                       ) : preds.length === 0 ? (
-                        <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No predictions available</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No predictions available</TableCell></TableRow>
                       ) : (
                         preds.map(p => (
-                          <TableRow key={p.match_id} className="border-border/20 hover:bg-card/80">
+                          <TableRow
+                            key={p.match_id}
+                            className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
+                            onClick={() => setDrawerPrediction(p)}
+                          >
                             <TableCell className="font-mono text-xs">{p.match_id.slice(0, 12)}</TableCell>
                             <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
                             <TableCell><ConfidenceBadge level={p.confidence} /></TableCell>
@@ -1471,6 +1909,7 @@ function AdminDashboard() {
                             <TableCell className="text-xs">{p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? p.team_winner.replace(/_/g, " ") : "—"}</TableCell>
                             <TableCell className="text-xs"><span className="text-neon-green">{p.matches_above}</span>/<span className="text-neon-red">{p.matches_below}</span></TableCell>
                             <TableCell>{p.success ? <CheckCircle2 className="w-4 h-4 text-neon-green" /> : <XCircle className="w-4 h-4 text-neon-red" />}</TableCell>
+                            <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
                           </TableRow>
                         ))
                       )}
@@ -3010,6 +3449,12 @@ function AdminDashboard() {
       <footer className="border-t border-border/30 bg-card/30 mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-4 text-center text-xs text-muted-foreground/60">ScoreWise {isAdmin ? "Admin" : "Dashboard"} — Data-driven basketball predictions</div>
       </footer>
+
+      {/* Prediction detail drawer — global, can be triggered from any tab */}
+      <PredictionDetailDrawer
+        prediction={drawerPrediction}
+        onClose={() => setDrawerPrediction(null)}
+      />
     </div>
   );
 }
