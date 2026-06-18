@@ -927,16 +927,23 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState(false); // collapse entire log panel
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true); // only true on first load
+  const [isPolling, setIsPolling] = useState(false); // suppresses spinners during incremental polls
+  const isFetchingRef = useRef(false); // prevent overlapping fetches
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
+  const fetchLogs = useCallback(async (mode: "initial" | "poll" = "poll") => {
+    // Prevent overlapping fetches — if a previous fetch is still in flight,
+    // skip this poll entirely. This stops the destructive loading flicker.
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    if (mode === "initial") setInitialLoading(true);
+    else setIsPolling(true);
     setError(null);
     try {
       const params = new URLSearchParams({ service, limit: "100", level });
       if (query.trim()) params.set("q", query.trim());
-      if (since) params.set("since", since);
+      if (mode === "poll" && since) params.set("since", since);
       const res = await fetch(`/api/admin/logs/stream?${params.toString()}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -952,7 +959,9 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(msg);
     } finally {
-      setLoading(false);
+      isFetchingRef.current = false;
+      if (mode === "initial") setInitialLoading(false);
+      else setIsPolling(false);
     }
   }, [service, level, query, since]);
 
@@ -961,7 +970,8 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
     setLogs([]);
     setSince(null);
     setError(null);
-    fetchLogs();
+    setInitialLoading(true);
+    fetchLogs("initial");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, level]);
 
@@ -970,17 +980,21 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
     const t = setTimeout(() => {
       setLogs([]);
       setSince(null);
-      fetchLogs();
+      setInitialLoading(true);
+      fetchLogs("initial");
     }, 400);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  // Polling
+  // Polling — every 3s when live, 5s when paused. Skip if collapsed.
   useEffect(() => {
-    if (collapsed) return; // don't poll when collapsed
+    if (collapsed) return;
     const intervalMs = autoScroll ? 3000 : 5000;
-    const id = setInterval(() => fetchLogs(), intervalMs);
+    const id = setInterval(() => {
+      // Don't set loading state for polls — that's what was causing the flicker
+      fetchLogs("poll");
+    }, intervalMs);
     return () => clearInterval(id);
   }, [autoScroll, collapsed, fetchLogs]);
 
@@ -1089,12 +1103,12 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => { e.stopPropagation(); fetchLogs(); }}
-              disabled={loading}
+              onClick={(e) => { e.stopPropagation(); fetchLogs("initial"); }}
+              disabled={initialLoading || isPolling}
               className="h-6 px-2 text-[10px] gap-1 text-muted-foreground"
               title="Refresh now"
             >
-              <RefreshCw className={`w-3 h-3 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-3 h-3 ${(initialLoading || isPolling) ? "animate-spin" : ""}`} />
             </Button>
             <Button
               variant="ghost"
@@ -1112,7 +1126,7 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
             ref={scrollRef}
             className="max-h-[400px] overflow-y-auto font-mono text-[11px]"
           >
-            {logs.length === 0 && !loading ? (
+            {logs.length === 0 && !initialLoading ? (
               <div className="p-6 text-center text-muted-foreground/70">
                 <Terminal className="w-5 h-5 mx-auto mb-1.5 opacity-30" />
                 <p className="text-[10px]">No log entries yet</p>
@@ -1160,7 +1174,7 @@ function ServiceLogStream({ service }: { service: "scraper" | "engine" }) {
                 );
               })
             )}
-            {loading && logs.length === 0 && (
+            {initialLoading && logs.length === 0 && (
               <div className="p-3 text-center text-muted-foreground">
                 <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1.5" />
                 <span className="text-[10px]">Loading...</span>
