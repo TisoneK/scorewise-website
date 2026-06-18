@@ -11,6 +11,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
@@ -95,11 +96,11 @@ export function PredictionsTab({
         </div>
         <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
           <p className="text-xl font-black text-neon-green">{successCount}</p>
-          <p className="text-[10px] text-muted-foreground">Passed</p>
+          <p className="text-[10px] text-muted-foreground">Processed</p>
         </div>
         <div className="bg-card/60 border border-neon-red/20 rounded-lg px-3 py-2 text-center">
           <p className="text-xl font-black text-neon-red">{failCount}</p>
-          <p className="text-[10px] text-muted-foreground">Failed</p>
+          <p className="text-[10px] text-muted-foreground">Errors</p>
         </div>
       </div>
 
@@ -116,7 +117,7 @@ export function PredictionsTab({
                   <TableHead className="text-xs">Line</TableHead>
                   <TableHead className="text-xs">Winner</TableHead>
                   <TableHead className="text-xs">Above/Below</TableHead>
-                  <TableHead className="text-xs">Result</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
                   <TableHead className="text-xs w-8"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -179,9 +180,9 @@ export function PredictionsTab({
                       </TableCell>
                       <TableCell>
                         {p.success ? (
-                          <CheckCircle2 className="w-4 h-4 text-neon-green" />
+                          <Badge variant="outline" className="text-[9px] border-neon-green/30 text-neon-green">OK</Badge>
                         ) : (
-                          <XCircle className="w-4 h-4 text-neon-red" />
+                          <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
                         )}
                       </TableCell>
                       <TableCell>

@@ -14,6 +14,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -222,7 +223,7 @@ export function OverviewTab({
                     <TableHead className="text-xs">Rec</TableHead>
                     <TableHead className="text-xs">Conf</TableHead>
                     <TableHead className="text-xs">Line</TableHead>
-                    <TableHead className="text-xs">Result</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs w-8"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -251,9 +252,9 @@ export function OverviewTab({
                       </TableCell>
                       <TableCell>
                         {p.success ? (
-                          <CheckCircle2 className="w-4 h-4 text-neon-green" />
+                          <Badge variant="outline" className="text-[9px] border-neon-green/30 text-neon-green">OK</Badge>
                         ) : (
-                          <XCircle className="w-4 h-4 text-neon-red" />
+                          <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
                         )}
                       </TableCell>
                       <TableCell>

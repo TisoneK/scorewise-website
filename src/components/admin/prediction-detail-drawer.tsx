@@ -9,6 +9,7 @@
  */
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   CheckCircle2,
@@ -176,11 +177,11 @@ export function PredictionDetailDrawer({
                 </p>
               </div>
               <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
-                <p className="text-[10px] text-muted-foreground">Result</p>
+                <p className="text-[10px] text-muted-foreground">Status</p>
                 {prediction.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-neon-green mx-auto" />
+                  <Badge variant="outline" className="text-[9px] border-neon-green/30 text-neon-green">OK</Badge>
                 ) : (
-                  <XCircle className="w-4 h-4 text-destructive mx-auto" />
+                  <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
                 )}
               </div>
             </div>
