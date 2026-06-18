@@ -88,9 +88,11 @@ export async function GET(request: Request) {
 
     // 2. Recent predictions (treated as events)
     try {
-      const engineRes = await fetch(`${request.nextUrl.origin}/api/admin/engine`, {
+      const origin = new URL(request.url).origin;
+      const engineRes = await fetch(`${origin}/api/admin/engine`, {
         headers: { cookie: request.headers.get("cookie") || "" },
         cache: "no-store",
+        signal: AbortSignal.timeout(5000),
       });
       if (engineRes.ok) {
         const engineData = await engineRes.json();

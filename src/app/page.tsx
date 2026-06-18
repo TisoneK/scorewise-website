@@ -1134,6 +1134,20 @@ function AdminDashboard() {
     }
   }, [svcLogsService, svcLogsLevel, svcLogsQuery, svcLogsSince]);
 
+  // --- Live event feed fetch (Overview command center) ---
+  const fetchFeedEvents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/events/recent?limit=30");
+      if (!res.ok) return;
+      const data = await res.json();
+      setFeedEvents(data.events || []);
+    } catch {
+      // Silent fail — feed is non-critical
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
   // --- Init ---
   useEffect(() => {
     fetchAllPredictions();
@@ -1200,19 +1214,9 @@ function AdminDashboard() {
     }
   }, [svcLogsService]);
 
-  // --- Live event feed fetch (Overview command center) ---
-  const fetchFeedEvents = useCallback(async () => {
-    try {
-      const res = await fetch("/api/admin/events/recent?limit=30");
-      if (!res.ok) return;
-      const data = await res.json();
-      setFeedEvents(data.events || []);
-    } catch {
-      // Silent fail — feed is non-critical
-    } finally {
-      setFeedLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
   // Auto-poll scraper status when it's running
   useEffect(() => {
