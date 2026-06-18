@@ -138,10 +138,17 @@ export function ServiceLogStream({
     return () => clearInterval(id);
   }, [autoScroll, collapsed, fetchLogs]);
 
+  // Auto-scroll to bottom when new logs arrive — but only if the user is
+  // already near the bottom (within 80px). This prevents yanking the view
+  // if they're reading older entries higher up.
   useEffect(() => {
     if (!autoScroll || collapsed) return;
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const el = scrollRef.current;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      if (isNearBottom) {
+        el.scrollTop = el.scrollHeight;
+      }
     }
   }, [logs, autoScroll, collapsed]);
 
@@ -302,7 +309,7 @@ export function ServiceLogStream({
           {/* Log entries */}
           <div
             ref={scrollRef}
-            style={{ height: "400px", overflowY: "auto" }}
+            style={{ height: "500px", overflowY: "auto" }}
             className="font-mono text-[11px]"
           >
             {logs.length === 0 && !initialLoading ? (
