@@ -129,13 +129,37 @@ table thead th {
   font-size: 0.7rem;
 }
 
+/* ── Card depth — subtle shadow for visual separation ───────────── */
+[data-slot="card"] {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 /* ── Card hover effect — subtle lift ─────────────────────────────── */
 .hover-lift {
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .hover-lift:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Button hover refinement ─────────────────────────────────────── */
+button[class*="ghost"]:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+button[class*="outline"]:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Heading weight — bolder for better hierarchy ────────────────── */
+h1, h2, h3 {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+/* ── Card title — slightly bolder ────────────────────────────────── */
+[data-slot="card-title"] {
+  font-weight: 700;
 }
 
 /* ── Empty state — centered, with icon ───────────────────────────── */
