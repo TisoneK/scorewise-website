@@ -609,7 +609,12 @@ function ServiceHealthCard({
   icon: React.ReactNode;
   status: string;
   predictions?: number;
-  lastRun?: { complete_matches: number; incomplete_matches: number; started_at: string | null; finished_at: string | null } | null;
+  lastRun?: {
+    complete_matches: number;
+    incomplete_matches: number;
+    started_at?: string | null;
+    finished_at?: string | null;
+  } | null;
 }) {
   const online = status === "online";
   return (
