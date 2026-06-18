@@ -10,6 +10,8 @@ export interface WinningStreakData {
 
 export interface Prediction {
   match_id: string;
+  home_team?: string;
+  away_team?: string;
   scope: string;
   success: boolean;
   validation_errors: string[];

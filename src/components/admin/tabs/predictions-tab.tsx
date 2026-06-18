@@ -109,7 +109,8 @@ export function PredictionsTab({
             <Table>
               <TableHeader>
                 <TableRow className="border-border/40 hover:bg-transparent">
-                  <TableHead className="text-xs">Match ID</TableHead>
+                  <TableHead className="text-xs">Match</TableHead>
+                  <TableHead className="text-xs">Teams</TableHead>
                   <TableHead className="text-xs">Rec</TableHead>
                   <TableHead className="text-xs">Conf</TableHead>
                   <TableHead className="text-xs">Line</TableHead>
@@ -123,7 +124,7 @@ export function PredictionsTab({
                 {loadingPred ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="text-center py-8 text-muted-foreground"
                     >
                       <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
@@ -133,7 +134,7 @@ export function PredictionsTab({
                 ) : preds.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={8}
+                      colSpan={9}
                       className="py-12"
                     >
                       <div className="empty-state">
@@ -152,6 +153,10 @@ export function PredictionsTab({
                     >
                       <TableCell className="font-mono text-xs">
                         {p.match_id.slice(0, 12)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">{p.home_team || "—"}</div>
+                        <div className="text-muted-foreground">vs {p.away_team || "—"}</div>
                       </TableCell>
                       <TableCell>
                         <RecommendationBadge rec={p.recommendation} />

@@ -218,10 +218,10 @@ export function OverviewTab({
                 <TableHeader>
                   <TableRow className="border-border/40 hover:bg-transparent">
                     <TableHead className="text-xs">Match</TableHead>
-                    <TableHead className="text-xs">Recommendation</TableHead>
-                    <TableHead className="text-xs">Confidence</TableHead>
+                    <TableHead className="text-xs">Teams</TableHead>
+                    <TableHead className="text-xs">Rec</TableHead>
+                    <TableHead className="text-xs">Conf</TableHead>
                     <TableHead className="text-xs">Line</TableHead>
-                    <TableHead className="text-xs">Avg Rate</TableHead>
                     <TableHead className="text-xs">Result</TableHead>
                     <TableHead className="text-xs w-8"></TableHead>
                   </TableRow>
@@ -236,6 +236,10 @@ export function OverviewTab({
                       <TableCell className="font-mono text-xs">
                         {p.match_id.slice(0, 12)}
                       </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="font-medium">{p.home_team || "—"}</div>
+                        <div className="text-muted-foreground">vs {p.away_team || "—"}</div>
+                      </TableCell>
                       <TableCell>
                         <RecommendationBadge rec={p.recommendation} />
                       </TableCell>
@@ -244,9 +248,6 @@ export function OverviewTab({
                       </TableCell>
                       <TableCell className="text-neon-cyan font-mono text-xs">
                         {p.bookmaker_line ?? "—"}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {p.average_rate.toFixed(2)}
                       </TableCell>
                       <TableCell>
                         {p.success ? (

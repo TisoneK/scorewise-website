@@ -141,7 +141,9 @@ export function PredictionDetailDrawer({
           <div className="flex items-center gap-2 min-w-0">
             <BasketballIcon className="w-5 h-5 text-neon-green shrink-0" />
             <div className="min-w-0">
-              <h2 className="text-sm font-bold truncate">Prediction Detail</h2>
+              <h2 className="text-sm font-bold truncate">
+                {prediction.home_team || "Unknown"} vs {prediction.away_team || "Unknown"}
+              </h2>
               <p className="text-[11px] text-muted-foreground font-mono truncate">
                 {prediction.match_id}
               </p>
