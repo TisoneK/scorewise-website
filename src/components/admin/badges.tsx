@@ -6,7 +6,7 @@
 
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { Shield, Zap, Activity, TrendingUp, TrendingDown } from "lucide-react";
+import { Shield, Zap, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 /**
  * Badge showing the confidence level of a prediction (HIGH / MEDIUM / LOW).
@@ -38,26 +38,31 @@ export function ConfidenceBadge({ level }: { level: string | null }) {
 }
 
 /**
- * Badge showing the recommendation (OVER / UNDER) for a prediction.
- * Color-coded: green for OVER, red for UNDER.
+ * Badge showing the recommendation (OVER / UNDER / NO_BET) for a prediction.
+ * Color-coded: green for OVER, red for UNDER, yellow for NO_BET.
  * Returns a muted "—" badge if rec is null/undefined.
  */
 export function RecommendationBadge({ rec }: { rec: string | null }) {
   if (!rec) return <Badge className="bg-muted text-muted-foreground">—</Badge>;
   const up = rec.toUpperCase();
   const isOver = up === "OVER";
+  const isNoBet = up === "NO_BET";
   return (
     <Badge
-      className={`text-sm font-black px-3 py-1 ${
+      className={`text-xs font-bold px-2 py-0.5 ${
         isOver
           ? "bg-neon-green/20 text-neon-green border border-neon-green/40"
-          : "bg-neon-red/20 text-neon-red border border-neon-red/40"
+          : isNoBet
+            ? "bg-neon-yellow/20 text-neon-yellow border border-neon-yellow/40"
+            : "bg-neon-red/20 text-neon-red border border-neon-red/40"
       }`}
     >
       {isOver ? (
-        <TrendingUp className="w-4 h-4 mr-1" />
+        <TrendingUp className="w-3 h-3 mr-1" />
+      ) : isNoBet ? (
+        <Minus className="w-3 h-3 mr-1" />
       ) : (
-        <TrendingDown className="w-4 h-4 mr-1" />
+        <TrendingDown className="w-3 h-3 mr-1" />
       )}
       {up}
     </Badge>
