@@ -43,16 +43,16 @@ export function StatCard({
   sub?: string;
 }) {
   return (
-    <Card className="bg-card/60 border-border/40">
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
+    <Card className="bg-card/50 border-border/30 hover-lift">
+      <CardContent className="p-3.5">
+        <div className="flex items-center justify-between mb-1.5">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">
             {title}
           </span>
-          <div className={`${color}`}>{icon}</div>
+          <div className={`${color} opacity-80`}>{icon}</div>
         </div>
-        <p className="text-2xl font-black">{value}</p>
-        {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
+        <p className="text-2xl font-black tracking-tight">{value}</p>
+        {sub && <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{sub}</p>}
       </CardContent>
     </Card>
   );

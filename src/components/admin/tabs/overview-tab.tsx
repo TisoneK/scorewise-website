@@ -208,12 +208,10 @@ export function OverviewTab({
                 ))}
               </div>
             ) : preds.length === 0 ? (
-              <div className="text-center py-8">
-                <Database className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No predictions yet</p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Run a scrape to populate the pipeline
-                </p>
+              <div className="empty-state py-12">
+                <Database className="empty-state-icon" />
+                <p className="empty-state-title">No predictions yet</p>
+                <p className="empty-state-subtitle">Run a scrape to populate the pipeline</p>
               </div>
             ) : (
               <Table>

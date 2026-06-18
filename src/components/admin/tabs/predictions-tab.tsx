@@ -27,6 +27,7 @@ import {
   CheckCircle2,
   XCircle,
   ChevronRight,
+  Database,
 } from "lucide-react";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import { ConfidenceBadge, RecommendationBadge } from "../badges";
@@ -133,9 +134,13 @@ export function PredictionsTab({
                   <TableRow>
                     <TableCell
                       colSpan={8}
-                      className="text-center py-8 text-muted-foreground"
+                      className="py-12"
                     >
-                      No predictions available
+                      <div className="empty-state">
+                        <Database className="empty-state-icon" />
+                        <p className="empty-state-title">No predictions available</p>
+                        <p className="empty-state-subtitle">Run a scrape from the Services tab to generate predictions</p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (

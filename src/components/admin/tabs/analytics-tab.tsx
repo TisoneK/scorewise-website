@@ -177,6 +177,16 @@ export function AnalyticsTab({
 
   return (
     <>
+      {totalPreds === 0 ? (
+        <div className="empty-state py-20">
+          <BarChart2 className="empty-state-icon" style={{ width: '3rem', height: '3rem' }} />
+          <p className="empty-state-title" style={{ fontSize: '1rem' }}>No analytics data yet</p>
+          <p className="empty-state-subtitle">
+            Run a scrape from the Services tab to generate predictions and analytics
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold">Prediction Analytics</h2>
@@ -509,6 +519,8 @@ export function AnalyticsTab({
             </ScrollArea>
           </CardContent>
         </Card>
+      )}
+        </>
       )}
     </>
   );
