@@ -64,7 +64,55 @@ export function renderLogDetails(
     return `Changed ${details.targetEmail || ""}: ${details.oldRole || ""} → ${details.newRole || ""}`;
   if (action === "SERVICE_CHECK")
     return `Checked ${details.url || "service"}`;
-  if (action === "SERVICE_TRIGGER")
-    return `Triggered: ${details.operation || "unknown"}`;
+  if (action === "SERVICE_TRIGGER") {
+    const op = details.operation || "unknown";
+    if (op === "scrape_results") {
+      return `Triggered results scrape for ${details.date || "today"}`;
+    }
+    if (op === "manual_scrape") {
+      return `Triggered match scrape for ${details.day || "Today"}`;
+    }
+    return `Triggered: ${op}`;
+  }
+  if (action === "RESULT_UPDATE") {
+    const home = details.homeTeam as string;
+    const away = details.awayTeam as string;
+    const homeScore = details.homeScore as number | null;
+    const awayScore = details.awayScore as number | null;
+    const status = details.resultStatus as string;
+    const source = details.resultSource as string;
+    const scoreStr = (homeScore != null && awayScore != null) ? `${homeScore}-${awayScore}` : "no score";
+    return `${home} vs ${away}: ${scoreStr} (${status}, ${source})`;
+  }
+  if (action === "BET_CODE_UPDATE") {
+    const home = details.homeTeam as string;
+    const away = details.awayTeam as string;
+    const code = details.betCode as string | null;
+    return `${home} vs ${away}: ${code ? `code "${code}"` : "cleared"}`;
+  }
+  if (action === "SCRAPER_RESULTS_PUSH") {
+    const date = details.date as string | null;
+    const stored = details.stored as number;
+    const skipped = details.skipped as number;
+    const errors = details.errors as number;
+    return `${date || "today"}: ${stored} stored, ${skipped} skipped, ${errors} errors`;
+  }
+  if (action === "ENGINE_PREDICTIONS_UPDATED") {
+    const total = details.total as number;
+    const stored = details.stored_new as number;
+    const updated = details.updated_existing as number;
+    return `${total} total (${stored} new, ${updated} updated)`;
+  }
+  if (action === "ENGINE_INGEST_COMPLETE") {
+    const total = details.total as number;
+    const succeeded = details.succeeded as number;
+    const failed = details.failed as number;
+    return `${succeeded}/${total} succeeded, ${failed} failed`;
+  }
+  if (action === "CONFIG_PUSH") {
+    const pushed = details.pushed as unknown[];
+    const failed = details.failed as unknown[];
+    return `Pushed ${pushed?.length || 0} key(s), ${failed?.length || 0} failed`;
+  }
   return JSON.stringify(details);
 }

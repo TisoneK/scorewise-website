@@ -35,6 +35,7 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  DownloadCloud,
 } from "lucide-react";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import {
@@ -130,6 +131,8 @@ export function ResultsTab() {
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [savingAll, setSavingAll] = useState(false);
   const [batchMsg, setBatchMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [scraping, setScraping] = useState(false);
+  const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const tzAbbr = getTimezoneAbbr();
 
   const fetchPredictions = useCallback(async () => {
@@ -242,6 +245,61 @@ export function ResultsTab() {
     setTimeout(() => setBatchMsg(null), 5000);
   };
 
+  /**
+   * Trigger the scraper to fetch final scores for today's matches.
+   *
+   * Calls POST /api/admin/scraper/results which proxies to the scraper's
+   * POST /api/scrape/results endpoint. The scraper:
+   *   1. Loads match IDs from matches_{date}.json
+   *   2. For each match, navigates to its Flashscore summary page
+   *   3. Skips matches that aren't "finished" yet
+   *   4. Extracts final scores (home + away)
+   *   5. Pushes the results to /api/webhook/result on this website
+   *      (HMAC-signed with WEBHOOK_SECRET)
+   *
+   * The webhook receiver updates the Prediction table with result_status = FINAL,
+   * result_source = "scraper". This component auto-refreshes to show the new
+   * results within a few seconds.
+   *
+   * The scrape takes ~30s-2min depending on how many matches are finished.
+   * The button shows a spinner during the scrape.
+   */
+  const triggerResultsScrape = async () => {
+    setScraping(true);
+    setScrapeMsg(null);
+    try {
+      // Use today's date in DD.MM.YYYY format (matches the scraper's file naming)
+      const today = new Date();
+      const dateStr = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
+      setScrapeMsg({ kind: "ok", text: `Triggering scraper for ${dateStr}... this takes 30s-2min.` });
+
+      const res = await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: "scrape_results",
+          date: dateStr,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || json.message || `HTTP ${res.status}`);
+
+      setScrapeMsg({
+        kind: "ok",
+        text: `Scraper triggered. It'll push final scores here automatically when done — refresh in ~1 min.`,
+      });
+      // Auto-refresh predictions after a delay to pick up scraper-pushed results
+      setTimeout(() => {
+        fetchPredictions();
+      }, 60000);
+    } catch (e) {
+      setScrapeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setScraping(false);
+      setTimeout(() => setScrapeMsg(null), 8000);
+    }
+  };
+
   // Group predictions by category (live / awaiting / upcoming / final / other)
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
@@ -320,6 +378,17 @@ export function ResultsTab() {
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={triggerResultsScrape}
+                disabled={scraping}
+                className="gap-1.5 h-8 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
+                title="Trigger the scraper to fetch final scores from Flashscore for today's matches. Results are pushed back automatically when done."
+              >
+                {scraping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{scraping ? "Scraping..." : "Scrape Results"}</span>
+              </Button>
+              <Button
                 size="sm"
                 onClick={saveAll}
                 disabled={savingAll || dirtyCount === 0}
@@ -330,6 +399,14 @@ export function ResultsTab() {
               </Button>
             </div>
           </div>
+
+          {/* Scrape message */}
+          {scrapeMsg && (
+            <div className={`text-xs flex items-center gap-1.5 ${scrapeMsg.kind === "ok" ? "text-neon-cyan" : "text-neon-red"}`}>
+              {scrapeMsg.kind === "ok" ? <DownloadCloud className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+              {scrapeMsg.text}
+            </div>
+          )}
 
           {/* Stats badges */}
           <div className="flex items-center gap-2 flex-wrap text-[10px]">

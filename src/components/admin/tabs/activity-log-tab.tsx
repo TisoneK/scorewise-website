@@ -36,6 +36,10 @@ import {
   Settings,
   Users,
   Server,
+  Trophy,
+  Ticket,
+  DownloadCloud,
+  Database,
   Activity as ActivityIcon,
 } from "lucide-react";
 import type { ActivityLogEntry } from "@/lib/types";
@@ -49,6 +53,14 @@ function actionIcon(action: string): React.ReactNode {
     return <Users className="w-4 h-4 text-neon-yellow" />;
   if (action.startsWith("SERVICE_"))
     return <Server className="w-4 h-4 text-neon-green" />;
+  if (action === "RESULT_UPDATE")
+    return <Trophy className="w-4 h-4 text-neon-green" />;
+  if (action === "BET_CODE_UPDATE")
+    return <Ticket className="w-4 h-4 text-neon-cyan" />;
+  if (action === "SCRAPER_RESULTS_PUSH")
+    return <DownloadCloud className="w-4 h-4 text-neon-cyan" />;
+  if (action === "ENGINE_PREDICTIONS_UPDATED" || action === "ENGINE_INGEST_COMPLETE")
+    return <Database className="w-4 h-4 text-neon-green" />;
   return <ActivityIcon className="w-4 h-4 text-muted-foreground" />;
 }
 

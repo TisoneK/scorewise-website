@@ -6,28 +6,87 @@ import { db } from "@/lib/db-libsql";
 
 export const dynamic = 'force-dynamic';
 
-// POST /api/admin/scraper — Trigger a manual scrape run (admin only)
+// POST /api/admin/scraper — Trigger a manual scrape run (admin + operator)
+//
+// Supported operations:
+//   { day: "Today" | "Tomorrow" }                     — scrape scheduled matches
+//   { operation: "scrape_results", date: "DD.MM.YYYY" } — scrape final scores for a date
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Unauthorized — admin access required" }, { status: 401 });
+    const role = (session?.user as { role?: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Unauthorized — admin or operator access required" }, { status: 401 });
     }
 
     const body = await request.json().catch(() => ({}));
-    const day = body.day || "Today";
-
-    if (!["Today", "Tomorrow"].includes(day)) {
-      return NextResponse.json({ error: "day must be 'Today' or 'Tomorrow'" }, { status: 400 });
-    }
 
     const scraperUrl = await getScraperUrl();
     const scraperApiKey = await getScraperApiKey();
 
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (scraperApiKey) headers["X-API-Key"] = scraperApiKey;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (scraperApiKey) headers["X-API-Key"] = scraperApiKey;
 
+    // ── Branch 1: results scrape ─────────────────────────────────────────
+    // Triggered by the Results tab's "Scrape Results" button.
+    // Proxies to the scraper's POST /api/scrape/results endpoint.
+    // The scraper then pushes final scores back via /api/webhook/result.
+    if (body.operation === "scrape_results") {
+      const date = body.date;
+      if (!date || typeof date !== "string") {
+        return NextResponse.json({ error: "date is required (DD.MM.YYYY format)" }, { status: 400 });
+      }
+
+      try {
+        const res = await fetch(`${scraperUrl}/api/scrape/results`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ date }),
+          signal: AbortSignal.timeout(15000),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          return NextResponse.json({
+            status: "error",
+            message: data.detail || data.message || `Scraper returned ${res.status}`,
+          }, { status: res.status });
+        }
+
+        // Log the action
+        await db.activityLog.create({
+          data: {
+            userId: (session.user as { id: string }).id,
+            action: "SERVICE_TRIGGER",
+            service: "scraper",
+            details: JSON.stringify({ operation: "scrape_results", date, scrape_id: data.scrape_id }),
+          },
+        });
+
+        return NextResponse.json({
+          status: "triggered",
+          message: data.message || `Results scrape started for ${date}`,
+          run_id: data.scrape_id || data.run_id,
+          date,
+          operation: "scrape_results",
+        });
+      } catch (fetchError) {
+        return NextResponse.json({
+          status: "offline",
+          message: `Could not reach scraper at ${scraperUrl}. The scraper API server may not be running or the URL is incorrect.`,
+          url: scraperUrl,
+        });
+      }
+    }
+
+    // ── Branch 2: scheduled-match scrape (default) ──────────────────────
+    const day = body.day || "Today";
+    if (!["Today", "Tomorrow"].includes(day)) {
+      return NextResponse.json({ error: "day must be 'Today' or 'Tomorrow', or operation must be 'scrape_results'" }, { status: 400 });
+    }
+
+    try {
       const res = await fetch(`${scraperUrl}/api/scrape`, {
         method: "POST",
         headers,
