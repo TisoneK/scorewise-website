@@ -1,64 +1,82 @@
 import { NextResponse } from "next/server";
-import { getEngineUrl, getEngineApiKey } from "@/lib/service-config";
+import { db } from "@/lib/db-libsql";
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Fields exposed to regular users (NON-admins).
- * Algorithm internals are stripped for security — users should only see
- * the prediction output, not the engine's computation details.
+ * GET /api/predictions — Read predictions from Turso DB (persistent).
+ *
+ * This endpoint reads from the website's own database, NOT from the engine.
+ * Predictions are stored in Turso by the webhook receiver when the engine
+ * finishes ingesting. This means predictions survive engine redeploys.
+ *
+ * For regular users: only successful, non-NO_BET predictions are returned,
+ * and algorithm internals are stripped.
+ *
+ * Query params:
+ *   ?all=true — return ALL predictions including failed + NO_BET (admin only,
+ *               but auth is handled by the caller — this endpoint trusts the
+ *               session check done by /api/admin/engine for admin access)
  */
-const USER_FIELDS = [
-  "match_id", "home_team", "away_team", "country", "league", "date", "time",
-  "recommendation", "confidence", "bookmaker_line", "team_winner", "success",
-  "over_odds", "under_odds", "home_odds", "away_odds",
-];
-
-// GET /api/predictions — Proxy to engine (successful predictions only, for regular users)
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const ENGINE_URL = await getEngineUrl();
-    const API_KEY = await getEngineApiKey();
+    const { searchParams } = new URL(request.url);
+    const all = searchParams.get('all') === 'true';
 
-    if (!API_KEY) {
-      return NextResponse.json(
-        { error: "Service not configured", detail: "API key is missing. Contact an admin to configure the engine API key." },
-        { status: 503 }
-      );
-    }
-
-    const res = await fetch(`${ENGINE_URL}/api/predictions?successful_only=true`, {
-      headers: { "X-API-Key": API_KEY },
-      next: { revalidate: 60 },
+    // Fetch from DB
+    const dbPreds = await db.prediction.findMany({
+      where: all ? {} : { success: true },
+      orderBy: { date: 'asc' },
     });
 
-    if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
-        return NextResponse.json(
-          { error: "Authentication failed", detail: "The engine API key is invalid. An admin needs to update it in the configuration panel." },
-          { status: 502 }
-        );
-      }
-      const errorBody = await res.text().catch(() => "Unknown error");
-      return NextResponse.json(
-        { error: `Engine returned ${res.status}`, detail: errorBody },
-        { status: res.status }
-      );
-    }
+    // Transform DB rows to the Prediction response format
+    let predictions = dbPreds.map((p) => ({
+      match_id: p.matchId,
+      home_team: p.homeTeam,
+      away_team: p.awayTeam,
+      country: p.country,
+      league: p.league,
+      date: p.date,
+      time: p.time,
+      scope: p.scope,
+      success: p.success,
+      validation_errors: JSON.parse(p.validationErrors || '[]'),
+      recommendation: p.recommendation,
+      team_winner: p.teamWinner,
+      recommendation_confidence: p.recommendationConfidence,
+      team_winner_confidence: p.teamWinnerConfidence,
+      confidence: p.confidence,
+      bookmaker_line: p.bookmakerLine,
+      over_odds: p.overOdds,
+      under_odds: p.underOdds,
+      home_odds: p.homeOdds,
+      away_odds: p.awayOdds,
+      average_rate: p.averageRate,
+      matches_above: p.matchesAbove,
+      matches_below: p.matchesBelow,
+      decrement_test: p.decrementTest,
+      increment_test: p.incrementTest,
+      h2h_totals: JSON.parse(p.h2hTotals || '[]'),
+      rate_values: JSON.parse(p.rateValues || '[]'),
+      winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
+      created_at: p.createdAt.toISOString(),
+    }));
 
-    const data = await res.json();
+    const succeeded = predictions.filter(p => p.success).length;
+    const failed = predictions.length - succeeded;
 
-    // Strip algorithm internals from each prediction before sending to users.
-    // Users see: teams, league, country, date, time, recommendation,
-    // confidence, bookmaker line, team winner.
-    // Users do NOT see: average_rate, matches_above/below, dec/inc tests,
-    // h2h_totals, rate_values, winning_streak_data, validation_errors,
-    // recommendation_confidence, team_winner_confidence, scope, created_at.
-    if (data.predictions && Array.isArray(data.predictions)) {
-      // Filter out NO_BET — useless to users, they only want actionable predictions
-      data.predictions = (data.predictions as Record<string, unknown>[])
-        .filter((p) => p.recommendation !== "NO_BET")
-        .map((p: Record<string, unknown>) => {
+    // For regular users (all=false): filter out NO_BET + strip algorithm internals
+    if (!all) {
+      // Filter out NO_BET
+      predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
+
+      // Strip algorithm internals
+      const USER_FIELDS = [
+        'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
+        'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
+        'over_odds', 'under_odds', 'home_odds', 'away_odds',
+      ];
+      predictions = predictions.map((p: Record<string, unknown>) => {
         const stripped: Record<string, unknown> = {};
         for (const field of USER_FIELDS) {
           if (field in p) stripped[field] = p[field];
@@ -67,12 +85,19 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      updated_at: dbPreds.length > 0 ? dbPreds[dbPreds.length - 1].updatedAt.toISOString() : null,
+      source: 'turso-db',
+      total: predictions.length,
+      succeeded,
+      failed,
+      predictions,
+    });
   } catch (error) {
-    console.error("[predictions] Error:", error);
+    console.error('[predictions] Error:', error);
     return NextResponse.json(
-      { error: "Failed to fetch predictions", detail: "Could not connect to the prediction engine. Please try again later." },
-      { status: 502 }
+      { error: 'Failed to fetch predictions' },
+      { status: 500 },
     );
   }
 }

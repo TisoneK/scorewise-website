@@ -286,4 +286,68 @@ export const db = {
       return Number((rs.rows[0] as any).count)
     },
   },
+
+  prediction: {
+    async findUnique({ where, select }: { where: { matchId?: string; id?: string }; select?: Record<string, boolean> }) {
+      let sql = "SELECT * FROM Prediction WHERE "
+      const args: any[] = []
+      if (where.matchId) { sql += "matchId = ?"; args.push(where.matchId) }
+      else if (where.id) { sql += "id = ?"; args.push(where.id) }
+      else return null
+      sql += " LIMIT 1"
+      const rs = await getClient().execute(sql, args)
+      return row<any>(rs)
+    },
+    async findMany({ where, orderBy, select }: { where?: Record<string, unknown>; orderBy?: Record<string, string>; select?: Record<string, boolean> }) {
+      let sql = "SELECT * FROM Prediction"
+      const w: string[] = []
+      const args: any[] = []
+      if (where) {
+        for (const [key, value] of Object.entries(where)) {
+          if (value !== undefined && value !== null && value !== "") {
+            w.push(`${key} = ?`)
+            args.push(value)
+          }
+        }
+        if (w.length) sql += " WHERE " + w.join(" AND ")
+      }
+      if (orderBy) {
+        const cols = Object.entries(orderBy).map(([k, v]) => `${k} ${v}`)
+        if (cols.length) sql += " ORDER BY " + cols.join(", ")
+      }
+      const rs = await getClient().execute(sql, args)
+      return rows<any>(rs)
+    },
+    async create({ data }: { data: Record<string, unknown> }) {
+      const keys = Object.keys(data)
+      const vals = keys.map(k => data[k])
+      const sql = `INSERT INTO Prediction (${keys.join(", ")}) VALUES (${keys.map(() => "?").join(", ")})`
+      await getClient().execute(sql, vals as any[])
+      return data
+    },
+    async update({ where, data }: { where: { matchId: string }; data: Record<string, unknown> }) {
+      const sets = Object.entries(data).map(([k, _]) => `${k} = ?`)
+      const vals = Object.values(data)
+      vals.push(where.matchId)
+      const sql = `UPDATE Prediction SET ${sets.join(", ")} WHERE matchId = ?`
+      await getClient().execute(sql, vals as any[])
+      return data
+    },
+    async count({ where }: { where?: Record<string, unknown> }) {
+      let sql = "SELECT COUNT(*) as count FROM Prediction"
+      const w: string[] = []
+      const args: any[] = []
+      if (where) {
+        for (const [key, value] of Object.entries(where)) {
+          if (value !== undefined && value !== null && value !== "") {
+            w.push(`${key} = ?`)
+            args.push(value)
+          }
+        }
+        if (w.length) sql += " WHERE " + w.join(" AND ")
+      }
+      const rs = await getClient().execute(sql, args)
+      return Number((rs.rows[0] as any).count)
+    },
+  },
 }
