@@ -54,7 +54,10 @@ export async function GET() {
     // h2h_totals, rate_values, winning_streak_data, validation_errors,
     // recommendation_confidence, team_winner_confidence, scope, created_at.
     if (data.predictions && Array.isArray(data.predictions)) {
-      data.predictions = data.predictions.map((p: Record<string, unknown>) => {
+      // Filter out NO_BET — useless to users, they only want actionable predictions
+      data.predictions = (data.predictions as Record<string, unknown>[])
+        .filter((p) => p.recommendation !== "NO_BET")
+        .map((p: Record<string, unknown>) => {
         const stripped: Record<string, unknown> = {};
         for (const field of USER_FIELDS) {
           if (field in p) stripped[field] = p[field];

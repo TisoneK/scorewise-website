@@ -151,7 +151,6 @@ export function UserPredictionsView() {
                 <SelectItem value="ALL">All Types</SelectItem>
                 <SelectItem value="OVER">OVER</SelectItem>
                 <SelectItem value="UNDER">UNDER</SelectItem>
-                <SelectItem value="NO_BET">NO_BET</SelectItem>
               </SelectContent>
             </Select>
           </div>
