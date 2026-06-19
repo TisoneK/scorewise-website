@@ -235,7 +235,7 @@ export function UsersTab({
 
       <Card className="bg-card/60 border-border/40">
         <CardContent className="p-0">
-          <Table>
+          <div className="overflow-x-auto"><Table>
             <TableHeader>
               <TableRow className="border-border/40 hover:bg-transparent">
                 <TableHead className="text-xs">Email</TableHead>
@@ -368,7 +368,7 @@ export function UsersTab({
                 ))
               )}
             </TableBody>
-          </Table>
+          </Table></div>
         </CardContent>
       </Card>
 
@@ -378,7 +378,7 @@ export function UsersTab({
             <CardTitle className="text-sm font-semibold">Role Permissions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-background/50 rounded-lg p-4 space-y-2">
                 <div className="flex items-center gap-2">
                   <Shield className="w-5 h-5 text-neon-green" />

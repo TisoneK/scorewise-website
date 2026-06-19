@@ -148,7 +148,7 @@ export function ServicesTab({
         </Button>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Scraper card — full-width on mobile, half on desktop */}
         <Card className="bg-card/60 border-border/40">
           <CardHeader className="pb-3">

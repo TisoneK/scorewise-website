@@ -94,7 +94,7 @@ export function OverviewTab({
   return (
     <>
       {/* Row 1: 6 KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <StatCard
           title="Total Predictions"
           value={totalPreds}
@@ -146,7 +146,7 @@ export function OverviewTab({
       </div>
 
       {/* Row 2: Live Event Feed + Service Health cards */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <LiveEventFeed events={feedEvents} loading={feedLoading} />
         <div className="space-y-3">
           <ServiceHealthCard

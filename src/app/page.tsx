@@ -804,7 +804,7 @@ function AdminDashboard() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border/40 bg-card/60 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-neon-green/10 border border-neon-green/20">
               <BasketballIcon className="w-4 h-4 text-neon-green" />
@@ -816,50 +816,52 @@ function AdminDashboard() {
           </div>
           <div className="flex items-center gap-1.5">
             <Button variant="ghost" size="sm" onClick={() => { fetchAllPredictions(); fetchServiceStatus(); if (isAdmin) { fetchConfigs(); fetchLogs(); } }} className="gap-1.5 text-muted-foreground hover:text-foreground">
-              <RefreshCw className="w-3.5 h-3.5" />Refresh All
+              <RefreshCw className="w-3.5 h-3.5" /><span className="hidden sm:inline">Refresh</span>
             </Button>
             <Button variant="ghost" size="sm" onClick={() => signOut()} className="gap-1.5 text-muted-foreground hover:text-foreground">
-              <LogOut className="w-4 h-4" />Sign Out
+              <LogOut className="w-4 h-4" /><span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-6 w-full">
+      <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6 w-full">
         <Tabs defaultValue="overview" className="space-y-6">
           <div className="overflow-x-auto">
-            <TabsList className="bg-card/40 border border-border/30 p-1 h-auto flex-wrap gap-0.5 inline-flex">
-              <TabsTrigger value="overview" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+            <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 pb-1">
+            <TabsList className="bg-card/40 border border-border/30 p-1 h-auto flex-nowrap gap-0.5 inline-flex">
+              <TabsTrigger value="overview" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <Gauge className="w-3.5 h-3.5" />Overview
               </TabsTrigger>
-              <TabsTrigger value="predictions" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+              <TabsTrigger value="predictions" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <Database className="w-3.5 h-3.5" />Predictions
               </TabsTrigger>
-              <TabsTrigger value="analytics" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+              <TabsTrigger value="analytics" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <BarChart3 className="w-3.5 h-3.5" />Analytics
               </TabsTrigger>
-              <TabsTrigger value="services" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+              <TabsTrigger value="services" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <Server className="w-3.5 h-3.5" />Services
               </TabsTrigger>
               {isAdmin && (
-                <TabsTrigger value="configuration" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md">
-                  <Settings className="w-3.5 h-3.5" />Configuration
+                <TabsTrigger value="configuration" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap">
+                  <Settings className="w-3.5 h-3.5" />Config
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow rounded-md">
-                <FileText className="w-3.5 h-3.5" />Activity Log
+              <TabsTrigger value="logs" className="gap-1 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow rounded-md whitespace-nowrap">
+                <FileText className="w-3.5 h-3.5" />Activity
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="service-logs" className="gap-1.5 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md">
-                <Terminal className="w-3.5 h-3.5" />Service Logs
+              <TabsTrigger value="service-logs" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap">
+                <Terminal className="w-3.5 h-3.5" />Logs
               </TabsTrigger>
             )}
-            <TabsTrigger value="users" className="gap-1.5 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md">
+            <TabsTrigger value="users" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
               <Users className="w-3.5 h-3.5" />Users
             </TabsTrigger>
           </TabsList>
+          </div>
           </div>
 
           {/* ============ OVERVIEW TAB ============ */}

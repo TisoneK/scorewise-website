@@ -147,7 +147,7 @@ export function ActivityLogTab({
             </div>
           ) : (
             <ScrollArea className="max-h-[600px]">
-              <Table>
+              <div className="overflow-x-auto"><Table>
                 <TableHeader>
                   <TableRow className="border-border/40 hover:bg-transparent">
                     <TableHead className="text-xs w-[40px]">Type</TableHead>
@@ -207,7 +207,7 @@ export function ActivityLogTab({
                     );
                   })}
                 </TableBody>
-              </Table>
+              </Table></div>
             </ScrollArea>
           )}
         </CardContent>

@@ -698,7 +698,7 @@ export function ConfigurationTab({
         </CardHeader>
         <CardContent>
           <div className="space-y-3 text-xs text-muted-foreground">
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-background/50 rounded-lg p-3 space-y-2">
                 <div className="flex items-center gap-2 text-neon-cyan font-semibold">
                   <Search className="w-4 h-4" />

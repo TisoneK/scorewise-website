@@ -351,7 +351,7 @@ export function ServiceLogStream({
                         {log.level}
                       </span>
                       <span
-                        className="text-muted-foreground/60 shrink-0 w-[120px] truncate"
+                        className="text-muted-foreground/60 shrink-0 w-[120px] truncate hidden sm:block"
                         title={log.logger}
                       >
                         {log.logger}

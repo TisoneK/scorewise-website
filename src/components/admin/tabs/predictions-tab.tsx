@@ -107,7 +107,7 @@ export function PredictionsTab({
       <Card className="bg-card/60 border-border/40">
         <CardContent className="p-0">
           <ScrollArea className="max-h-[500px]">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow className="border-border/40 hover:bg-transparent">
                   <TableHead className="text-xs">Match</TableHead>
@@ -192,7 +192,7 @@ export function PredictionsTab({
                   ))
                 )}
               </TableBody>
-            </Table>
+            </Table></div>
           </ScrollArea>
         </CardContent>
       </Card>
