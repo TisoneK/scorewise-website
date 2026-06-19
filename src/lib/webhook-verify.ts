@@ -30,22 +30,26 @@ export function getWebhookSecret(): string {
 }
 
 /**
- * Async version — checks env vars first, then falls back to the
- * ServiceConfig table in Turso (managed via the admin Config tab).
+ * Async version — checks the ServiceConfig DB table FIRST (admin-managed
+ * via the Config tab), then falls back to env vars.
  *
- * Use this in route handlers (they're already async).
+ * DB is preferred because:
+ *   - The admin Config tab is the canonical place to manage runtime config
+ *   - Env vars require a Vercel redeploy to change; DB values don't
+ *   - If an admin sets the secret via the UI, that should win
+ *
+ * If DB row is empty/missing, falls back to env vars for backwards compat.
  */
 export async function getWebhookSecretAsync(): Promise<string> {
-  const envSecret = process.env.WEBHOOK_SECRET || process.env.WEBSITE_WEBHOOK_SECRET || "";
-  if (envSecret) return envSecret;
   try {
     const row = await db.serviceConfig.findUnique({
       where: { service_key: { service: "website", key: "webhook_secret" } },
     });
-    return row?.value || "";
+    if (row?.value) return row.value;
   } catch {
-    return "";
+    // DB read failed — fall through to env
   }
+  return process.env.WEBHOOK_SECRET || process.env.WEBSITE_WEBHOOK_SECRET || "";
 }
 
 export function getSignatureHeader(request: Request): string {
