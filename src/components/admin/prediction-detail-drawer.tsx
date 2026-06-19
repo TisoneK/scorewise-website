@@ -312,7 +312,7 @@ export function PredictionDetailDrawer({
                 <FileText className="w-3 h-3" />
                 Raw JSON
               </h3>
-              <pre className="bg-background/50 rounded p-2 border border-border/40 text-[10px] font-mono overflow-x-auto max-h-60 text-muted-foreground">
+              <pre className="bg-background/50 rounded p-2 border border-border/40 text-[10px] font-mono overflow-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-all">
                 {JSON.stringify(prediction, null, 2)}
               </pre>
             </div>
