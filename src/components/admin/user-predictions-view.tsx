@@ -28,7 +28,7 @@ import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
 
 type ConfFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
-type RecFilter = "ALL" | "OVER" | "UNDER" | "NO_BET";
+type RecFilter = "ALL" | "OVER" | "UNDER";
 
 export function UserPredictionsView() {
   const [data, setData] = useState<StoredPredictions | null>(null);
