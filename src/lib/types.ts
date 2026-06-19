@@ -16,6 +16,10 @@ export interface Prediction {
   league?: string;
   date?: string;
   time?: string;
+  over_odds?: number | null;
+  under_odds?: number | null;
+  home_odds?: number | null;
+  away_odds?: number | null;
   scope: string;
   success: boolean;
   validation_errors: string[];

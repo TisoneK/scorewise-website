@@ -1,18 +1,26 @@
 /**
  * PredictionCard — user-facing card showing ONLY what matters to a bettor.
  *
- * Shows: teams, league, country, date, time, prediction (OVER/UNDER/NO_BET),
- * confidence, bookmaker line + odds, and which team wins.
+ * Clean, mobile-first layout:
+ *   ┌──────────────────────────────────────┐
+ *   │ NBL1 NORTH · Australia               │
+ *   │                                      │
+ *   │ Townsville Heat                      │
+ *   │                       20/06 · 10:00  │
+ *   │ Cairns Marlins                       │
+ *   │                                      │
+ *   │ ─────────────────────────────────── │
+ *   │ OVER 186.5  @ 1.85     [HIGH]        │
+ *   │ Winner: Townsville Heat              │
+ *   └──────────────────────────────────────┘
  *
- * Does NOT show: average_rate, matches_above/below, dec/inc tests,
- * h2h_totals, rate_values, winning_streak_data, or any algorithm internals.
- * Those are admin-only data exposed in the PredictionDetailDrawer.
+ * No algorithm internals. No truncation. Full team names.
  */
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, Clock, MapPin, Trophy, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Trophy } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { ConfidenceBadge, RecommendationBadge } from "./badges";
 
@@ -22,92 +30,108 @@ export function PredictionCard({
   prediction: Prediction;
   detailed?: boolean;
 }) {
-  const isOver = p.recommendation?.toUpperCase() === "OVER";
-  const isUnder = p.recommendation?.toUpperCase() === "UNDER";
-  const isNoBet = p.recommendation?.toUpperCase() === "NO_BET";
   const hasWinner = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION";
+  const isOver = p.recommendation?.toUpperCase() === "OVER";
+
+  // Format the prediction line: "OVER 186.5 @ 1.85" or "UNDER 194.5 @ 2.04"
+  const rec = p.recommendation?.toUpperCase() || "";
+  const line = p.bookmaker_line ? p.bookmaker_line.toString() : "";
+  // The engine doesn't currently store over_odds/under_odds on the prediction
+  // output — they come from the input. For now we show the line only.
+  // TODO: pass over_odds/under_odds through the pipeline to the response.
 
   return (
     <Card className="bg-card/80 border-border/50 hover:border-neon-green/20 transition-all duration-200 overflow-hidden">
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-4">
 
-        {/* League + Country badge */}
+        {/* League + Country — top badge row */}
         {(p.league || p.country) && (
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-1.5 mb-3">
             {p.league && (
-              <Badge variant="outline" className="text-[9px] border-border/50 text-muted-foreground">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide truncate">
                 {p.league}
-              </Badge>
+              </span>
+            )}
+            {p.league && p.country && (
+              <span className="text-[10px] text-muted-foreground/40">·</span>
             )}
             {p.country && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                <MapPin className="w-2.5 h-2.5" />{p.country}
+              <span className="text-[10px] text-muted-foreground/70 shrink-0">
+                {p.country}
               </span>
             )}
           </div>
         )}
 
-        {/* Teams + date/time */}
-        <div className="flex items-center justify-between gap-2 mb-4">
-          {/* Home team */}
-          <div className="min-w-0 flex-1 text-left">
-            <p className="font-bold text-sm sm:text-base truncate">{p.home_team || "Home"}</p>
-          </div>
-
-          {/* Center: date/time + VS */}
-          <div className="shrink-0 text-center px-2">
-            {p.date && (
-              <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-0.5">
-                <Calendar className="w-2.5 h-2.5" />{p.date}
-              </p>
+        {/* Teams — stacked vertically, full names, no truncation */}
+        <div className="space-y-0.5 mb-3">
+          <p className="font-bold text-sm sm:text-base leading-tight">
+            {p.home_team || "Home Team"}
+          </p>
+          <div className="flex items-center gap-2 py-0.5">
+            <div className="flex-1 h-px bg-border/30" />
+            {(p.date || p.time) && (
+              <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                {[p.date, p.time].filter(Boolean).join(" · ")}
+              </span>
             )}
-            <p className="text-[10px] text-muted-foreground/50 font-mono">vs</p>
-            {p.time && (
-              <p className="text-[10px] text-muted-foreground flex items-center justify-center gap-0.5">
-                <Clock className="w-2.5 h-2.5" />{p.time}
-              </p>
-            )}
+            <div className="flex-1 h-px bg-border/30" />
           </div>
-
-          {/* Away team */}
-          <div className="min-w-0 flex-1 text-right">
-            <p className="font-bold text-sm sm:text-base truncate">{p.away_team || "Away"}</p>
-          </div>
+          <p className="font-bold text-sm sm:text-base leading-tight">
+            {p.away_team || "Away Team"}
+          </p>
         </div>
 
         {/* Prediction section */}
-        <div className="space-y-2 border-t border-border/30 pt-3">
-          {/* Total points prediction */}
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">Total Points</span>
-            <div className="flex items-center gap-2">
+        <div className="border-t border-border/30 pt-3 space-y-2">
+
+          {/* OVER/UNDER + line + odds + confidence */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <RecommendationBadge rec={p.recommendation} />
-              <ConfidenceBadge level={p.confidence} />
+              {line && (
+                <span className="text-sm font-bold font-mono text-neon-cyan">
+                  {line}
+                </span>
+              )}
+              {/* Show the relevant odds based on the recommendation */}
+              {isOver && p.over_odds && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  @ {p.over_odds}
+                </span>
+              )}
+              {!isOver && p.under_odds && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  @ {p.under_odds}
+                </span>
+              )}
             </div>
+            <ConfidenceBadge level={p.confidence} />
           </div>
 
-          {/* Bookmaker line + odds */}
-          {p.bookmaker_line && (
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Bookmaker Line</span>
-              <span className="text-sm font-bold font-mono text-neon-cyan">
-                {p.bookmaker_line}
-              </span>
-            </div>
-          )}
-
-          {/* Team winner prediction */}
+          {/* Winner prediction + winner odds */}
           {hasWinner && (
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Predicted Winner</span>
-              <Badge variant="outline" className="text-[10px] border-neon-cyan/30 text-neon-cyan">
-                <Trophy className="w-2.5 h-2.5 mr-1" />
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Trophy className="w-3 h-3 text-neon-cyan shrink-0" />
+              <span className="text-xs text-muted-foreground">Winner:</span>
+              <span className="text-xs font-bold text-foreground">
                 {p.team_winner === "HOME_TEAM"
                   ? p.home_team || "Home"
                   : p.away_team || "Away"}
-              </Badge>
+              </span>
+              {p.team_winner === "HOME_TEAM" && p.home_odds && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  @ {p.home_odds}
+                </span>
+              )}
+              {p.team_winner === "AWAY_TEAM" && p.away_odds && (
+                <span className="text-xs font-mono text-muted-foreground">
+                  @ {p.away_odds}
+                </span>
+              )}
             </div>
           )}
+
         </div>
 
       </CardContent>
@@ -118,17 +142,14 @@ export function PredictionCard({
 export function PredictionCardSkeleton() {
   return (
     <Card className="bg-card/80 border-border/50">
-      <CardContent className="p-4 sm:p-5">
+      <CardContent className="p-4">
         <div className="space-y-3">
           <Skeleton className="h-3 w-1/3 bg-muted/50" />
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-5 w-1/3 bg-muted/50" />
-            <Skeleton className="h-3 w-12 bg-muted/50" />
-            <Skeleton className="h-5 w-1/3 bg-muted/50" />
-          </div>
+          <Skeleton className="h-5 w-3/4 bg-muted/50" />
+          <Skeleton className="h-3 w-1/2 bg-muted/50" />
+          <Skeleton className="h-5 w-2/3 bg-muted/50" />
           <div className="border-t border-border/30 pt-3 space-y-2">
-            <Skeleton className="h-5 w-full bg-muted/50" />
-            <Skeleton className="h-5 w-full bg-muted/50" />
+            <Skeleton className="h-6 w-full bg-muted/50" />
           </div>
         </div>
       </CardContent>

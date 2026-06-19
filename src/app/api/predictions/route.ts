@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 const USER_FIELDS = [
   "match_id", "home_team", "away_team", "country", "league", "date", "time",
   "recommendation", "confidence", "bookmaker_line", "team_winner", "success",
+  "over_odds", "under_odds", "home_odds", "away_odds",
 ];
 
 // GET /api/predictions — Proxy to engine (successful predictions only, for regular users)
