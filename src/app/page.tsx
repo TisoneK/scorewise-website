@@ -34,7 +34,7 @@ import {
   Save, Plus, X, EyeOff, TestTube, FileText, Globe, Key, Link, Trophy,
   ChevronDown, ChevronUp, Copy, RotateCcw, ExternalLink, Info, Upload,
   Terminal, Maximize2, Radio, Pause,
-  Activity as ActivityIcon, ArrowRight,
+  Activity as ActivityIcon, ArrowRight, Ticket,
 } from "lucide-react";
 import type { StoredPredictions, Prediction, AppUser, UserRole, ServiceStatus, ServiceConfigEntry, ActivityLogEntry, ServiceName } from "@/lib/types";
 
@@ -63,6 +63,7 @@ import { ConfigurationTab } from "@/components/admin/tabs/configuration-tab";
 import { ActivityLogTab } from "@/components/admin/tabs/activity-log-tab";
 import { ServiceLogsTab } from "@/components/admin/tabs/service-logs-tab";
 import { UsersTab } from "@/components/admin/tabs/users-tab";
+import { BetslipCodesTab } from "@/components/admin/tabs/betslip-codes-tab";
 
 // ===================== CONFIG =====================
 
@@ -91,6 +92,7 @@ function AdminDashboard() {
   const { data: adminSession } = useSession();
   const currentUserRole = (adminSession?.user as { role: string })?.role || "USER";
   const isAdmin = currentUserRole === "ADMIN";
+  const isOperatorOrAbove = currentUserRole === "ADMIN" || currentUserRole === "OPERATOR";
 
   // --- Prediction state ---
   const [allPredictionsData, setAllPredictionsData] = useState<StoredPredictions | null>(null);
@@ -836,6 +838,11 @@ function AdminDashboard() {
               <TabsTrigger value="predictions" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <Database className="w-3.5 h-3.5" />Predictions
               </TabsTrigger>
+              {isOperatorOrAbove && (
+                <TabsTrigger value="betslip-codes" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap">
+                  <Ticket className="w-3.5 h-3.5" />Betslip Codes
+                </TabsTrigger>
+              )}
               <TabsTrigger value="analytics" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <BarChart3 className="w-3.5 h-3.5" />Analytics
               </TabsTrigger>
@@ -898,6 +905,13 @@ function AdminDashboard() {
               setDrawerPrediction={setDrawerPrediction}
             />
           </TabsContent>
+
+          {/* ============ BETSLIP CODES TAB (admin + operator) ============ */}
+          {isOperatorOrAbove && (
+            <TabsContent value="betslip-codes" className="space-y-6">
+              <BetslipCodesTab />
+            </TabsContent>
+          )}
 
           {/* ============ ANALYTICS TAB ============ */}
           <TabsContent value="analytics" className="space-y-6">
