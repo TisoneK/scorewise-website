@@ -54,14 +54,18 @@ export async function GET() {
       h2h_totals: JSON.parse(p.h2hTotals || '[]'),
       rate_values: JSON.parse(p.rateValues || '[]'),
       winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
-      created_at: p.createdAt.toISOString(),
+      created_at: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
     }));
 
     const succeeded = predictions.filter(p => p.success).length;
     const failed = predictions.length - succeeded;
 
     return NextResponse.json({
-      updated_at: dbPreds.length > 0 ? dbPreds[dbPreds.length - 1].updatedAt.toISOString() : null,
+      updated_at: dbPreds.length > 0
+        ? (typeof dbPreds[dbPreds.length - 1].updatedAt === 'string'
+            ? dbPreds[dbPreds.length - 1].updatedAt
+            : new Date(dbPreds[dbPreds.length - 1].updatedAt).toISOString())
+        : null,
       source: 'turso-db',
       total: predictions.length,
       succeeded,
