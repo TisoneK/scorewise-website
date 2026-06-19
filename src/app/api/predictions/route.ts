@@ -3,6 +3,16 @@ import { getEngineUrl, getEngineApiKey } from "@/lib/service-config";
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Fields exposed to regular users (NON-admins).
+ * Algorithm internals are stripped for security — users should only see
+ * the prediction output, not the engine's computation details.
+ */
+const USER_FIELDS = [
+  "match_id", "home_team", "away_team", "country", "league", "date", "time",
+  "recommendation", "confidence", "bookmaker_line", "team_winner", "success",
+];
+
 // GET /api/predictions — Proxy to engine (successful predictions only, for regular users)
 export async function GET() {
   try {
@@ -36,6 +46,23 @@ export async function GET() {
     }
 
     const data = await res.json();
+
+    // Strip algorithm internals from each prediction before sending to users.
+    // Users see: teams, league, country, date, time, recommendation,
+    // confidence, bookmaker line, team winner.
+    // Users do NOT see: average_rate, matches_above/below, dec/inc tests,
+    // h2h_totals, rate_values, winning_streak_data, validation_errors,
+    // recommendation_confidence, team_winner_confidence, scope, created_at.
+    if (data.predictions && Array.isArray(data.predictions)) {
+      data.predictions = data.predictions.map((p: Record<string, unknown>) => {
+        const stripped: Record<string, unknown> = {};
+        for (const field of USER_FIELDS) {
+          if (field in p) stripped[field] = p[field];
+        }
+        return stripped;
+      });
+    }
+
     return NextResponse.json(data);
   } catch (error) {
     console.error("[predictions] Error:", error);
