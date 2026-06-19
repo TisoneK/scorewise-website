@@ -7,7 +7,17 @@ const publicPaths = ["/"];
 
 // API routes that don't require authentication
 // /api/admin/seed is allowed through so it can check if zero admins exist (first-run bootstrap)
-const publicApiPrefixes = ["/api/auth/", "/api/debug", "/api/admin/seed"];
+// /api/webhook/ — engine POSTs HMAC-signed webhooks here (no session cookie).
+//   Authenticity is verified via X-ScoreWise-Signature inside the route handler.
+// /api/predictions/exists — scraper polls this to skip already-scraped matches.
+//   Returns ONLY match_id strings (no prediction data), so it's safe to expose.
+const publicApiPrefixes = [
+  "/api/auth/",
+  "/api/debug",
+  "/api/admin/seed",
+  "/api/webhook/",
+  "/api/predictions/exists",
+];
 
 // Role hierarchy: ADMIN > OPERATOR > USER
 // API route access levels
