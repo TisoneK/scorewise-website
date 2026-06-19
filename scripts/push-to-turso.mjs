@@ -41,8 +41,44 @@ CREATE TABLE IF NOT EXISTS "ActivityLog" (
     CONSTRAINT "ActivityLog_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "Prediction" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "matchId" TEXT NOT NULL,
+    "homeTeam" TEXT NOT NULL DEFAULT '',
+    "awayTeam" TEXT NOT NULL DEFAULT '',
+    "country" TEXT NOT NULL DEFAULT '',
+    "league" TEXT NOT NULL DEFAULT '',
+    "date" TEXT NOT NULL DEFAULT '',
+    "time" TEXT NOT NULL DEFAULT '',
+    "scope" TEXT NOT NULL DEFAULT 'FULL_MATCH',
+    "success" BOOLEAN NOT NULL DEFAULT true,
+    "validationErrors" TEXT NOT NULL DEFAULT '[]',
+    "recommendation" TEXT,
+    "teamWinner" TEXT,
+    "recommendationConfidence" TEXT,
+    "teamWinnerConfidence" TEXT,
+    "confidence" TEXT,
+    "bookmakerLine" REAL,
+    "overOdds" REAL,
+    "underOdds" REAL,
+    "homeOdds" REAL,
+    "awayOdds" REAL,
+    "averageRate" REAL NOT NULL DEFAULT 0,
+    "matchesAbove" INTEGER NOT NULL DEFAULT 0,
+    "matchesBelow" INTEGER NOT NULL DEFAULT 0,
+    "decrementTest" INTEGER NOT NULL DEFAULT 0,
+    "incrementTest" INTEGER NOT NULL DEFAULT 0,
+    "h2hTotals" TEXT NOT NULL DEFAULT '[]',
+    "rateValues" TEXT NOT NULL DEFAULT '[]',
+    "winningStreakData" TEXT,
+    "source" TEXT,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX IF NOT EXISTS "ServiceConfig_service_key_key" ON "ServiceConfig"("service", "key");
+CREATE UNIQUE INDEX IF NOT EXISTS "Prediction_matchId_key" ON "Prediction"("matchId");
 `;
 
 const statements = sql
