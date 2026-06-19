@@ -51,7 +51,7 @@ export function PredictionsTab({
   handleDownloadPredictions,
   setDrawerPrediction,
 }: PredictionsTabProps) {
-  const cols = 14; // total columns for colSpan
+  const cols = 19; // total columns for colSpan
   return (
     <>
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -92,6 +92,10 @@ export function PredictionsTab({
               <TableHeader>
                 <TableRow className="border-border/40 hover:bg-transparent">
                   <TableHead className="text-xs whitespace-nowrap">Match ID</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Date</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Time</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Country</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">League</TableHead>
                   <TableHead className="text-xs whitespace-nowrap">Home Team</TableHead>
                   <TableHead className="text-xs whitespace-nowrap">Away Team</TableHead>
                   <TableHead className="text-xs">Rec</TableHead>
@@ -105,7 +109,6 @@ export function PredictionsTab({
                   <TableHead className="text-xs whitespace-nowrap">Winner</TableHead>
                   <TableHead className="text-xs whitespace-nowrap">H2H</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs whitespace-nowrap">Created</TableHead>
                   <TableHead className="text-xs w-8"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -135,6 +138,10 @@ export function PredictionsTab({
                       onClick={() => setDrawerPrediction(p)}
                     >
                       <TableCell className="font-mono text-xs">{p.match_id.slice(0, 10)}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{p.date || "—"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{p.time || "—"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{p.country || "—"}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">{p.league || "—"}</TableCell>
                       <TableCell className="text-xs font-medium whitespace-nowrap">{p.home_team || "—"}</TableCell>
                       <TableCell className="text-xs font-medium whitespace-nowrap">{p.away_team || "—"}</TableCell>
                       <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
@@ -161,9 +168,6 @@ export function PredictionsTab({
                         ) : (
                           <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
                         )}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}
                       </TableCell>
                       <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
                     </TableRow>

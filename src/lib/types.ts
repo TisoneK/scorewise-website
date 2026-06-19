@@ -12,6 +12,10 @@ export interface Prediction {
   match_id: string;
   home_team?: string;
   away_team?: string;
+  country?: string;
+  league?: string;
+  date?: string;
+  time?: string;
   scope: string;
   success: boolean;
   validation_errors: string[];
