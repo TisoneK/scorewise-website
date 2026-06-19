@@ -3,26 +3,49 @@
  *
  * Verifies the HMAC-SHA256 signature on inbound webhooks from the
  * ScoreWise engine. The engine signs the raw JSON body bytes with
- * WEBHOOK_WEBHOOK_SECRET (shared secret) and sends the hex signature
+ * WEBSITE_WEBHOOK_SECRET (shared secret) and sends the hex signature
  * in the X-ScoreWise-Signature header.
  *
  * The website verifies by recomputing the HMAC over the same body bytes
  * and comparing in constant time (crypto.timingSafeEqual).
  *
- * If WEBHOOK_SECRET is not set on the website, verification always fails —
- * webhooks are rejected until the secret is configured. This is intentional:
- * an unauthenticated webhook endpoint would let anyone invalidate the cache
- * or spam the activity log.
+ * Secret lookup order:
+ *   1. process.env.WEBHOOK_SECRET
+ *   2. process.env.WEBSITE_WEBHOOK_SECRET
+ *   3. ServiceConfig row (service="website", key="webhook_secret") in Turso
+ *
+ * The DB fallback exists so the admin dashboard's Config tab can manage the
+ * secret without requiring a Vercel redeploy. If neither env nor DB has a
+ * secret, all webhooks are rejected (fail-closed).
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { db } from "@/lib/db-libsql";
 
 const SIGNATURE_HEADER = "x-scorewise-signature";
 
 export function getWebhookSecret(): string {
-  // Read fresh each call so config changes don't require a redeploy.
-  // Vercel env vars are read at runtime via process.env.
+  // Sync version — checks env vars only. Kept for backwards compat.
   return process.env.WEBHOOK_SECRET || process.env.WEBSITE_WEBHOOK_SECRET || "";
+}
+
+/**
+ * Async version — checks env vars first, then falls back to the
+ * ServiceConfig table in Turso (managed via the admin Config tab).
+ *
+ * Use this in route handlers (they're already async).
+ */
+export async function getWebhookSecretAsync(): Promise<string> {
+  const envSecret = process.env.WEBHOOK_SECRET || process.env.WEBSITE_WEBHOOK_SECRET || "";
+  if (envSecret) return envSecret;
+  try {
+    const row = await db.serviceConfig.findUnique({
+      where: { service_key: { service: "website", key: "webhook_secret" } },
+    });
+    return row?.value || "";
+  } catch {
+    return "";
+  }
 }
 
 export function getSignatureHeader(request: Request): string {
@@ -73,9 +96,37 @@ export function verifyWebhookSignature(
  * (signature missing, signature mismatch, or secret not configured).
  *
  * On success, callers can trust the body was signed by the engine.
+ *
+ * NOTE: This sync version only checks env vars. For DB-backed secret lookup,
+ * use readAndVerifyWebhookBodyAsync() in route handlers.
  */
 export async function readAndVerifyWebhookBody<T = unknown>(request: Request): Promise<T | null> {
   const secret = getWebhookSecret();
+  if (!secret) {
+    return null;
+  }
+  const signature = getSignatureHeader(request);
+  if (!signature) {
+    return null;
+  }
+  const bodyBytes = new Uint8Array(await request.arrayBuffer());
+  if (!verifyWebhookSignature(bodyBytes, signature, secret)) {
+    return null;
+  }
+  try {
+    return JSON.parse(Buffer.from(bodyBytes).toString("utf-8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Async version that consults both env vars AND the ServiceConfig DB table.
+ * Use this in route handlers — it picks up secrets set via the admin Config
+ * tab without requiring a Vercel redeploy.
+ */
+export async function readAndVerifyWebhookBodyAsync<T = unknown>(request: Request): Promise<T | null> {
+  const secret = await getWebhookSecretAsync();
   if (!secret) {
     return null;
   }
