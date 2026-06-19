@@ -1,10 +1,8 @@
 /**
  * PredictionsTab — the "All Predictions" tab content.
  *
- * Extracted from src/app/page.tsx during Phase C modularization.
- *
- * Shows a full-width table of every prediction (passed + failed) with
- * per-row click → opens PredictionDetailDrawer.
+ * Shows a full-width table of every prediction with ALL available data.
+ * Per-row click → opens PredictionDetailDrawer for the full pipeline breakdown.
  */
 
 "use client";
@@ -12,7 +10,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Table,
   TableBody,
@@ -25,8 +22,6 @@ import {
   RefreshCw,
   Download,
   Loader2,
-  CheckCircle2,
-  XCircle,
   ChevronRight,
   Database,
 } from "lucide-react";
@@ -56,13 +51,14 @@ export function PredictionsTab({
   handleDownloadPredictions,
   setDrawerPrediction,
 }: PredictionsTabProps) {
+  const cols = 14; // total columns for colSpan
   return (
     <>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold">All Predictions</h2>
           <p className="text-sm text-muted-foreground">
-            Complete prediction data including failed validations
+            Complete prediction data — {totalPreds} total, {successCount} processed, {failCount} errors
           </p>
         </div>
         <div className="flex gap-2">
@@ -84,60 +80,46 @@ export function PredictionsTab({
             className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground"
           >
             <Download className="w-3.5 h-3.5" />
-            Export JSON
+            Export
           </Button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
-          <p className="text-xl font-black">{totalPreds}</p>
-          <p className="text-[10px] text-muted-foreground">Total</p>
-        </div>
-        <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
-          <p className="text-xl font-black text-neon-green">{successCount}</p>
-          <p className="text-[10px] text-muted-foreground">Processed</p>
-        </div>
-        <div className="bg-card/60 border border-neon-red/20 rounded-lg px-3 py-2 text-center">
-          <p className="text-xl font-black text-neon-red">{failCount}</p>
-          <p className="text-[10px] text-muted-foreground">Errors</p>
         </div>
       </div>
 
       <Card className="bg-card/60 border-border/40">
         <CardContent className="p-0">
-          <ScrollArea className="max-h-[500px]">
-            <div className="overflow-x-auto"><Table>
+          <div className="overflow-x-auto">
+            <Table>
               <TableHeader>
                 <TableRow className="border-border/40 hover:bg-transparent">
-                  <TableHead className="text-xs">Match</TableHead>
-                  <TableHead className="text-xs">Teams</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Match ID</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Home Team</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Away Team</TableHead>
                   <TableHead className="text-xs">Rec</TableHead>
                   <TableHead className="text-xs">Conf</TableHead>
-                  <TableHead className="text-xs">Line</TableHead>
-                  <TableHead className="text-xs">Winner</TableHead>
-                  <TableHead className="text-xs">Above/Below</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Line</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Avg Rate</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Above</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Below</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Dec Test</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Inc Test</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Winner</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">H2H</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs whitespace-nowrap">Created</TableHead>
                   <TableHead className="text-xs w-8"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingPred ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className="text-center py-8 text-muted-foreground"
-                    >
+                    <TableCell colSpan={cols + 2} className="text-center py-8 text-muted-foreground">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
                       Loading...
                     </TableCell>
                   </TableRow>
                 ) : preds.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className="py-12"
-                    >
+                    <TableCell colSpan={cols + 2} className="py-12">
                       <div className="empty-state">
                         <Database className="empty-state-icon" />
                         <p className="empty-state-title">No predictions available</p>
@@ -152,31 +134,26 @@ export function PredictionsTab({
                       className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
                       onClick={() => setDrawerPrediction(p)}
                     >
-                      <TableCell className="font-mono text-xs">
-                        {p.match_id.slice(0, 12)}
+                      <TableCell className="font-mono text-xs">{p.match_id.slice(0, 10)}</TableCell>
+                      <TableCell className="text-xs font-medium whitespace-nowrap">{p.home_team || "—"}</TableCell>
+                      <TableCell className="text-xs font-medium whitespace-nowrap">{p.away_team || "—"}</TableCell>
+                      <TableCell><RecommendationBadge rec={p.recommendation} /></TableCell>
+                      <TableCell><ConfidenceBadge level={p.confidence} /></TableCell>
+                      <TableCell className="text-neon-cyan font-mono text-xs">{p.bookmaker_line ?? "—"}</TableCell>
+                      <TableCell className={`font-mono text-xs ${p.average_rate >= 7 ? "text-neon-green" : p.average_rate <= -7 ? "text-neon-red" : "text-muted-foreground"}`}>
+                        {p.average_rate.toFixed(1)}
                       </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="font-medium">{p.home_team || "—"}</div>
-                        <div className="text-muted-foreground">vs {p.away_team || "—"}</div>
-                      </TableCell>
-                      <TableCell>
-                        <RecommendationBadge rec={p.recommendation} />
-                      </TableCell>
-                      <TableCell>
-                        <ConfidenceBadge level={p.confidence} />
-                      </TableCell>
-                      <TableCell className="text-neon-cyan font-mono text-xs">
-                        {p.bookmaker_line ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">
+                      <TableCell className="text-xs text-neon-green font-mono">{p.matches_above}</TableCell>
+                      <TableCell className="text-xs text-neon-red font-mono">{p.matches_below}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">{p.decrement_test}</TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground">{p.increment_test}</TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
                         {p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION"
-                          ? p.team_winner.replace(/_/g, " ")
+                          ? p.team_winner.replace(/_/g, " ").toLowerCase()
                           : "—"}
                       </TableCell>
-                      <TableCell className="text-xs">
-                        <span className="text-neon-green">{p.matches_above}</span>
-                        /
-                        <span className="text-neon-red">{p.matches_below}</span>
+                      <TableCell className="text-xs font-mono text-muted-foreground">
+                        {p.h2h_totals.length > 0 ? `[${p.h2h_totals.join(",")}]` : "—"}
                       </TableCell>
                       <TableCell>
                         {p.success ? (
@@ -185,15 +162,16 @@ export function PredictionsTab({
                           <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}
                       </TableCell>
+                      <TableCell><ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" /></TableCell>
                     </TableRow>
                   ))
                 )}
               </TableBody>
-            </Table></div>
-          </ScrollArea>
+            </Table>
+          </div>
         </CardContent>
       </Card>
     </>

@@ -201,7 +201,7 @@ export function OverviewTab({
           </div>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="max-h-[300px]">
+          <ScrollArea className="max-h-[500px]">
             {loadingPred ? (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
@@ -222,13 +222,15 @@ export function OverviewTab({
                     <TableHead className="text-xs">Teams</TableHead>
                     <TableHead className="text-xs">Rec</TableHead>
                     <TableHead className="text-xs">Conf</TableHead>
-                    <TableHead className="text-xs">Line</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Line</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">Avg Rate</TableHead>
+                    <TableHead className="text-xs whitespace-nowrap">A/B</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs w-8"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preds.slice(0, 15).map((p) => (
+                  {preds.map((p) => (
                     <TableRow
                       key={p.match_id}
                       className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
@@ -247,8 +249,14 @@ export function OverviewTab({
                       <TableCell>
                         <ConfidenceBadge level={p.confidence} />
                       </TableCell>
-                      <TableCell className="text-neon-cyan font-mono text-xs">
+                      <TableCell className="text-neon-cyan font-mono text-xs whitespace-nowrap">
                         {p.bookmaker_line ?? "—"}
+                      </TableCell>
+                      <TableCell className={`font-mono text-xs whitespace-nowrap ${p.average_rate >= 7 ? "text-neon-green" : p.average_rate <= -7 ? "text-neon-red" : "text-muted-foreground"}`}>
+                        {p.average_rate.toFixed(1)}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        <span className="text-neon-green">{p.matches_above}</span>/<span className="text-neon-red">{p.matches_below}</span>
                       </TableCell>
                       <TableCell>
                         {p.success ? (
