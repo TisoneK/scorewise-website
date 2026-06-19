@@ -6,10 +6,18 @@
  * Triggered by clicking any prediction row on the Overview or Predictions tabs.
  * Shows the full 10-step pipeline timeline, numerical inputs, H2H totals,
  * rate values, validation errors, and the raw JSON dump.
+ *
+ * Also includes an editable "Betslip Code" section at the top — admins paste
+ * a Linebet/Paripesa/1xbet booking code here, and it shows up in the footer
+ * of every PredictionCard for that match (with a copy-to-clipboard button).
  */
 
+"use client";
+
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   CheckCircle2,
@@ -28,6 +36,8 @@ import {
   GitBranch,
   Database,
   FileText,
+  Ticket,
+  Save,
 } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
@@ -41,7 +51,41 @@ export function PredictionDetailDrawer({
   prediction: Prediction | null;
   onClose: () => void;
 }) {
+  // Betslip code editor state — must be declared before the early return so
+  // React's hook rules are satisfied (hooks can't be conditional).
+  const [betCodeInput, setBetCodeInput] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // Reset input when the drawer opens to a different prediction.
+  useEffect(() => {
+    setBetCodeInput(prediction?.bet_code || "");
+    setSaveMsg(null);
+  }, [prediction?.match_id, prediction?.bet_code]);
+
   if (!prediction) return null;
+
+  const saveBetCode = async () => {
+    if (!prediction) return;
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const res = await fetch("/api/admin/predictions/bet-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: prediction.match_id, betCode: betCodeInput }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setSaveMsg({ kind: "ok", text: "Saved — users will see this code on the prediction card." });
+      // Optimistically update the local prediction object so the card UI reflects the change immediately.
+      prediction.bet_code = betCodeInput.trim() || null;
+    } catch (e) {
+      setSaveMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const steps = [
     {
@@ -182,6 +226,43 @@ export function PredictionDetailDrawer({
                   <Badge variant="outline" className="text-[9px] border-neon-green/30 text-neon-green">OK</Badge>
                 ) : (
                   <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Betslip Code editor (admin sets the Linebet/Paripesa/1xbet booking code) */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Ticket className="w-3 h-3" />
+                Betslip Code
+              </h3>
+              <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  Paste a booking code from <span className="text-foreground">Linebet</span>, <span className="text-foreground">Paripesa</span>, <span className="text-foreground">1xbet</span>, etc. Users will see it in the footer of the prediction card with a copy button.
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={betCodeInput}
+                    onChange={(e) => setBetCodeInput(e.target.value)}
+                    placeholder="e.g. SD:OP-12345"
+                    className="font-mono text-xs h-8 bg-background"
+                    disabled={saving}
+                  />
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={saveBetCode}
+                    disabled={saving}
+                    className="h-8 gap-1 shrink-0"
+                  >
+                    <Save className="w-3 h-3" />
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                {saveMsg && (
+                  <p className={`text-[10px] ${saveMsg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>
+                    {saveMsg.text}
+                  </p>
                 )}
               </div>
             </div>

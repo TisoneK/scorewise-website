@@ -54,6 +54,7 @@ export async function GET() {
       h2h_totals: JSON.parse(p.h2hTotals || '[]'),
       rate_values: JSON.parse(p.rateValues || '[]'),
       winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
+      bet_code: p.betCode || null,
       created_at: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
     }));
 

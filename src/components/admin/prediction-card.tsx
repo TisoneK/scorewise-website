@@ -1,24 +1,33 @@
+"use client";
+
 /**
  * PredictionCard — unified compact card for both Top Picks and All Predictions.
  *
- * Design (matches the Top Picks card the user liked):
- *   Single horizontal row:
- *     [#badge]  Home vs Away    OVER 187.5 @1.83   ★★★★★ HIGH
+ * Layout (top to bottom):
  *
- *   Optional footer (showLeague / showDateTime):
- *     NBL1 SOUTH · AUSTRALIA  •  Fri, Jun 19 · 14:30 EAT
+ *   ┌─────────────────────────────────────────────────────────────┐
+ *   │ HEADER: NBL1 SOUTH · AUSTRALIA  •  Fri, Jun 19 · 14:30 EAT │  ← league + local time
+ *   ├─────────────────────────────────────────────────────────────┤
+ *   │ [#1]  Mt Gambier vs Kilsyth     UNDER 187.5 @1.83   ★★★★★ │  ← teams + prediction + confidence
+ *   │                                🏆 Mt Gambier @1.67   HIGH  │
+ *   ├─────────────────────────────────────────────────────────────┤
+ *   │ FOOTER: 🎫 SD:OP-12345   [Copy]                            │  ← betslip code + copy button
+ *   └─────────────────────────────────────────────────────────────┘
  *
- * - rank?: number — if provided, shows a green rank badge (for Top Picks).
- * - showLeague?: boolean — show the league/country footer line (default true).
- * - showDateTime?: boolean — show local date/time in the footer (default true).
+ * - rank?: number — if provided, shows a green rank badge (Top Picks only).
+ * - showLeague / showDateTime: optional header controls (default true).
+ * - showBetCode: optional footer control (default true).
+ *
+ * Team names are NOT truncated — they wrap to multiple lines so full names
+ * are always visible (e.g. "Warwick Senators W vs Kalamunda Eastern Suns W").
  *
  * Times are converted from UTC (scraper source) to the viewer's local TZ
- * via src/lib/timezone.ts. A short TZ abbreviation is shown so the user
- * knows what zone they're seeing.
+ * via src/lib/timezone.ts.
  */
 
+import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, Star, Trophy, Calendar } from "lucide-react";
+import { TrendingUp, TrendingDown, Star, Trophy, Calendar, Ticket, Copy, Check } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import {
   parseMatchDateTime,
@@ -39,11 +48,13 @@ export function PredictionCard({
   rank,
   showLeague = true,
   showDateTime = true,
+  showBetCode = true,
 }: {
   prediction: Prediction;
   rank?: number;
   showLeague?: boolean;
   showDateTime?: boolean;
+  showBetCode?: boolean;
 }) {
   const rec = p.recommendation?.toUpperCase() || "";
   const isOver = rec === "OVER";
@@ -80,25 +91,72 @@ export function PredictionCard({
 
   const matchDate = parseMatchDateTime(p.date, p.time);
   const tzAbbr = getTimezoneAbbr();
-
   const leagueBits = [p.league, p.country].filter(Boolean).join(" · ");
-  const showFooter = (showLeague && leagueBits) || (showDateTime && matchDate);
+
+  // Copy-to-clipboard state
+  const [copied, setCopied] = useState(false);
+  const betCode = p.bet_code || null;
+
+  const handleCopy = async () => {
+    if (!betCode) return;
+    try {
+      await navigator.clipboard.writeText(betCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers / non-secure contexts
+      const ta = document.createElement("textarea");
+      ta.value = betCode;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch {}
+      document.body.removeChild(ta);
+    }
+  };
 
   return (
     <div className="rounded-lg bg-card/80 border border-border/40 hover:border-neon-green/20 transition-all overflow-hidden">
-      {/* Main row — compact horizontal layout */}
+
+      {/* HEADER — league + local date/time at the TOP */}
+      {(showLeague && leagueBits) || (showDateTime && matchDate) ? (
+        <div className="px-3 py-1.5 bg-background/40 border-b border-border/20">
+          <p className="text-[10px] text-muted-foreground/70 truncate text-center">
+            {[
+              showLeague && leagueBits,
+              showDateTime && matchDate && (
+                <span key="dt" className="inline-flex items-center gap-1">
+                  <Calendar className="w-2.5 h-2.5 inline" />
+                  {formatLocalDateTime(matchDate)}{" "}
+                  <span className="text-muted-foreground/50">{tzAbbr}</span>
+                </span>
+              ),
+            ]
+              .filter(Boolean)
+              .map((node, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="mx-1.5 text-muted-foreground/30">•</span>}
+                  {node}
+                </span>
+              ))}
+          </p>
+        </div>
+      ) : null}
+
+      {/* MAIN ROW — teams + prediction + confidence */}
       <div className="flex items-center gap-3 p-3">
         {/* Optional rank badge (Top Picks only) */}
         {rank !== undefined && (
-          <div className="shrink-0 w-7 h-7 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center justify-center">
+          <div className="shrink-0 w-7 h-7 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center justify-center self-start mt-0.5">
             <span className="text-xs font-black text-neon-green">{rank}</span>
           </div>
         )}
 
-        {/* Match info + prediction (left/center, flex-1) */}
+        {/* Teams + prediction (flex-1, allows team names to wrap) */}
         <div className="flex-1 min-w-0">
-          {/* Teams */}
-          <p className="font-bold text-xs sm:text-sm leading-tight truncate">
+          {/* Teams — NO truncate, allow wrapping so full names are visible */}
+          <p className="font-bold text-xs sm:text-sm leading-tight break-words">
             {p.home_team || "Home"}{" "}
             <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
             {p.away_team || "Away"}
@@ -130,7 +188,7 @@ export function PredictionCard({
         </div>
 
         {/* Confidence — stars + label (right) */}
-        <div className="shrink-0 text-right">
+        <div className="shrink-0 text-right self-start mt-0.5">
           <div className="flex items-center gap-0.5 justify-end">
             {Array.from({ length: 5 }).map((_, i) => (
               <Star
@@ -149,28 +207,35 @@ export function PredictionCard({
         </div>
       </div>
 
-      {/* Footer — league + local date/time */}
-      {showFooter && (
+      {/* FOOTER — betslip code + copy button at the BOTTOM */}
+      {showBetCode && (
         <div className="px-3 py-1.5 bg-background/40 border-t border-border/20">
-          <p className="text-[10px] text-muted-foreground/70 truncate text-center">
-            {[
-              showLeague && leagueBits,
-              showDateTime && matchDate && (
-                <span key="dt" className="inline-flex items-center gap-1">
-                  <Calendar className="w-2.5 h-2.5 inline" />
-                  {formatLocalDateTime(matchDate)}{" "}
-                  <span className="text-muted-foreground/50">{tzAbbr}</span>
+          {betCode ? (
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="w-full flex items-center justify-center gap-2 group/betcode"
+              aria-label="Copy betslip code"
+            >
+              <Ticket className="w-3 h-3 text-neon-cyan shrink-0" />
+              <span className="text-[11px] font-mono font-bold text-foreground tracking-wide truncate">
+                {betCode}
+              </span>
+              {copied ? (
+                <span className="flex items-center gap-0.5 text-[10px] font-bold text-neon-green shrink-0">
+                  <Check className="w-3 h-3" />Copied
                 </span>
-              ),
-            ]
-              .filter(Boolean)
-              .map((node, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="mx-1.5 text-muted-foreground/30">•</span>}
-                  {node}
+              ) : (
+                <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground group-hover/betcode:text-neon-cyan transition-colors shrink-0">
+                  <Copy className="w-3 h-3" />Copy
                 </span>
-              ))}
-          </p>
+              )}
+            </button>
+          ) : (
+            <p className="text-[10px] text-muted-foreground/40 text-center italic">
+              No betslip code yet
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -180,6 +245,9 @@ export function PredictionCard({
 export function PredictionCardSkeleton() {
   return (
     <div className="rounded-lg bg-card/80 border border-border/40 overflow-hidden">
+      <div className="px-3 py-1.5 bg-background/40 border-b border-border/20">
+        <Skeleton className="h-2 w-2/3 mx-auto bg-muted/40" />
+      </div>
       <div className="flex items-center gap-3 p-3">
         <Skeleton className="w-7 h-7 rounded-full bg-muted/40" />
         <div className="flex-1 space-y-2">
@@ -189,7 +257,7 @@ export function PredictionCardSkeleton() {
         <Skeleton className="h-6 w-16 bg-muted/40" />
       </div>
       <div className="px-3 py-1.5 bg-background/40 border-t border-border/20">
-        <Skeleton className="h-2 w-2/3 mx-auto bg-muted/40" />
+        <Skeleton className="h-2 w-1/3 mx-auto bg-muted/40" />
       </div>
     </div>
   );

@@ -37,6 +37,7 @@ export interface Prediction {
   h2h_totals: number[];
   rate_values: number[];
   winning_streak_data: WinningStreakData | null;
+  bet_code: string | null;
   created_at: string | null;
 }
 

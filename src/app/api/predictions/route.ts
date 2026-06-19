@@ -59,6 +59,7 @@ export async function GET(request: Request) {
       h2h_totals: JSON.parse(p.h2hTotals || '[]'),
       rate_values: JSON.parse(p.rateValues || '[]'),
       winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
+      bet_code: p.betCode || null,
       created_at: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
     }));
 
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
       const USER_FIELDS = [
         'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
         'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
-        'over_odds', 'under_odds', 'home_odds', 'away_odds',
+        'over_odds', 'under_odds', 'home_odds', 'away_odds', 'bet_code',
       ];
       predictions = predictions.map((p: Record<string, unknown>) => {
         const stripped: Record<string, unknown> = {};

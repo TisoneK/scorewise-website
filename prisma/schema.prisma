@@ -71,6 +71,7 @@ model Prediction {
   h2hTotals               String   @default("[]") // JSON array
   rateValues              String   @default("[]") // JSON array
   winningStreakData       String?  // JSON object or null
+  betCode                 String?  // Linebet/Paripesa/1xbet booking code — admin sets manually, users copy to generate betslip
   source                  String?  // "flashscore-scraper"
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt

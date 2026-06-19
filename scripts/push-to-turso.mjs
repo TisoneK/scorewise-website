@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS "Prediction" (
     "h2hTotals" TEXT NOT NULL DEFAULT '[]',
     "rateValues" TEXT NOT NULL DEFAULT '[]',
     "winningStreakData" TEXT,
+    "betCode" TEXT,
     "source" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
