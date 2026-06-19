@@ -22,7 +22,12 @@ const publicApiPrefixes = [
 // Role hierarchy: ADMIN > OPERATOR > USER
 // API route access levels
 const adminOnlyPrefixes = ["/api/admin/config", "/api/admin/seed", "/api/admin/logs"];
-const operatorAndAbovePrefixes = ["/api/admin/users", "/api/admin/scraper", "/api/admin/engine"];
+const operatorAndAbovePrefixes = [
+  "/api/admin/users",
+  "/api/admin/scraper",
+  "/api/admin/engine",
+  "/api/admin/predictions", // bet-code setting — admins + operators (not regular users)
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

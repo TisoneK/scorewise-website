@@ -8,12 +8,13 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/admin/predictions/bet-code
  *
- * Sets the betslip booking code for a prediction. Admin-only.
+ * Sets the betslip booking code for a prediction. Admin + Operator only.
  *
  * The betCode is a short alphanumeric string (e.g. "SD:OP-12345") that
  * users can copy and paste into Linebet/Paripesa/1xbet to generate a
- * pre-populated betslip. These codes are obtained by an admin placing
- * the bet on the bookmaker's site and copying the resulting booking code.
+ * pre-populated betslip. These codes are obtained by an admin or operator
+ * placing the bet on the bookmaker's site and copying the resulting booking
+ * code.
  *
  * Body: { matchId: string, betCode: string }
  *   - matchId: required, identifies the prediction
@@ -24,8 +25,9 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
-      return NextResponse.json({ error: "Admin access required" }, { status: 401 });
+    const role = (session?.user as { role?: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Admin or operator access required" }, { status: 401 });
     }
 
     const body = await request.json();
