@@ -1,28 +1,20 @@
 /**
- * PredictionCard — user-facing card showing ONLY what matters to a bettor.
+ * PredictionCard — clean, modern, betting-app style card.
  *
- * Design based on reference: teams side-by-side with VS in center,
- * league/country at top, prediction + odds below.
- *
- *   ┌──────────────────────────────────────────┐
- *   │ NBL1 NORTH · Australia                    │
- *   │                                          │
- *   │ Townsville Heat    VS    Cairns Marlins   │
- *   │                                          │
- *   │ ─────────────────────────────────────── │
- *   │ [OVER] 186.5 @ 1.85            [HIGH]    │
- *   │ 🏆 Winner: Townsville Heat @ 1.48       │
- *   │                                          │
- *   │ 20/06/2026 · 10:00                       │
- *   └──────────────────────────────────────────┘
+ * Design principles:
+ * - Teams are the HERO — large, bold, full names (no truncation)
+ * - Prediction is the ACTION — colored, prominent
+ * - Odds are inline — "OVER 186.5 @ 1.85" reads naturally
+ * - Winner is secondary but clear
+ * - Date/time is subtle, at the bottom
+ * - Cards have clear visual separation
  */
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Trophy } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 import type { Prediction } from "@/lib/types";
-import { ConfidenceBadge, RecommendationBadge } from "./badges";
 
 export function PredictionCard({
   prediction: p,
@@ -30,120 +22,140 @@ export function PredictionCard({
   prediction: Prediction;
   detailed?: boolean;
 }) {
+  const rec = p.recommendation?.toUpperCase() || "";
+  const isOver = rec === "OVER";
+  const isUnder = rec === "UNDER";
   const hasWinner = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION";
-  const isOver = p.recommendation?.toUpperCase() === "OVER";
-  const line = p.bookmaker_line ? p.bookmaker_line.toString() : "";
+  const winnerName = p.team_winner === "HOME_TEAM"
+    ? p.home_team
+    : p.team_winner === "AWAY_TEAM"
+      ? p.away_team
+      : null;
+  const winnerOdds = p.team_winner === "HOME_TEAM"
+    ? p.home_odds
+    : p.team_winner === "AWAY_TEAM"
+      ? p.away_odds
+      : null;
+
+  // Confidence color
+  const conf = p.confidence?.toUpperCase() || "";
+  const confColor = conf === "HIGH" ? "text-neon-green" : conf === "MEDIUM" ? "text-neon-yellow" : "text-muted-foreground";
+
+  // Prediction accent color
+  const accentColor = isOver ? "text-neon-green" : isUnder ? "text-neon-red" : "text-muted-foreground";
 
   return (
-    <Card className="bg-card/80 border-border/50 hover:border-neon-green/20 transition-all duration-200 overflow-hidden">
-      <CardContent className="p-4">
+    <Card className="bg-card border-border/40 overflow-hidden transition-all duration-200 hover:border-neon-green/20">
+      <CardContent className="p-0">
 
-        {/* League + Country header */}
+        {/* League bar — thin accent strip at top */}
         {(p.league || p.country) && (
-          <div className="flex items-center justify-center gap-1.5 mb-3">
-            {p.league && (
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                {p.league}
-              </span>
-            )}
-            {p.league && p.country && (
-              <span className="text-[10px] text-muted-foreground/40">·</span>
-            )}
-            {p.country && (
-              <span className="text-[10px] text-muted-foreground/70">
-                {p.country}
-              </span>
-            )}
+          <div className="px-4 py-1.5 bg-background/50 border-b border-border/30">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider text-center truncate">
+              {[p.league, p.country].filter(Boolean).join(" · ")}
+            </p>
           </div>
         )}
 
-        {/* Teams — side by side with VS in center (like the reference design) */}
-        <div className="flex items-center justify-between gap-2 mb-3">
-          {/* Home team — left aligned */}
-          <div className="flex-1 min-w-0 text-left">
-            <p className="font-bold text-sm sm:text-base leading-tight break-words">
-              {p.home_team || "Home"}
-            </p>
-          </div>
+        {/* Match section — teams side by side */}
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex items-start justify-between gap-2">
+            {/* Home team */}
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-base sm:text-lg leading-tight break-words">
+                {p.home_team || "Home"}
+              </p>
+            </div>
 
-          {/* VS — center */}
-          <div className="shrink-0 px-1">
-            <span className="text-[10px] font-bold text-muted-foreground/50 tracking-wider">
-              VS
-            </span>
-          </div>
+            {/* VS badge */}
+            <div className="shrink-0 pt-1">
+              <span className="text-[10px] font-black text-muted-foreground/30 tracking-widest">
+                VS
+              </span>
+            </div>
 
-          {/* Away team — right aligned */}
-          <div className="flex-1 min-w-0 text-right">
-            <p className="font-bold text-sm sm:text-base leading-tight break-words">
-              {p.away_team || "Away"}
-            </p>
+            {/* Away team */}
+            <div className="flex-1 min-w-0 text-right">
+              <p className="font-bold text-base sm:text-lg leading-tight break-words">
+                {p.away_team || "Away"}
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Date + Time — centered, below teams */}
-        {(p.date || p.time) && (
-          <div className="text-center mb-3">
-            <span className="text-[10px] text-muted-foreground font-mono">
-              {[p.date, p.time].filter(Boolean).join(" · ")}
-            </span>
-          </div>
-        )}
+        {/* Prediction section — colored band */}
+        <div className="px-4 py-3 border-t border-border/20">
 
-        {/* Divider */}
-        <div className="border-t border-border/30 pt-3 space-y-2">
-
-          {/* Prediction row: OVER/UNDER + line + odds  |  confidence */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <RecommendationBadge rec={p.recommendation} />
-              {line && (
-                <span className="text-sm font-bold font-mono text-neon-cyan">
-                  {line}
+          {/* Main prediction: OVER/UNDER + line + odds */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-2">
+              {/* Prediction badge */}
+              {isOver && (
+                <span className={`flex items-center gap-1 font-bold text-sm ${accentColor}`}>
+                  <TrendingUp className="w-4 h-4" />
+                  OVER
                 </span>
               )}
+              {isUnder && (
+                <span className={`flex items-center gap-1 font-bold text-sm ${accentColor}`}>
+                  <TrendingDown className="w-4 h-4" />
+                  UNDER
+                </span>
+              )}
+
+              {/* Line */}
+              {p.bookmaker_line && (
+                <span className="text-lg font-black font-mono text-neon-cyan">
+                  {p.bookmaker_line}
+                </span>
+              )}
+
+              {/* Odds */}
               {isOver && p.over_odds && (
                 <span className="text-xs font-mono text-muted-foreground">
-                  @ {p.over_odds}
+                  @{p.over_odds}
                 </span>
               )}
-              {!isOver && p.under_odds && (
+              {isUnder && p.under_odds && (
                 <span className="text-xs font-mono text-muted-foreground">
-                  @ {p.under_odds}
+                  @{p.under_odds}
                 </span>
               )}
             </div>
-            <ConfidenceBadge level={p.confidence} />
+
+            {/* Confidence — text only, no badge clutter */}
+            <span className={`text-xs font-bold ${confColor}`}>
+              {conf}
+            </span>
           </div>
 
-          {/* Winner prediction + odds */}
-          {hasWinner && (
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Trophy className="w-3 h-3 text-neon-cyan shrink-0" />
+          {/* Winner prediction */}
+          {hasWinner && winnerName && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Winner:</span>
                 <span className="text-xs font-bold text-foreground">
-                  {p.team_winner === "HOME_TEAM"
-                    ? p.home_team || "Home"
-                    : p.away_team || "Away"}
+                  {winnerName}
                 </span>
-                {p.team_winner === "HOME_TEAM" && p.home_odds && (
+                {winnerOdds && (
                   <span className="text-xs font-mono text-muted-foreground">
-                    @ {p.home_odds}
-                  </span>
-                )}
-                {p.team_winner === "AWAY_TEAM" && p.away_odds && (
-                  <span className="text-xs font-mono text-muted-foreground">
-                    @ {p.away_odds}
+                    @{winnerOdds}
                   </span>
                 )}
               </div>
-              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wide">
-                Predicted Winner
-              </span>
             </div>
           )}
 
         </div>
+
+        {/* Date/time — footer */}
+        {(p.date || p.time) && (
+          <div className="px-4 py-2 bg-background/30 border-t border-border/20">
+            <p className="text-[10px] text-muted-foreground/60 font-mono text-center">
+              {[p.date, p.time].filter(Boolean).join("  ·  ")}
+            </p>
+          </div>
+        )}
 
       </CardContent>
     </Card>
@@ -152,24 +164,23 @@ export function PredictionCard({
 
 export function PredictionCardSkeleton() {
   return (
-    <Card className="bg-card/80 border-border/50">
-      <CardContent className="p-4">
-        <div className="space-y-3">
-          <div className="text-center">
-            <Skeleton className="h-3 w-1/3 mx-auto bg-muted/50" />
+    <Card className="bg-card border-border/40 overflow-hidden">
+      <CardContent className="p-0">
+        <div className="px-4 py-1.5 bg-background/50 border-b border-border/30">
+          <Skeleton className="h-3 w-1/2 mx-auto bg-muted/40" />
+        </div>
+        <div className="px-4 pt-4 pb-2">
+          <div className="flex justify-between">
+            <Skeleton className="h-6 w-1/3 bg-muted/40" />
+            <Skeleton className="h-6 w-1/3 bg-muted/40" />
           </div>
-          <div className="flex items-center justify-between">
-            <Skeleton className="h-5 w-1/3 bg-muted/50" />
-            <Skeleton className="h-3 w-6 bg-muted/50" />
-            <Skeleton className="h-5 w-1/3 bg-muted/50" />
-          </div>
-          <div className="text-center">
-            <Skeleton className="h-3 w-1/4 mx-auto bg-muted/50" />
-          </div>
-          <div className="border-t border-border/30 pt-3 space-y-2">
-            <Skeleton className="h-6 w-full bg-muted/50" />
-            <Skeleton className="h-5 w-3/4 bg-muted/50" />
-          </div>
+        </div>
+        <div className="px-4 py-3 border-t border-border/20">
+          <Skeleton className="h-5 w-2/3 bg-muted/40 mb-2" />
+          <Skeleton className="h-4 w-1/2 bg-muted/40" />
+        </div>
+        <div className="px-4 py-2 bg-background/30 border-t border-border/20">
+          <Skeleton className="h-3 w-1/3 mx-auto bg-muted/40" />
         </div>
       </CardContent>
     </Card>
