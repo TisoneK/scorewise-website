@@ -55,6 +55,13 @@ export async function GET() {
       rate_values: JSON.parse(p.rateValues || '[]'),
       winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
       bet_code: p.betCode || null,
+      home_score: p.homeScore ?? null,
+      away_score: p.awayScore ?? null,
+      result_status: p.resultStatus || null,
+      result_source: p.resultSource || null,
+      result_updated_at: p.resultUpdatedAt
+        ? (typeof p.resultUpdatedAt === 'string' ? p.resultUpdatedAt : new Date(p.resultUpdatedAt).toISOString())
+        : null,
       created_at: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
     }));
 

@@ -27,13 +27,14 @@
 
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TrendingUp, TrendingDown, Star, Trophy, Calendar, Ticket, Copy, Check } from "lucide-react";
+import { TrendingUp, TrendingDown, Star, Trophy, Calendar, Ticket, Copy, Check, Radio } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import {
   parseMatchDateTime,
   formatLocalDateTime,
   getTimezoneAbbr,
 } from "@/lib/timezone";
+import { computeOverUnderOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 
 /** Map a confidence label to a star count (0-5) for the visual rating. */
 function confStars(conf: string): number {
@@ -92,6 +93,14 @@ export function PredictionCard({
   const matchDate = parseMatchDateTime(p.date, p.time);
   const tzAbbr = getTimezoneAbbr();
   const leagueBits = [p.league, p.country].filter(Boolean).join(" · ");
+
+  // Result state — only show on cards where a result exists
+  const resultStatus = p.result_status || null;
+  const isLive = resultStatus === "LIVE";
+  const isFinal = resultStatus === "FINAL";
+  const ouOutcome = computeOverUnderOutcome(p);
+  const winOutcome = computeWinnerOutcome(p);
+  const showResult = isLive || isFinal;
 
   // Copy-to-clipboard state
   const [copied, setCopied] = useState(false);
@@ -185,6 +194,25 @@ export function PredictionCard({
               </span>
             )}
           </div>
+          {/* Result line — shows final score + WIN/LOSS/PUSH outcome when match is finished */}
+          {showResult && p.home_score != null && p.away_score != null && (
+            <div className={`flex items-center gap-1.5 mt-1 text-[11px] font-bold ${isLive ? "text-neon-red" : "text-foreground"}`}>
+              {isLive && <Radio className="w-3 h-3 animate-pulse shrink-0" />}
+              <span className="font-mono">
+                {p.home_team?.split(" ").pop() || "H"} {p.home_score} - {p.away_score} {p.away_team?.split(" ").pop() || "A"}
+              </span>
+              {isFinal && ouOutcome !== "MISSING" && (
+                <span className={`px-1 py-0 rounded text-[9px] border ${ouOutcome === "WIN" ? "border-neon-green/30 bg-neon-green/10 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/30 bg-neon-red/10 text-neon-red" : "border-neon-yellow/30 bg-neon-yellow/10 text-neon-yellow"}`}>
+                  {p.recommendation} {ouOutcome === "WIN" ? "✓" : ouOutcome === "LOSS" ? "✗" : "PUSH"}
+                </span>
+              )}
+              {isFinal && winOutcome !== "MISSING" && (
+                <span className={`px-1 py-0 rounded text-[9px] border ${winOutcome === "WIN" ? "border-neon-green/30 bg-neon-green/10 text-neon-green" : "border-neon-red/30 bg-neon-red/10 text-neon-red"}`}>
+                  W {winOutcome === "WIN" ? "✓" : "✗"}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Confidence — stars + label (right) */}

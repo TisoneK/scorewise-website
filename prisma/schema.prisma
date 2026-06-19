@@ -42,37 +42,45 @@ model ActivityLog {
 }
 
 model Prediction {
-  id                      String   @id @default(cuid())
-  matchId                 String   @unique
-  homeTeam                String   @default("")
-  awayTeam                String   @default("")
-  country                 String   @default("")
-  league                  String   @default("")
-  date                    String   @default("")
-  time                    String   @default("")
-  scope                   String   @default("FULL_MATCH")
-  success                 Boolean  @default(true)
-  validationErrors        String   @default("[]") // JSON array
-  recommendation          String?  // OVER, UNDER, NO_BET
-  teamWinner              String?  // HOME_TEAM, AWAY_TEAM, NO_WINNER_PREDICTION
-  recommendationConfidence String? // HIGH, MEDIUM, LOW
-  teamWinnerConfidence    String?
-  confidence              String?  // backward-compatible aggregate
-  bookmakerLine           Float?
-  overOdds                Float?
-  underOdds               Float?
-  homeOdds                Float?
-  awayOdds                Float?
-  averageRate             Float    @default(0)
-  matchesAbove            Int      @default(0)
-  matchesBelow            Int      @default(0)
-  decrementTest           Int      @default(0)
-  incrementTest           Int      @default(0)
-  h2hTotals               String   @default("[]") // JSON array
-  rateValues              String   @default("[]") // JSON array
-  winningStreakData       String?  // JSON object or null
-  betCode                 String?  // Linebet/Paripesa/1xbet booking code — admin sets manually, users copy to generate betslip
-  source                  String?  // "flashscore-scraper"
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  matchId                  String   @unique
+  homeTeam                 String   @default("")
+  awayTeam                 String   @default("")
+  country                  String   @default("")
+  league                   String   @default("")
+  date                     String   @default("")
+  time                     String   @default("")
+  scope                    String   @default("FULL_MATCH")
+  success                  Boolean  @default(true)
+  validationErrors         String   @default("[]") // JSON array
+  recommendation           String?  // OVER, UNDER, NO_BET
+  teamWinner               String?  // HOME_TEAM, AWAY_TEAM, NO_WINNER_PREDICTION
+  recommendationConfidence String?  // HIGH, MEDIUM, LOW
+  teamWinnerConfidence     String?
+  confidence               String?  // backward-compatible aggregate
+  bookmakerLine            Float?
+  overOdds                 Float?
+  underOdds                Float?
+  homeOdds                 Float?
+  awayOdds                 Float?
+  averageRate              Float    @default(0)
+  matchesAbove             Int      @default(0)
+  matchesBelow             Int      @default(0)
+  decrementTest            Int      @default(0)
+  incrementTest            Int      @default(0)
+  h2hTotals                String   @default("[]") // JSON array
+  rateValues               String   @default("[]") // JSON array
+  winningStreakData        String?  // JSON object or null
+  betCode                  String?  // Linebet/Paripesa/1xbet booking code — admin sets manually, users copy to generate betslip
+  // Result tracking — populated by operators/admins (manual) or by the scraper (auto) after the match finishes.
+  // A basketball match takes ~2h-2h50m. The scraper can be triggered to fetch the final score once
+  // start_time + 2h50m < now. Until then, resultStatus stays PENDING.
+  homeScore                Int?     // final home team score (null = not played yet)
+  awayScore                Int?     // final away team score
+  resultStatus             String?  // PENDING | LIVE | FINAL | POSTPONED | CANCELLED — null = PENDING
+  resultSource             String?  // "manual" | "scraper" — who last updated the result
+  resultUpdatedAt          DateTime? // when the result was last updated
+  source                   String?  // "flashscore-scraper"
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }

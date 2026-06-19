@@ -60,6 +60,13 @@ export async function GET(request: Request) {
       rate_values: JSON.parse(p.rateValues || '[]'),
       winning_streak_data: p.winningStreakData ? JSON.parse(p.winningStreakData) : null,
       bet_code: p.betCode || null,
+      home_score: p.homeScore ?? null,
+      away_score: p.awayScore ?? null,
+      result_status: p.resultStatus || null,
+      result_source: p.resultSource || null,
+      result_updated_at: p.resultUpdatedAt
+        ? (typeof p.resultUpdatedAt === 'string' ? p.resultUpdatedAt : new Date(p.resultUpdatedAt).toISOString())
+        : null,
       created_at: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
     }));
 
@@ -76,6 +83,7 @@ export async function GET(request: Request) {
         'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
         'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
         'over_odds', 'under_odds', 'home_odds', 'away_odds', 'bet_code',
+        'home_score', 'away_score', 'result_status', 'result_source', 'result_updated_at',
       ];
       predictions = predictions.map((p: Record<string, unknown>) => {
         const stripped: Record<string, unknown> = {};

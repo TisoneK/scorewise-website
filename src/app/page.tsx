@@ -64,6 +64,7 @@ import { ActivityLogTab } from "@/components/admin/tabs/activity-log-tab";
 import { ServiceLogsTab } from "@/components/admin/tabs/service-logs-tab";
 import { UsersTab } from "@/components/admin/tabs/users-tab";
 import { BetslipCodesTab } from "@/components/admin/tabs/betslip-codes-tab";
+import { ResultsTab } from "@/components/admin/tabs/results-tab";
 
 // ===================== CONFIG =====================
 
@@ -843,6 +844,11 @@ function AdminDashboard() {
                   <Ticket className="w-3.5 h-3.5" />Betslip Codes
                 </TabsTrigger>
               )}
+              {isOperatorOrAbove && (
+                <TabsTrigger value="results" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
+                  <Trophy className="w-3.5 h-3.5" />Results
+                </TabsTrigger>
+              )}
               <TabsTrigger value="analytics" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap">
                 <BarChart3 className="w-3.5 h-3.5" />Analytics
               </TabsTrigger>
@@ -910,6 +916,13 @@ function AdminDashboard() {
           {isOperatorOrAbove && (
             <TabsContent value="betslip-codes" className="space-y-6">
               <BetslipCodesTab />
+            </TabsContent>
+          )}
+
+          {/* ============ RESULTS TAB (admin + operator) ============ */}
+          {isOperatorOrAbove && (
+            <TabsContent value="results" className="space-y-6">
+              <ResultsTab />
             </TabsContent>
           )}
 

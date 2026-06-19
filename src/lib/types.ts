@@ -38,6 +38,11 @@ export interface Prediction {
   rate_values: number[];
   winning_streak_data: WinningStreakData | null;
   bet_code: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  result_status: "PENDING" | "LIVE" | "FINAL" | "POSTPONED" | "CANCELLED" | null;
+  result_source: "manual" | "scraper" | null;
+  result_updated_at: string | null;
   created_at: string | null;
 }
 

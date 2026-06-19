@@ -72,6 +72,11 @@ CREATE TABLE IF NOT EXISTS "Prediction" (
     "rateValues" TEXT NOT NULL DEFAULT '[]',
     "winningStreakData" TEXT,
     "betCode" TEXT,
+    "homeScore" INTEGER,
+    "awayScore" INTEGER,
+    "resultStatus" TEXT,
+    "resultSource" TEXT,
+    "resultUpdatedAt" DATETIME,
     "source" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
