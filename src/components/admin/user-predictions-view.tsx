@@ -2,10 +2,15 @@
  * UserPredictionsView — non-admin user view.
  *
  * Features:
- * - Top Picks section (HIGH confidence only, sorted by strongest signal)
- * - Full predictions list grouped by date, sorted by time
+ * - Top Picks section (HIGH confidence only, today's LOCAL matches, sorted by time)
+ * - Full predictions list grouped by LOCAL date, sorted by LOCAL time
  * - Search + filter controls
  * - Auto-refresh every 60 seconds
+ * - All times shown in the user's local timezone (converted from UTC source)
+ *
+ * Both Top Picks and All Predictions use the same PredictionCard component
+ * so they look identical — the only difference is Top Picks cards have a
+ * rank badge (#1, #2, ...).
  */
 
 "use client";
@@ -16,97 +21,27 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Star, TrendingUp, TrendingDown, Trophy, Flame } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
+import {
+  parseMatchDateTime,
+  isTodayLocal,
+  localDateKey,
+  formatLocalDateLong,
+  getTimezoneAbbr,
+} from "@/lib/timezone";
 
 type ConfFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
 type RecFilter = "ALL" | "OVER" | "UNDER";
 
-function formatDateLabel(dateStr: string): string {
-  if (!dateStr) return "Unknown Date";
-  try {
-    const parts = dateStr.split(".");
-    if (parts.length === 3) {
-      const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-      return d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
-    }
-    const d = new Date(dateStr);
-    if (!isNaN(d.getTime())) return d.toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long" });
-    return dateStr;
-  } catch { return dateStr; }
-}
-
-function parseTime(timeStr: string): number {
-  if (!timeStr) return 9999;
-  const parts = timeStr.split(":");
-  if (parts.length === 2) return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-  return 9999;
-}
-
-function parseDate(dateStr: string): string {
-  if (!dateStr) return "9999-99-99";
-  const parts = dateStr.split(".");
-  if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  return dateStr;
-}
-
-/** Check if a date is today */
-function isToday(dateStr: string): boolean {
-  const today = new Date();
-  const todayStr = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
-  return dateStr === todayStr;
-}
-
-/** Compact pick card for the Top Picks section */
-function TopPickCard({ prediction: p, rank }: { prediction: Prediction; rank: number }) {
-  const isOver = p.recommendation?.toUpperCase() === "OVER";
-  const hasWinner = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION";
-  const winnerName = p.team_winner === "HOME_TEAM" ? p.home_team : p.team_winner === "AWAY_TEAM" ? p.away_team : null;
-  const winnerOdds = p.team_winner === "HOME_TEAM" ? p.home_odds : p.team_winner === "AWAY_TEAM" ? p.away_odds : null;
-  const accentColor = isOver ? "text-neon-green" : "text-neon-red";
-
-  return (
-    <div className="flex items-center gap-3 p-3 rounded-lg bg-card/80 border border-border/40 hover:border-neon-green/20 transition-all">
-      {/* Rank badge */}
-      <div className="shrink-0 w-7 h-7 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center justify-center">
-        <span className="text-xs font-black text-neon-green">{rank}</span>
-      </div>
-
-      {/* Match info */}
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-xs sm:text-sm leading-tight truncate">
-          {p.home_team} <span className="text-muted-foreground/50 mx-0.5">vs</span> {p.away_team}
-        </p>
-        <div className="flex items-center gap-2 mt-1 flex-wrap">
-          <span className={`flex items-center gap-0.5 text-xs font-bold ${accentColor}`}>
-            {isOver ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {p.recommendation}
-          </span>
-          <span className="text-sm font-black font-mono text-neon-cyan">{p.bookmaker_line}</span>
-          {(isOver && p.over_odds) && <span className="text-[10px] font-mono text-muted-foreground">@{p.over_odds}</span>}
-          {(!isOver && p.under_odds) && <span className="text-[10px] font-mono text-muted-foreground">@{p.under_odds}</span>}
-          {hasWinner && winnerName && (
-            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-              <Trophy className="w-2.5 h-2.5 text-neon-cyan" />{winnerName}
-              {winnerOdds && <span className="font-mono">@{winnerOdds}</span>}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Confidence */}
-      <div className="shrink-0 text-right">
-        <div className="flex items-center gap-0.5 justify-end">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star key={i} className={`w-2.5 h-2.5 ${i < 5 ? "text-neon-green fill-neon-green" : "text-muted-foreground/30"}`} />
-          ))}
-        </div>
-        <p className="text-[9px] text-neon-green font-bold mt-0.5">{p.confidence}</p>
-      </div>
-    </div>
-  );
+/** Sort key: local-date + local-time, so cards appear in the order the user will see the matches. */
+function localSortKey(p: Prediction): string {
+  const d = parseMatchDateTime(p.date, p.time);
+  if (!d) return "9999-99-99T99:99";
+  // ISO string sorts chronologically; the local* prefix is just to be safe.
+  return d.toISOString();
 }
 
 export function UserPredictionsView() {
@@ -138,20 +73,23 @@ export function UserPredictionsView() {
     return () => clearInterval(interval);
   }, [fetchPredictions]);
 
-  // Top picks: HIGH confidence, today's matches, sorted by time
+  // Top picks: HIGH confidence, today's LOCAL matches, sorted by local time.
+  // "Today" means today in the user's local timezone, not UTC.
   const topPicks = useMemo(() => {
     if (!data?.predictions) return [];
     return data.predictions
       .filter((p) => {
         if (p.confidence?.toUpperCase() !== "HIGH") return false;
         if (!p.recommendation || p.recommendation.toUpperCase() === "NO_BET") return false;
-        if (!p.date || !isToday(p.date)) return false;
+        const d = parseMatchDateTime(p.date, p.time);
+        if (!d) return false;
+        if (!isTodayLocal(d)) return false;
         return true;
       })
-      .sort((a, b) => parseTime(a.time || "") - parseTime(b.time || ""));
+      .sort((a, b) => localSortKey(a).localeCompare(localSortKey(b)));
   }, [data]);
 
-  // All predictions: filtered, sorted, grouped by date
+  // All predictions: filtered, sorted, grouped by LOCAL date.
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
     const filtered = data.predictions.filter((p) => {
@@ -165,27 +103,27 @@ export function UserPredictionsView() {
       return true;
     });
 
-    const sorted = [...filtered].sort((a, b) => {
-      const dateA = parseDate(a.date || "");
-      const dateB = parseDate(b.date || "");
-      if (dateA !== dateB) return dateA.localeCompare(dateB);
-      return parseTime(a.time || "") - parseTime(b.time || "");
-    });
+    const sorted = [...filtered].sort((a, b) => localSortKey(a).localeCompare(localSortKey(b)));
 
-    const groups: { date: string; label: string; predictions: Prediction[] }[] = [];
+    // Group by LOCAL date (not UTC date) so a match at 23:30 UTC (= 02:30 next-day EAT)
+    // shows up under tomorrow's group for a Kenyan user.
+    const groups: { dateKey: string; label: string; predictions: Prediction[] }[] = [];
     for (const p of sorted) {
-      const dateKey = p.date || "Unknown Date";
+      const d = parseMatchDateTime(p.date, p.time);
+      const dateKey = d ? localDateKey(d) : "unknown";
+      const label = d ? formatLocalDateLong(d) : "Unknown Date";
       const lastGroup = groups[groups.length - 1];
-      if (lastGroup && lastGroup.date === dateKey) {
+      if (lastGroup && lastGroup.dateKey === dateKey) {
         lastGroup.predictions.push(p);
       } else {
-        groups.push({ date: dateKey, label: formatDateLabel(dateKey), predictions: [p] });
+        groups.push({ dateKey, label, predictions: [p] });
       }
     }
     return groups;
   }, [data, search, confFilter, recFilter]);
 
   const totalCount = grouped.reduce((sum, g) => sum + g.predictions.length, 0);
+  const tzAbbr = getTimezoneAbbr();
 
   return (
     <div className="min-h-screen bg-background">
@@ -211,6 +149,7 @@ export function UserPredictionsView() {
           <h1 className="text-xl sm:text-2xl font-black tracking-tight">Predictions</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Basketball OVER/UNDER predictions backed by historical data analysis
+            <span className="ml-2 text-[10px] text-muted-foreground/60">· times shown in your local TZ ({tzAbbr})</span>
           </p>
         </div>
 
@@ -227,7 +166,7 @@ export function UserPredictionsView() {
             </div>
             <div className="grid gap-2">
               {topPicks.map((p, i) => (
-                <TopPickCard key={p.match_id} prediction={p} rank={i + 1} />
+                <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
               ))}
             </div>
           </div>
@@ -287,9 +226,9 @@ export function UserPredictionsView() {
               <p className="text-xs text-muted-foreground">{totalCount} total</p>
             </div>
 
-            {/* Grouped predictions */}
+            {/* Grouped predictions (by local date) */}
             {grouped.map((group) => (
-              <div key={group.date} className="space-y-2">
+              <div key={group.dateKey} className="space-y-2">
                 {/* Date header */}
                 <div className="flex items-center gap-2 pt-2">
                   <Calendar className="w-3.5 h-3.5 text-neon-cyan shrink-0" />
