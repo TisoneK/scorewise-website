@@ -36,12 +36,48 @@ import {
 type ConfFilter = "ALL" | "HIGH" | "MEDIUM" | "LOW";
 type RecFilter = "ALL" | "OVER" | "UNDER";
 
-/** Sort key: local-date + local-time, so cards appear in the order the user will see the matches. */
-function localSortKey(p: Prediction): string {
+/** Check if a Date is tomorrow in the user's local timezone. */
+function isTomorrowLocal(d: Date): boolean {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return (
+    d.getDate() === tomorrow.getDate() &&
+    d.getMonth() === tomorrow.getMonth() &&
+    d.getFullYear() === tomorrow.getFullYear()
+  );
+}
+
+/** Check if a Date is yesterday in the user's local timezone. */
+function isYesterdayLocal(d: Date): boolean {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return (
+    d.getDate() === yesterday.getDate() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getFullYear() === yesterday.getFullYear()
+  );
+}
+
+/**
+ * Sort key: prioritizes TODAY first, then TOMORROW, then YESTERDAY, then
+ * everything else (past and far-future). Within each priority bucket,
+ * sorts by time (earliest first).
+ *
+ * This ensures users always see today's predictions at the top — not
+ * buried under yesterday's finished matches or mixed with next week's.
+ */
+function relevanceSortKey(p: Prediction): string {
   const d = parseMatchDateTime(p.date, p.time);
-  if (!d) return "9999-99-99T99:99";
-  // ISO string sorts chronologically; the local* prefix is just to be safe.
-  return d.toISOString();
+  if (!d) return "9_9999-99-99T99:99";
+
+  // Priority prefix: 0 = today, 1 = tomorrow, 2 = yesterday, 3 = everything else
+  let prefix = "3";
+  if (isTodayLocal(d)) prefix = "0";
+  else if (isTomorrowLocal(d)) prefix = "1";
+  else if (isYesterdayLocal(d)) prefix = "2";
+
+  // Within each bucket, sort by time (ISO string = chronological)
+  return `${prefix}_${d.toISOString()}`;
 }
 
 export function UserPredictionsView() {
@@ -86,7 +122,7 @@ export function UserPredictionsView() {
         if (!isTodayLocal(d)) return false;
         return true;
       })
-      .sort((a, b) => localSortKey(a).localeCompare(localSortKey(b)));
+      .sort((a, b) => relevanceSortKey(a).localeCompare(relevanceSortKey(b)));
   }, [data]);
 
   // All predictions: filtered, sorted, grouped by LOCAL date.
@@ -103,7 +139,7 @@ export function UserPredictionsView() {
       return true;
     });
 
-    const sorted = [...filtered].sort((a, b) => localSortKey(a).localeCompare(localSortKey(b)));
+    const sorted = [...filtered].sort((a, b) => relevanceSortKey(a).localeCompare(relevanceSortKey(b)));
 
     // Group by LOCAL date (not UTC date) so a match at 23:30 UTC (= 02:30 next-day EAT)
     // shows up under tomorrow's group for a Kenyan user.
@@ -226,13 +262,32 @@ export function UserPredictionsView() {
               <p className="text-xs text-muted-foreground">{totalCount} total</p>
             </div>
 
-            {/* Grouped predictions (by local date) */}
-            {grouped.map((group) => (
+            {/* Grouped predictions (by local date, sorted by relevance) */}
+            {grouped.map((group) => {
+              // Check if this group is today — add a highlight badge
+              const firstPred = group.predictions[0];
+              const groupDate = firstPred ? parseMatchDateTime(firstPred.date, firstPred.time) : null;
+              const isTodayGroup = groupDate && isTodayLocal(groupDate);
+              const isTomorrowGroup = groupDate && isTomorrowLocal(groupDate);
+
+              return (
               <div key={group.dateKey} className="space-y-2">
-                {/* Date header */}
+                {/* Date header — highlighted for today */}
                 <div className="flex items-center gap-2 pt-2">
-                  <Calendar className="w-3.5 h-3.5 text-neon-cyan shrink-0" />
-                  <span className="text-xs font-bold text-foreground uppercase tracking-wide">{group.label}</span>
+                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
+                  <span className={`text-xs font-bold uppercase tracking-wide ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-foreground"}`}>
+                    {group.label}
+                  </span>
+                  {isTodayGroup && (
+                    <span className="text-[9px] font-black text-neon-green bg-neon-green/10 border border-neon-green/30 px-1.5 py-0.5 rounded-full">
+                      TODAY
+                    </span>
+                  )}
+                  {isTomorrowGroup && (
+                    <span className="text-[9px] font-bold text-neon-cyan bg-neon-cyan/10 border border-neon-cyan/30 px-1.5 py-0.5 rounded-full">
+                      TOMORROW
+                    </span>
+                  )}
                   <div className="flex-1 h-px bg-border/30" />
                   <span className="text-[10px] text-muted-foreground/50">{group.predictions.length} match{group.predictions.length !== 1 ? "es" : ""}</span>
                 </div>
@@ -241,7 +296,8 @@ export function UserPredictionsView() {
                   {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
