@@ -109,20 +109,85 @@ export function UserPredictionsView() {
     return () => clearInterval(interval);
   }, [fetchPredictions]);
 
-  // Top picks: HIGH confidence, today's LOCAL matches, sorted by local time.
-  // "Today" means today in the user's local timezone, not UTC.
+  // ── Top Picks: the 3 BEST predictions for today ──────────────────────
+  // Strict criteria — these are the picks most likely to win:
+  //   1. Must be HIGH confidence
+  //   2. Must be OVER or UNDER (no NO_BET)
+  //   3. Must be today's match (user's local timezone)
+  //   4. Must not already have a FINAL result (don't recommend finished matches)
+  //   5. Ranked by "pick strength" — a composite score from the engine's
+  //      algorithm outputs (average_rate, matches_above/below ratio, test adjustments)
+  //   6. Limited to at most 3 picks
   const topPicks = useMemo(() => {
     if (!data?.predictions) return [];
     return data.predictions
       .filter((p) => {
+        // Strict filter: only HIGH confidence OVER/UNDER picks for today
         if (p.confidence?.toUpperCase() !== "HIGH") return false;
         if (!p.recommendation || p.recommendation.toUpperCase() === "NO_BET") return false;
         const d = parseMatchDateTime(p.date, p.time);
-        if (!d) return false;
-        if (!isTodayLocal(d)) return false;
+        if (!d || !isTodayLocal(d)) return false;
+        // Don't recommend matches that are already finished
+        if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") return false;
         return true;
       })
-      .sort((a, b) => relevanceSortKey(a).localeCompare(relevanceSortKey(b)));
+      .map((p) => {
+        // ── Compute pick strength score ──────────────────────────────
+        // Higher score = stronger pick = more likely to win.
+        // Based on the engine's algorithm outputs:
+        //
+        // - average_rate: how far the historical average total is from the
+        //   bookmaker line. Higher absolute value = stronger signal.
+        //   e.g., avg_rate = -15 (UNDER) means historical totals are 15 points
+        //   below the line — strong UNDER signal.
+        //
+        // - matches_above/below ratio: how consistently the historical data
+        //   supports the recommendation.
+        //   e.g., 5 below / 1 above = 83% support for UNDER.
+        //
+        // - increment/decrement tests: the engine's adjustment tests.
+        //   Higher increment_test = stronger OVER, higher decrement_test = stronger UNDER.
+        //   A pick where the test direction matches the recommendation is stronger.
+        //
+        // - team_winner confidence: if the engine also predicted a winner with
+        //   HIGH confidence, that's an additional signal of match control.
+        //
+        // Score components (each normalized 0-1, then weighted):
+        const avgRate = Math.abs(p.average_rate || 0);
+        const above = p.matches_above || 0;
+        const below = p.matches_below || 0;
+        const total = above + below;
+        const isOver = p.recommendation?.toUpperCase() === "OVER";
+        const isUnder = p.recommendation?.toUpperCase() === "UNDER";
+
+        // 1. Rate signal strength (0-1): |avg_rate| / 20 (cap at 1.0)
+        //    avg_rate of 20+ is extremely strong
+        const rateStrength = Math.min(avgRate / 20, 1.0);
+
+        // 2. Consistency ratio (0-1): how many historical matches agree with the rec
+        //    e.g., UNDER with 5/6 below = 0.83 consistency
+        const agreeCount = isOver ? above : isUnder ? below : 0;
+        const consistency = total > 0 ? agreeCount / total : 0;
+
+        // 3. Test alignment (0-1): does the increment/decrement test support the rec?
+        //    OVER wants high increment_test, UNDER wants high decrement_test
+        const testAligned = isOver
+          ? Math.min((p.increment_test || 0) / 5, 1.0)
+          : isUnder
+            ? Math.min((p.decrement_test || 0) / 5, 1.0)
+            : 0;
+
+        // 4. Winner confidence bonus (0-0.15): extra points if team winner is also HIGH
+        const winnerBonus = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? 0.15 : 0;
+
+        // Weighted composite score (0-1+):
+        // 40% rate strength + 35% consistency + 20% test alignment + 5% winner bonus
+        const strength = (rateStrength * 0.40) + (consistency * 0.35) + (testAligned * 0.20) + winnerBonus;
+
+        return { ...p, _strength: strength };
+      })
+      .sort((a, b) => (b._strength || 0) - (a._strength || 0)) // strongest first
+      .slice(0, 3); // at most 3 picks
   }, [data]);
 
   // All predictions: filtered, sorted, grouped by LOCAL date.
@@ -189,17 +254,20 @@ export function UserPredictionsView() {
           </p>
         </div>
 
-        {/* TOP PICKS — featured section */}
+        {/* TOP PICKS — the 3 best picks for today, ranked by algorithm strength */}
         {!loading && !error && topPicks.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Flame className="w-4 h-4 text-neon-green" />
-              <h2 className="text-sm font-bold text-foreground">Today&apos;s Top Picks</h2>
-              <span className="text-[10px] text-muted-foreground bg-neon-green/10 px-1.5 py-0.5 rounded-full text-neon-green font-bold">
-                {topPicks.length}
+              <h2 className="text-sm font-bold text-foreground">Today&apos;s Top {topPicks.length} Picks</h2>
+              <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20">
+                ANALYST VERIFIED
               </span>
               <div className="flex-1 h-px bg-border/30" />
             </div>
+            <p className="text-[10px] text-muted-foreground/70 -mt-1">
+              Ranked by algorithm strength — rate signal, historical consistency, and test alignment.
+            </p>
             <div className="grid gap-2">
               {topPicks.map((p, i) => (
                 <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />

@@ -78,12 +78,13 @@ export async function GET(request: Request) {
       // Filter out NO_BET
       predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
 
-      // Strip algorithm internals
+      // Strip algorithm internals — but keep the fields needed for Top Picks ranking
       const USER_FIELDS = [
         'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
         'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
         'over_odds', 'under_odds', 'home_odds', 'away_odds', 'bet_code',
         'home_score', 'away_score', 'result_status', 'result_source', 'result_updated_at',
+        'average_rate', 'matches_above', 'matches_below', 'decrement_test', 'increment_test',
       ];
       predictions = predictions.map((p: Record<string, unknown>) => {
         const stripped: Record<string, unknown> = {};
