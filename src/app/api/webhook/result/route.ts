@@ -88,7 +88,8 @@ export async function POST(request: Request) {
         }
 
         // Only process "finished" matches — skip in-progress/scheduled/etc.
-        if (r.status && r.status !== "finished") {
+        // Case-insensitive: Flashscore returns "FINISHED" (uppercase)
+        if (r.status && r.status.toLowerCase() !== "finished") {
           skipped++;
           continue;
         }
