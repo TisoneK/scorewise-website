@@ -16,12 +16,12 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -81,6 +81,11 @@ function relevanceSortKey(p: Prediction): string {
 }
 
 export function UserPredictionsView() {
+  const { data: session } = useSession();
+  const userName = (session?.user as { name?: string })?.name || "User";
+  const userEmail = (session?.user as { email?: string })?.email || "";
+  const userInitial = userName.charAt(0).toUpperCase();
+  const [menuOpen, setMenuOpen] = useState(false);
   const [data, setData] = useState<StoredPredictions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -237,9 +242,52 @@ export function UserPredictionsView() {
             </div>
             <span className="font-black text-base sm:text-lg tracking-tight">ScoreWise</span>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => signOut()} className="gap-1 text-muted-foreground hover:text-foreground px-2 sm:px-3">
-            <LogOut className="w-4 h-4" /><span className="hidden sm:inline">Sign Out</span>
-          </Button>
+          {/* User menu dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="flex items-center gap-1.5 rounded-full hover:bg-card/80 transition-colors p-1 sm:px-2"
+              aria-label="User menu"
+            >
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+                <span className="text-xs font-black text-neon-green">{userInitial}</span>
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {/* Dropdown */}
+            {menuOpen && (
+              <>
+                {/* Click-away overlay */}
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setMenuOpen(false)}
+                />
+
+                {/* Menu */}
+                <div className="absolute right-0 top-full mt-2 w-56 rounded-lg bg-card border border-border/40 shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  {/* User info header */}
+                  <div className="px-3 py-2.5 border-b border-border/30 bg-background/40">
+                    <p className="text-xs font-bold truncate">{userName}</p>
+                    {userEmail && <p className="text-[10px] text-muted-foreground truncate">{userEmail}</p>}
+                  </div>
+
+                  {/* Menu items */}
+                  <div className="p-1">
+                    <button
+                      type="button"
+                      onClick={() => signOut()}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-xs font-medium text-neon-red hover:bg-neon-red/10 transition-colors"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
