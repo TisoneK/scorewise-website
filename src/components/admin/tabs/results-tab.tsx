@@ -339,11 +339,22 @@ export function ResultsTab() {
           scrapingSingle: false,
           homeInput: home != null ? String(home) : prev[matchId].homeInput,
           awayInput: away != null ? String(away) : prev[matchId].awayInput,
-          statusInput: (status.toUpperCase() === "FINISHED" || status.toUpperCase().includes("AFTER"))
-            ? "FINAL"
-            : (status.toUpperCase().includes("IN_PROGRESS") || status.toUpperCase().includes("Q"))
-              ? "LIVE"
-              : prev[matchId].statusInput,
+          // Map Flashscore status to our status — same logic as the webhook receiver
+          statusInput: (() => {
+            const s = status.toUpperCase();
+            if (s === "FINISHED" || s.includes("AFTER") || s === "FT") return "FINAL" as ResultStatus;
+            if (s.includes("IN_PROGRESS") || s === "LIVE" ||
+                s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
+                s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
+                s.includes("QUARTER") || s.includes("PERIOD") ||
+                s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)) return "LIVE" as ResultStatus;
+            if (s.includes("POSTPONED")) return "POSTPONED" as ResultStatus;
+            if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
+            // Unknown status + scores present → LIVE (match must be in progress)
+            if (home != null && away != null) return "LIVE" as ResultStatus;
+            // No scores + unknown → keep current status
+            return prev[matchId].statusInput;
+          })(),
           dirty: true,
           scrapeMsg: { kind: "ok", text: `Scraped: ${status}, ${scoreStr}` },
         },

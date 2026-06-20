@@ -83,11 +83,20 @@ export async function POST(request: Request) {
   //   IN_PROGRESS / Q1-Q4 / HT / BREAK → LIVE (with partial scores)
   //   POSTPONED → POSTPONED (clears scores)
   //   CANCELLED → CANCELLED (clears scores)
-  //   SCHEDULED / NOT STARTED / UNKNOWN → skip (don't overwrite)
-  function mapFlashscoreStatus(rawStatus: string | undefined): {
+  //   Unknown status + scores present → LIVE (match must be in progress)
+  //   Unknown status + no scores → skip (match probably hasn't started)
+  function mapFlashscoreStatus(
+    rawStatus: string | undefined,
+    homeScore: number | null,
+    awayScore: number | null,
+  ): {
     resultStatus: "FINAL" | "LIVE" | "POSTPONED" | "CANCELLED" | null;
   } {
-    if (!rawStatus) return { resultStatus: null };
+    if (!rawStatus) {
+      // No status text — if scores exist, match is in progress; otherwise skip
+      if (homeScore != null && awayScore != null) return { resultStatus: "LIVE" };
+      return { resultStatus: null };
+    }
     const s = rawStatus.toUpperCase().trim();
 
     // Finished (including overtime variants)
@@ -99,7 +108,9 @@ export async function POST(request: Request) {
       s === "IN_PROGRESS" || s === "LIVE" ||
       s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
       s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
-      s.includes("QUARTER") || s.includes("PERIOD")
+      s.includes("QUARTER") || s.includes("PERIOD") ||
+      // Flashscore shows elapsed time for live matches, e.g. "3rd quarter", "2:34 Q3"
+      s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)
     ) {
       return { resultStatus: "LIVE" };
     }
@@ -108,7 +119,13 @@ export async function POST(request: Request) {
     if (s.includes("CANCEL") || s.includes("ABANDONED") || s.includes("INTERRUPTED")) {
       return { resultStatus: "CANCELLED" };
     }
-    // Scheduled / not started / unknown — don't update
+    // Unknown status — if scores are present, the match must be in progress.
+    // Flashscore sometimes returns date/time text or other unexpected strings
+    // as the status when a match is live. If we have scores, it's LIVE.
+    if (homeScore != null && awayScore != null) {
+      return { resultStatus: "LIVE" };
+    }
+    // No scores + unknown status → match probably hasn't started yet
     return { resultStatus: null };
   }
 
@@ -120,8 +137,8 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Map the Flashscore status to our resultStatus
-        const { resultStatus } = mapFlashscoreStatus(r.status);
+        // Map the Flashscore status to our resultStatus (passing scores for fallback logic)
+        const { resultStatus } = mapFlashscoreStatus(r.status, r.home_score ?? null, r.away_score ?? null);
         if (!resultStatus) {
           // Status is SCHEDULED / UNKNOWN / null — skip (don't overwrite)
           skipped++;
