@@ -17,6 +17,7 @@ const publicApiPrefixes = [
   "/api/admin/seed",
   "/api/webhook/",
   "/api/predictions/exists",
+  "/api/cron/", // Vercel cron jobs — auth via CRON_SECRET (checked inside the route)
 ];
 
 // Role hierarchy: ADMIN > OPERATOR > USER

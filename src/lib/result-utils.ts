@@ -12,12 +12,86 @@
  *   - "WIN"  — predicted team won
  *   - "LOSS" — predicted team lost or drew (basketball rarely draws)
  *   - "MISSING" — result not final
+ *
+ * computeEffectiveStatus() derives the current status from the match's
+ * start time + stored result_status — so users see LIVE the moment a
+ * match kicks off, even if no one has manually updated the DB.
  */
 
 import type { Prediction } from "@/lib/types";
+import { parseMatchDateTime } from "@/lib/timezone";
 
 export type OverUnderOutcome = "WIN" | "LOSS" | "PUSH" | "MISSING";
 export type WinnerOutcome = "WIN" | "LOSS" | "MISSING";
+
+/** Effective status — what the UI should display, derived from DB status + current time. */
+export type EffectiveStatus =
+  | "PENDING"          // not started yet (or no start time)
+  | "LIVE"             // in progress (start_time <= now < start_time + 2h50m)
+  | "AWAITING_RESULT"  // finished but no final score yet (now >= start_time + 2h50m, status not FINAL)
+  | "FINAL"            // has final score
+  | "POSTPONED"
+  | "CANCELLED";
+
+/** Basketball match duration: ~2h-2h50m. Used as the "likely finished" threshold. */
+const MATCH_DURATION_MS = 2 * 60 * 60 * 1000 + 50 * 60 * 1000; // 2h50m
+
+/**
+ * Compute the effective status of a match based on its stored result_status
+ * and the current time relative to its start time.
+ *
+ * Rules (in order of precedence):
+ *   1. If result_status is FINAL/POSTPONED/CANCELLED → return it as-is
+ *   2. If result_status is LIVE (manually set) → return LIVE
+ *   3. If no start time → return result_status || PENDING
+ *   4. If now < start_time → PENDING (upcoming)
+ *   5. If start_time <= now < start_time + 2h50m → LIVE (in progress)
+ *   6. If now >= start_time + 2h50m → AWAITING_RESULT (finished, waiting for score)
+ *
+ * This means users see LIVE the moment a match kicks off, without anyone
+ * needing to manually update the DB. The scraper's cron job will eventually
+ * fetch the final score and flip it to FINAL.
+ */
+export function computeEffectiveStatus(p: Prediction, now: Date = new Date()): EffectiveStatus {
+  const stored = (p.result_status as EffectiveStatus | null) || null;
+
+  // Manual overrides — respect them as-is
+  if (stored === "FINAL" || stored === "POSTPONED" || stored === "CANCELLED") {
+    return stored;
+  }
+  if (stored === "LIVE") {
+    return "LIVE";
+  }
+
+  // For PENDING/null, derive from time
+  const matchDate = parseMatchDateTime(p.date, p.time);
+  if (!matchDate) {
+    return stored || "PENDING";
+  }
+
+  const nowMs = now.getTime();
+  const startMs = matchDate.getTime();
+  const likelyFinishedMs = startMs + MATCH_DURATION_MS;
+
+  if (nowMs < startMs) {
+    return "PENDING";
+  }
+  if (nowMs < likelyFinishedMs) {
+    return "LIVE";
+  }
+  return "AWAITING_RESULT";
+}
+
+/** True if the match is currently in progress (LIVE). */
+export function isLive(p: Prediction, now: Date = new Date()): boolean {
+  return computeEffectiveStatus(p, now) === "LIVE";
+}
+
+/** True if the match should have a final score by now (start + 2h50m < now) but doesn't yet. */
+export function isAwaitingResult(p: Prediction, now: Date = new Date()): boolean {
+  return computeEffectiveStatus(p, now) === "AWAITING_RESULT";
+}
+
 
 /**
  * Compute the OVER/UNDER outcome for a prediction.
