@@ -390,13 +390,16 @@ export function ResultsTab() {
         }));
       }
 
-      // 2. Poll for completion (max 60 seconds = 30 polls × 2s)
+      // 2. Poll for completion (max 10 minutes = 120 polls × 5s)
+      // When Scrape Results enqueues 30+ matches, each waits in queue.
+      // 35 queued ÷ 3 workers × ~10s each = ~120s wait + ~10s scrape = ~130s.
+      // 10 min timeout gives plenty of room for large batches.
       let pollCount = 0;
-      const maxPolls = 30;
+      const maxPolls = 120;
       const poll = async (): Promise<void> => {
         pollCount++;
         if (pollCount > maxPolls) {
-          throw new Error("Timed out waiting for scrape to complete (60s)");
+          throw new Error("Timed out (10 min) — check queue status on scraper");
         }
 
         const pollRes = await fetch(`/api/admin/predictions/scrape-single?job_id=${jobId}`);
@@ -454,7 +457,7 @@ export function ResultsTab() {
 
         // Still QUEUED or RUNNING — update the message and poll again
         const posMsg = jobStatus === "QUEUED" && pollData.position > 0
-          ? `Queued (position ${pollData.position})...`
+          ? `Queued #${pollData.position} — est. ${Math.ceil(pollData.position / 3 * 10)}s wait...`
           : jobStatus === "RUNNING"
             ? "Scraping from Flashscore..."
             : "Waiting...";
@@ -464,8 +467,8 @@ export function ResultsTab() {
           [matchId]: { ...prev[matchId], scrapeMsg: { kind: "ok", text: posMsg } },
         }));
 
-        // Wait 2s then poll again
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait 5s then poll again (longer interval for large batches)
+        await new Promise(resolve => setTimeout(resolve, 5000));
         return poll();
       };
 
