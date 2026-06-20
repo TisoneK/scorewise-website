@@ -38,6 +38,7 @@ import {
   FileText,
   Ticket,
   Save,
+  ExternalLink,
 } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
@@ -186,9 +187,20 @@ export function PredictionDetailDrawer({
           <div className="flex items-center gap-2 min-w-0">
             <BasketballIcon className="w-5 h-5 text-neon-green shrink-0" />
             <div className="min-w-0">
-              <h2 className="text-sm font-bold truncate">
-                {prediction.home_team || "Unknown"} vs {prediction.away_team || "Unknown"}
-              </h2>
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-sm font-bold truncate">
+                  {prediction.home_team || "Unknown"} vs {prediction.away_team || "Unknown"}
+                </h2>
+                <a
+                  href={`https://www.flashscore.co.ke/match/${prediction.match_id}/`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground/40 hover:text-neon-cyan transition-colors shrink-0"
+                  title="Open match on Flashscore"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
               <p className="text-[11px] text-muted-foreground font-mono truncate">
                 {prediction.match_id}
               </p>

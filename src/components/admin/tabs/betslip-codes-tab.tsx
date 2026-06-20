@@ -34,6 +34,7 @@ import {
   Calendar,
   Search,
   Filter,
+  ExternalLink,
 } from "lucide-react";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import {
@@ -332,11 +333,22 @@ export function BetslipCodesTab() {
                         <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
                           {/* Match info */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold leading-tight break-words">
-                              {p.home_team || "Home"}{" "}
-                              <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
-                              {p.away_team || "Away"}
-                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs font-bold leading-tight break-words">
+                                {p.home_team || "Home"}{" "}
+                                <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
+                                {p.away_team || "Away"}
+                              </p>
+                              <a
+                                href={`https://www.flashscore.co.ke/match/${p.match_id}/`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-muted-foreground/40 hover:text-neon-cyan transition-colors shrink-0"
+                                title="Open match on Flashscore"
+                              >
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            </div>
                             <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
                               {[p.league, p.country].filter(Boolean).join(" · ")}
                               {matchDate && (
