@@ -171,17 +171,24 @@ export async function GET() {
             let scraperStatus: string;
             if (isRunning) {
               scraperStatus = "running";
-            } else if (data.status?.includes("succeeded") || data.status?.includes("idle")) {
+            } else if (data.status?.includes("succeeded")) {
               scraperStatus = "idle";
             } else if (data.status?.includes("failed")) {
               scraperStatus = "error";
+            } else if (data.status?.includes("no runs yet") || data.status?.includes("idle")) {
+              // "idle (no runs yet)" = fresh deploy, never scraped — NOT an error
+              scraperStatus = "idle";
             } else {
               scraperStatus = "idle";
             }
 
             // Map last_scrape → lastRun for frontend compatibility
+            // The scraper returns last_scrape as an object even when no scrape has
+            // run yet (all fields null). Only treat it as a "last run" if it has
+            // a started_at timestamp — otherwise it's a fresh deploy with no history.
             const lastScrape = data.last_scrape;
-            const lastRun = lastScrape ? {
+            const hasRealLastRun = lastScrape && lastScrape.started_at;
+            const lastRun = hasRealLastRun ? {
               status: lastScrape.success ? "success" : "error",
               error: lastScrape.error || null,
               scrape_type: lastScrape.scrape_type || null,
