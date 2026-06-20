@@ -78,23 +78,52 @@ export async function POST(request: Request) {
   const nowIso = new Date().toISOString();
 
   // 2. Upsert results into Turso DB
+  // Maps Flashscore match statuses to our resultStatus:
+  //   FINISHED / AFTER OT / FT → FINAL (with scores)
+  //   IN_PROGRESS / Q1-Q4 / HT / BREAK → LIVE (with partial scores)
+  //   POSTPONED → POSTPONED (clears scores)
+  //   CANCELLED → CANCELLED (clears scores)
+  //   SCHEDULED / NOT STARTED / UNKNOWN → skip (don't overwrite)
+  function mapFlashscoreStatus(rawStatus: string | undefined): {
+    resultStatus: "FINAL" | "LIVE" | "POSTPONED" | "CANCELLED" | null;
+  } {
+    if (!rawStatus) return { resultStatus: null };
+    const s = rawStatus.toUpperCase().trim();
+
+    // Finished (including overtime variants)
+    if (s === "FINISHED" || s.includes("AFTER") || s === "FT" || s === "FULL TIME") {
+      return { resultStatus: "FINAL" };
+    }
+    // Live / in-progress (quarter info, halftime, breaks)
+    if (
+      s === "IN_PROGRESS" || s === "LIVE" ||
+      s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
+      s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
+      s.includes("QUARTER") || s.includes("PERIOD")
+    ) {
+      return { resultStatus: "LIVE" };
+    }
+    // Postponed / cancelled
+    if (s.includes("POSTPONED")) return { resultStatus: "POSTPONED" };
+    if (s.includes("CANCEL") || s.includes("ABANDONED") || s.includes("INTERRUPTED")) {
+      return { resultStatus: "CANCELLED" };
+    }
+    // Scheduled / not started / unknown — don't update
+    return { resultStatus: null };
+  }
+
   if (data.results && Array.isArray(data.results)) {
     for (const r of data.results) {
       try {
         if (!r.match_id) {
-          console.warn("[webhook/result] Skipping entry with no match_id:", r);
           skipped++;
           continue;
         }
 
-        // Only process "finished" matches — skip in-progress/scheduled/etc.
-        // Case-insensitive: Flashscore returns "FINISHED" (uppercase)
-        if (r.status && r.status.toLowerCase() !== "finished") {
-          skipped++;
-          continue;
-        }
-
-        if (r.home_score == null || r.away_score == null) {
+        // Map the Flashscore status to our resultStatus
+        const { resultStatus } = mapFlashscoreStatus(r.status);
+        if (!resultStatus) {
+          // Status is SCHEDULED / UNKNOWN / null — skip (don't overwrite)
           skipped++;
           continue;
         }
@@ -104,31 +133,36 @@ export async function POST(request: Request) {
         });
 
         if (!existing) {
-          // Match not in our DB — may have been filtered out (NO_BET, insufficient H2H, etc.)
           skipped++;
           continue;
         }
 
         // Don't overwrite manually-entered FINAL results with scraper data.
-        // Only update if status is null/PENDING/LIVE, OR if the existing result
-        // was set by the scraper (resultSource = "scraper").
-        if (
-          existing.resultStatus === "FINAL" &&
-          existing.resultSource === "manual"
-        ) {
+        if (existing.resultStatus === "FINAL" && existing.resultSource === "manual") {
           skipped++;
           continue;
         }
 
+        // Build the update payload based on the mapped status
+        const updateData: Record<string, unknown> = {
+          resultStatus,
+          resultSource: "scraper",
+          resultUpdatedAt: nowIso,
+        };
+
+        if (resultStatus === "FINAL" || resultStatus === "LIVE") {
+          // Store scores if available (LIVE may have partial scores)
+          if (r.home_score != null) updateData.homeScore = r.home_score;
+          if (r.away_score != null) updateData.awayScore = r.away_score;
+        } else {
+          // POSTPONED / CANCELLED — clear scores
+          updateData.homeScore = null;
+          updateData.awayScore = null;
+        }
+
         await db.prediction.update({
           where: { matchId: r.match_id },
-          data: {
-            homeScore: r.home_score,
-            awayScore: r.away_score,
-            resultStatus: "FINAL",
-            resultSource: "scraper",
-            resultUpdatedAt: nowIso,
-          },
+          data: updateData,
         });
         stored++;
       } catch (err) {
