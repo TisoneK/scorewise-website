@@ -9,16 +9,13 @@ export const maxDuration = 30;
 /**
  * POST /api/admin/predictions/scrape-single
  *
- * Triggers the scraper to fetch the result for a SINGLE match from Flashscore.
- * The scraper opens one match page, extracts the score + status, and pushes
- * the result back to the website via /api/webhook/result.
+ * Enqueues a single-match scrape job on the scraper. Returns immediately
+ * with { job_id, status: "QUEUED" | "RUNNING", position }.
  *
- * Takes ~5-10 seconds (one page load + extract + push).
+ * The frontend polls GET /api/admin/predictions/scrape-single?job_id=xxx
+ * for the result.
  *
  * Body: { matchId: "GzcUBljD" }
- * Returns: { status, matchId, result, message }
- *
- * Admin + Operator only.
  */
 export async function POST(request: Request) {
   try {
@@ -40,18 +37,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Scraper URL not configured" }, { status: 500 });
     }
 
+    // Enqueue on the scraper — returns immediately with job_id + status
     const res = await fetch(`${scraperUrl}/api/scrape/results/single`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ match_id: matchId }),
-      signal: AbortSignal.timeout(25000), // 25s — scraper takes ~5-10s
+      signal: AbortSignal.timeout(10000),
     });
 
     const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       return NextResponse.json(
-        { status: "error", message: data.message || data.detail || `Scraper returned ${res.status}` },
+        { error: data.message || data.detail || `Scraper returned ${res.status}` },
         { status: res.status },
       );
     }
@@ -60,7 +58,55 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[scrape-single] Error:", error);
     return NextResponse.json(
-      { error: "Failed to scrape: " + (error instanceof Error ? error.message : String(error)) },
+      { error: "Failed to enqueue scrape: " + (error instanceof Error ? error.message : String(error)) },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * GET /api/admin/predictions/scrape-single?job_id=xxx
+ *   → poll a specific job's status
+ *
+ * GET /api/admin/predictions/scrape-single?status=true
+ *   → get the full queue status
+ */
+export async function GET(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string })?.role;
+    if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const scraperUrl = await getScraperUrl();
+    if (!scraperUrl) {
+      return NextResponse.json({ error: "Scraper URL not configured" }, { status: 500 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get('job_id');
+    const wantStatus = searchParams.get('status') === 'true';
+
+    let endpoint = '/api/scrape/results/single/status';
+    if (jobId) {
+      endpoint = `/api/scrape/results/single/${jobId}`;
+    }
+
+    const res = await fetch(`${scraperUrl}${endpoint}`, {
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) {
+      return NextResponse.json({ error: `Scraper returned ${res.status}` }, { status: res.status });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("[scrape-single GET] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch status: " + (error instanceof Error ? error.message : String(error)) },
       { status: 500 },
     );
   }

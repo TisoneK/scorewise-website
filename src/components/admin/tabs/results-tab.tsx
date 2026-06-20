@@ -307,64 +307,133 @@ export function ResultsTab() {
 
   // Group predictions by category (live / awaiting / upcoming / final / other)
   /**
-   * Scrape the result for a SINGLE match — opens one Flashscore page, extracts
-   * the score + status, and pushes it to the website. Takes ~5-10 seconds.
+   * Scrape the result for a SINGLE match via the job queue.
+   *
+   * Flow:
+   * 1. POST /api/admin/predictions/scrape-single → enqueues job, returns { job_id, status }
+   * 2. Poll GET /api/admin/predictions/scrape-single?job_id=xxx every 2s
+   * 3. When status = DONE, extract result + auto-fill inputs + auto-save
+   * 4. When status = ERROR, show error message
+   *
+   * Multiple matches can be scraped simultaneously — the queue handles
+   * concurrency limits (max 3 browsers). Excess jobs wait in queue.
    */
   const scrapeSingle = async (matchId: string) => {
+    // Mark as scraping
     setRows((prev) => ({
       ...prev,
       [matchId]: { ...prev[matchId], scrapingSingle: true, scrapeMsg: null },
     }));
+
     try {
-      const res = await fetch("/api/admin/predictions/scrape-single", {
+      // 1. Enqueue the job
+      const enqueueRes = await fetch("/api/admin/predictions/scrape-single", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ matchId }),
       });
-      const json = await res.json();
-      if (!res.ok || json.status === "error") {
-        throw new Error(json.message || json.error || `HTTP ${res.status}`);
+      const enqueueData = await enqueueRes.json();
+      if (!enqueueRes.ok) {
+        throw new Error(enqueueData.error || enqueueData.message || `HTTP ${enqueueRes.status}`);
       }
-      const result = json.result || {};
-      const status = result.status || "unknown";
-      const home = result.home_score;
-      const away = result.away_score;
-      const scoreStr = (home != null && away != null) ? `${home}-${away}` : "no score";
 
-      // Update the row inputs with the scraped values
-      setRows((prev) => ({
-        ...prev,
-        [matchId]: {
-          ...prev[matchId],
-          scrapingSingle: false,
-          homeInput: home != null ? String(home) : prev[matchId].homeInput,
-          awayInput: away != null ? String(away) : prev[matchId].awayInput,
-          // Map Flashscore status to our status — same logic as the webhook receiver
-          statusInput: (() => {
-            const s = status.toUpperCase();
-            if (s === "FINISHED" || s.includes("AFTER") || s === "FT") return "FINAL" as ResultStatus;
-            if (s.includes("IN_PROGRESS") || s === "LIVE" ||
-                s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
-                s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
-                s.includes("QUARTER") || s.includes("PERIOD") ||
-                s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)) return "LIVE" as ResultStatus;
-            if (s.includes("POSTPONED")) return "POSTPONED" as ResultStatus;
-            if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
-            // Unknown status + scores present → LIVE (match must be in progress)
-            if (home != null && away != null) return "LIVE" as ResultStatus;
-            // No scores + unknown → keep current status
-            return prev[matchId].statusInput;
-          })(),
-          dirty: true,
-          scrapeMsg: { kind: "ok", text: `Scraped: ${status}, ${scoreStr}` },
-        },
-      }));
+      const jobId = enqueueData.job_id;
+      if (!jobId) {
+        throw new Error("No job_id returned from scraper");
+      }
 
-      // Auto-save the scraped result
-      setTimeout(() => saveOne(matchId), 500);
+      // If the match was already queued/running, show that status
+      if (enqueueData.message && enqueueData.message.includes("already")) {
+        setRows((prev) => ({
+          ...prev,
+          [matchId]: {
+            ...prev[matchId],
+            scrapingSingle: true,
+            scrapeMsg: { kind: "ok", text: enqueueData.message },
+          },
+        }));
+      }
 
-      // Also refresh from server to pick up the webhook-pushed result
-      setTimeout(() => fetchPredictions(), 3000);
+      // 2. Poll for completion (max 60 seconds = 30 polls × 2s)
+      let pollCount = 0;
+      const maxPolls = 30;
+      const poll = async (): Promise<void> => {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          throw new Error("Timed out waiting for scrape to complete (60s)");
+        }
+
+        const pollRes = await fetch(`/api/admin/predictions/scrape-single?job_id=${jobId}`);
+        const pollData = await pollRes.json();
+        if (!pollRes.ok) {
+          throw new Error(pollData.error || `Poll failed: HTTP ${pollRes.status}`);
+        }
+
+        const jobStatus = pollData.status;
+        if (jobStatus === "DONE") {
+          // Extract result
+          const result = pollData.result || {};
+          const matchStatus = result.status || "unknown";
+          const home = result.home_score;
+          const away = result.away_score;
+          const scoreStr = (home != null && away != null) ? `${home}-${away}` : "no score";
+
+          // Update the row inputs with the scraped values
+          setRows((prev) => ({
+            ...prev,
+            [matchId]: {
+              ...prev[matchId],
+              scrapingSingle: false,
+              homeInput: home != null ? String(home) : prev[matchId].homeInput,
+              awayInput: away != null ? String(away) : prev[matchId].awayInput,
+              // Map Flashscore status to our status
+              statusInput: (() => {
+                const s = matchStatus.toUpperCase();
+                if (s === "FINISHED" || s.includes("AFTER") || s === "FT") return "FINAL" as ResultStatus;
+                if (s.includes("IN_PROGRESS") || s === "LIVE" ||
+                    s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
+                    s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
+                    s.includes("QUARTER") || s.includes("PERIOD") ||
+                    s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)) return "LIVE" as ResultStatus;
+                if (s.includes("POSTPONED")) return "POSTPONED" as ResultStatus;
+                if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
+                if (home != null && away != null) return "LIVE" as ResultStatus;
+                return prev[matchId].statusInput;
+              })(),
+              dirty: true,
+              scrapeMsg: { kind: "ok", text: `Scraped: ${matchStatus}, ${scoreStr}` },
+            },
+          }));
+
+          // Auto-save
+          setTimeout(() => saveOne(matchId), 500);
+          // Refresh from server
+          setTimeout(() => fetchPredictions(), 3000);
+          return;
+        }
+
+        if (jobStatus === "ERROR") {
+          throw new Error(pollData.error || "Scrape failed");
+        }
+
+        // Still QUEUED or RUNNING — update the message and poll again
+        const posMsg = jobStatus === "QUEUED" && pollData.position > 0
+          ? `Queued (position ${pollData.position})...`
+          : jobStatus === "RUNNING"
+            ? "Scraping from Flashscore..."
+            : "Waiting...";
+
+        setRows((prev) => ({
+          ...prev,
+          [matchId]: { ...prev[matchId], scrapeMsg: { kind: "ok", text: posMsg } },
+        }));
+
+        // Wait 2s then poll again
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return poll();
+      };
+
+      await poll();
     } catch (e) {
       setRows((prev) => ({
         ...prev,
