@@ -282,14 +282,33 @@ export function ResultsTab() {
     setScraping(true);
     setScrapeMsg(null);
 
-    // Collect all match IDs that need results (not already FINAL/POSTPONED/CANCELLED)
+    // Collect ONLY matches that need result updates:
+    //   - LIVE (in progress — need live score updates)
+    //   - AWAITING_RESULT (start time + 2h50m < now, no FINAL yet — likely finished)
+    // Skip: FINAL (done), POSTPONED, CANCELLED, and PENDING (hasn't started yet —
+    // no point scraping a match that Flashscore hasn't started showing yet).
     const matchesToScrape: string[] = [];
     if (data?.predictions) {
       for (const p of data.predictions) {
         const rs = p.result_status;
-        if (rs !== "FINAL" && rs !== "POSTPONED" && rs !== "CANCELLED") {
-          matchesToScrape.push(p.match_id);
-        }
+        // Skip matches that already have a final result
+        if (rs === "FINAL" || rs === "POSTPONED" || rs === "CANCELLED") continue;
+
+        // Check the match's effective status based on start time
+        const matchDate = parseMatchDateTime(p.date, p.time);
+        if (!matchDate) continue;
+
+        const now = Date.now();
+        const startMs = matchDate.getTime();
+        const likelyFinishedMs = startMs + MATCH_DURATION_MS;
+
+        // Only scrape matches that have STARTED (now > start_time)
+        // — LIVE: now is between start and start+2h50m
+        // — AWAITING: now is past start+2h50m (should be finished)
+        // Skip PENDING matches that haven't started yet (now < start_time)
+        if (now < startMs) continue;
+
+        matchesToScrape.push(p.match_id);
       }
     }
 
