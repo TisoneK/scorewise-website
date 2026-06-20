@@ -269,40 +269,75 @@ export function ResultsTab() {
    * The scrape takes ~30s-2min depending on how many matches are finished.
    * The button shows a spinner during the scrape.
    */
+  /**
+   * "Scrape Results" button — enqueues ALL non-done matches as individual
+   * single-match scrape jobs. The queue handles concurrency (max 3 at a time),
+   * so clicking this on 20 matches will process 3 at a time until all are done.
+   *
+   * Each match shows its own status independently (Queued → Running → Done).
+   * No blocking — the button returns immediately after enqueuing all jobs.
+   */
   const triggerResultsScrape = async () => {
     setScraping(true);
     setScrapeMsg(null);
-    try {
-      // Use today's date in DD.MM.YYYY format (matches the scraper's file naming)
-      const today = new Date();
-      const dateStr = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
-      setScrapeMsg({ kind: "ok", text: `Triggering scraper for ${dateStr}... this takes 30s-2min.` });
 
-      const res = await fetch("/api/admin/scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation: "scrape_results",
-          date: dateStr,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || json.message || `HTTP ${res.status}`);
-
-      setScrapeMsg({
-        kind: "ok",
-        text: `Scraper triggered. It'll push final scores here automatically when done — refresh in ~1 min.`,
-      });
-      // Auto-refresh predictions after a delay to pick up scraper-pushed results
-      setTimeout(() => {
-        fetchPredictions();
-      }, 60000);
-    } catch (e) {
-      setScrapeMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
-    } finally {
-      setScraping(false);
-      setTimeout(() => setScrapeMsg(null), 8000);
+    // Collect all match IDs that need results (not already FINAL/POSTPONED/CANCELLED)
+    const matchesToScrape: string[] = [];
+    if (data?.predictions) {
+      for (const p of data.predictions) {
+        const rs = p.result_status;
+        if (rs !== "FINAL" && rs !== "POSTPONED" && rs !== "CANCELLED") {
+          matchesToScrape.push(p.match_id);
+        }
+      }
     }
+
+    if (matchesToScrape.length === 0) {
+      setScrapeMsg({ kind: "ok", text: "All matches already have results — nothing to scrape." });
+      setScraping(false);
+      setTimeout(() => setScrapeMsg(null), 5000);
+      return;
+    }
+
+    setScrapeMsg({
+      kind: "ok",
+      text: `Enqueuing ${matchesToScrape.length} match(es) for scraping... (3 at a time, queue handles the rest)`,
+    });
+
+    // Mark all matches as "scraping" so the UI shows spinners
+    setRows((prev) => {
+      const next = { ...prev };
+      for (const mid of matchesToScrape) {
+        if (next[mid]) {
+          next[mid] = { ...next[mid], scrapingSingle: true, scrapeMsg: null };
+        }
+      }
+      return next;
+    });
+
+    // Enqueue all matches — the scrapeSingle function handles polling + auto-fill
+    // Fire them all off concurrently (the queue on the scraper side handles limits)
+    let enqueued = 0;
+    let failed = 0;
+    for (const matchId of matchesToScrape) {
+      try {
+        // Don't await — fire and forget so all get enqueued quickly
+        scrapeSingle(matchId).catch((e) => {
+          logger?.warn?.(`Batch scrape failed for ${matchId}: ${e}`);
+          failed++;
+        });
+        enqueued++;
+      } catch {
+        failed++;
+      }
+    }
+
+    setScraping(false);
+    setScrapeMsg({
+      kind: "ok",
+      text: `Enqueued ${enqueued} match(es). ${failed > 0 ? `${failed} failed to enqueue.` : ""} Watch each row update as results come in.`,
+    });
+    setTimeout(() => setScrapeMsg(null), 10000);
   };
 
   // Group predictions by category (live / awaiting / upcoming / final / other)
