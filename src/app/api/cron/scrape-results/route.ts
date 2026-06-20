@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@libsql/client";
 import { getScraperUrl } from "@/lib/service-config";
+import { db } from "@/lib/db-libsql";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // Vercel cron functions can run up to 60s on Pro plan
@@ -8,8 +9,8 @@ export const maxDuration = 60; // Vercel cron functions can run up to 60s on Pro
 /**
  * GET /api/cron/scrape-results
  *
- * Vercel cron job — called automatically every 10 minutes by vercel.json.
- * Also callable manually via GET with ?secret=CRON_SECRET.
+ * Vercel cron job — called automatically every 10 minutes by vercel.json
+ * (if on Pro plan). Also callable manually via GET with ?secret=CRON_SECRET.
  *
  * What it does:
  *   1. Query the Turso DB for matches where:
@@ -23,9 +24,11 @@ export const maxDuration = 60; // Vercel cron functions can run up to 60s on Pro
  *
  * Auth:
  *   - Vercel cron jobs send an `Authorization: Bearer <CRON_SECRET>` header.
- *     We verify it matches process.env.CRON_SECRET.
+ *     We verify it matches process.env.CRON_SECRET OR the ServiceConfig DB row
+ *     (service='website', key='cron_secret'). The DB fallback lets admins set
+ *     the secret via the Config tab without a Vercel redeploy.
  *   - For manual testing, accept ?secret=<CRON_SECRET> as a query param.
- *   - If CRON_SECRET is not set, the endpoint 401s (fail-closed).
+ *   - If CRON_SECRET is not set anywhere, the endpoint 500s (fail-closed).
  *
  * Idempotent: safe to call multiple times — the scraper skips matches that
  * aren't 'finished' yet, and the webhook receiver doesn't overwrite manual
@@ -33,11 +36,26 @@ export const maxDuration = 60; // Vercel cron functions can run up to 60s on Pro
  */
 export async function GET(request: Request) {
   // ── Auth ────────────────────────────────────────────────────────────────
-  const cronSecret = process.env.CRON_SECRET;
+  // Check ServiceConfig DB first (admin-managed via Config tab), then env var.
+  let cronSecret = process.env.CRON_SECRET || "";
   if (!cronSecret) {
-    console.error("[cron/scrape-results] CRON_SECRET env var not set — refusing to run");
+    try {
+      const row = await db.serviceConfig.findUnique({
+        where: { service_key: { service: "website", key: "cron_secret" } },
+      });
+      cronSecret = row?.value || "";
+    } catch {
+      // DB read failed — fall through to env check
+    }
+  }
+
+  if (!cronSecret) {
+    console.error("[cron/scrape-results] CRON_SECRET not set in env or ServiceConfig DB");
     return NextResponse.json(
-      { error: "CRON_SECRET not configured. Set it in Vercel env vars to enable the cron job." },
+      {
+        error: "CRON_SECRET not configured.",
+        hint: "Set it via the admin Config tab (service=website, key=cron_secret) or as a Vercel env var.",
+      },
       { status: 500 },
     );
   }
