@@ -45,12 +45,16 @@ export const dynamic = 'force-dynamic';
  *   LOW (PENDING): start_time > now → hasn't started, lowest priority
  *   DONE (FINAL): already has result_status = FINAL → skip entirely
  */
-const MATCH_DURATION_MS = 2 * 60 * 60 * 1000 + 50 * 60 * 1000; // 2h50m
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const withPriority = searchParams.get('with_priority') === 'true';
+    // Optional: override the match duration threshold (in minutes).
+    // Default 170 (2h50m). The scraper passes its RESULTS_MATCH_DURATION_MINUTES
+    // config value here so both sides use the same threshold.
+    const matchDurationMin = parseInt(searchParams.get('match_duration') || '170', 10);
+    const MATCH_DURATION_MS = (isNaN(matchDurationMin) ? 170 : matchDurationMin) * 60 * 1000;
 
     if (!withPriority) {
       // Original behavior — just return match_id strings
