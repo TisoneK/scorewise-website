@@ -249,7 +249,7 @@ export function UserPredictionsView() {
         <div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight">Predictions</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Basketball OVER/UNDER predictions backed by historical data analysis
+            Basketball predictions for today's matches
             <span className="ml-2 text-[10px] text-muted-foreground/60">· times shown in your local TZ ({tzAbbr})</span>
           </p>
         </div>
