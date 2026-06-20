@@ -259,7 +259,7 @@ export function UserPredictionsView() {
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Flame className="w-4 h-4 text-neon-green" />
-              <h2 className="text-sm font-bold text-foreground">Today&apos;s Top {topPicks.length} Picks</h2>
+              <h2 className="text-sm font-bold text-foreground">Top Picks</h2>
               <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20">
                 ANALYST VERIFIED
               </span>
