@@ -36,6 +36,7 @@ import {
   CheckCircle2,
   XCircle,
   DownloadCloud,
+  Play,
 } from "lucide-react";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import {
@@ -66,6 +67,8 @@ interface RowState {
   dirty: boolean;
   saving: boolean;
   msg: { kind: "ok" | "err"; text: string } | null;
+  scrapingSingle: boolean;
+  scrapeMsg: { kind: "ok" | "err"; text: string } | null;
 }
 
 function getRowState(p: Prediction, prev?: RowState): RowState {
@@ -86,6 +89,8 @@ function getRowState(p: Prediction, prev?: RowState): RowState {
     dirty: prev?.dirty ?? false,
     saving: false,
     msg: prev?.msg ?? null,
+    scrapingSingle: prev?.scrapingSingle ?? false,
+    scrapeMsg: prev?.scrapeMsg ?? null,
   };
 }
 
@@ -301,6 +306,66 @@ export function ResultsTab() {
   };
 
   // Group predictions by category (live / awaiting / upcoming / final / other)
+  /**
+   * Scrape the result for a SINGLE match — opens one Flashscore page, extracts
+   * the score + status, and pushes it to the website. Takes ~5-10 seconds.
+   */
+  const scrapeSingle = async (matchId: string) => {
+    setRows((prev) => ({
+      ...prev,
+      [matchId]: { ...prev[matchId], scrapingSingle: true, scrapeMsg: null },
+    }));
+    try {
+      const res = await fetch("/api/admin/predictions/scrape-single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.status === "error") {
+        throw new Error(json.message || json.error || `HTTP ${res.status}`);
+      }
+      const result = json.result || {};
+      const status = result.status || "unknown";
+      const home = result.home_score;
+      const away = result.away_score;
+      const scoreStr = (home != null && away != null) ? `${home}-${away}` : "no score";
+
+      // Update the row inputs with the scraped values
+      setRows((prev) => ({
+        ...prev,
+        [matchId]: {
+          ...prev[matchId],
+          scrapingSingle: false,
+          homeInput: home != null ? String(home) : prev[matchId].homeInput,
+          awayInput: away != null ? String(away) : prev[matchId].awayInput,
+          statusInput: (status.toUpperCase() === "FINISHED" || status.toUpperCase().includes("AFTER"))
+            ? "FINAL"
+            : (status.toUpperCase().includes("IN_PROGRESS") || status.toUpperCase().includes("Q"))
+              ? "LIVE"
+              : prev[matchId].statusInput,
+          dirty: true,
+          scrapeMsg: { kind: "ok", text: `Scraped: ${status}, ${scoreStr}` },
+        },
+      }));
+
+      // Auto-save the scraped result
+      setTimeout(() => saveOne(matchId), 500);
+
+      // Also refresh from server to pick up the webhook-pushed result
+      setTimeout(() => fetchPredictions(), 3000);
+    } catch (e) {
+      setRows((prev) => ({
+        ...prev,
+        [matchId]: {
+          ...prev[matchId],
+          scrapingSingle: false,
+          scrapeMsg: { kind: "err", text: e instanceof Error ? e.message : String(e) },
+        },
+      }));
+    }
+  };
+
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
     const filtered = data.predictions.filter((p) => {
@@ -515,27 +580,27 @@ export function ResultsTab() {
                         key={p.match_id}
                         className={`bg-card/60 border-border/40 overflow-hidden transition-colors ${row.dirty ? "ring-1 ring-neon-cyan/30" : ""}`}
                       >
-                        <CardContent className="p-3">
-                          {/* Row 1: match info */}
+                        <CardContent className="p-4 space-y-3">
+                          {/* Row 1: match info + outcome badges */}
                           <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-bold leading-tight break-words">
+                              <p className="text-sm font-bold leading-tight break-words">
                                 {p.home_team || "Home"}{" "}
                                 <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
                                 {p.away_team || "Away"}
                               </p>
-                              <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                              <p className="text-[11px] text-muted-foreground mt-1 truncate">
                                 {[p.league, p.country].filter(Boolean).join(" · ")}
                                 {matchDate && (
                                   <>
-                                    <span className="mx-1 text-muted-foreground/30">•</span>
+                                    <span className="mx-1.5 text-muted-foreground/30">•</span>
                                     {formatLocalDateTime(matchDate)} <span className="text-muted-foreground/50">{tzAbbr}</span>
                                   </>
                                 )}
                                 {p.recommendation && (
                                   <>
-                                    <span className="mx-1 text-muted-foreground/30">•</span>
-                                    <span className={p.recommendation === "OVER" ? "text-neon-green" : p.recommendation === "UNDER" ? "text-neon-red" : "text-muted-foreground"}>
+                                    <span className="mx-1.5 text-muted-foreground/30">•</span>
+                                    <span className={`font-bold ${p.recommendation === "OVER" ? "text-neon-green" : p.recommendation === "UNDER" ? "text-neon-red" : "text-muted-foreground"}`}>
                                       {p.recommendation} {p.bookmaker_line != null && `@${p.bookmaker_line}`}
                                     </span>
                                   </>
@@ -546,12 +611,12 @@ export function ResultsTab() {
                             {row.statusInput === "FINAL" && (
                               <div className="flex items-center gap-1 shrink-0">
                                 {ouOutcome !== "MISSING" && (
-                                  <Badge variant="outline" className={`text-[9px] ${ouOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/30 text-neon-red" : "border-neon-yellow/30 text-neon-yellow"}`}>
+                                  <Badge variant="outline" className={`text-[10px] ${ouOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/30 text-neon-red" : "border-neon-yellow/30 text-neon-yellow"}`}>
                                     {p.recommendation} {ouOutcome}
                                   </Badge>
                                 )}
                                 {winOutcome !== "MISSING" && (
-                                  <Badge variant="outline" className={`text-[9px] ${winOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : "border-neon-red/30 text-neon-red"}`}>
+                                  <Badge variant="outline" className={`text-[10px] ${winOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : "border-neon-red/30 text-neon-red"}`}>
                                     Winner {winOutcome}
                                   </Badge>
                                 )}
@@ -559,68 +624,100 @@ export function ResultsTab() {
                             )}
                           </div>
 
-                          {/* Row 2: score inputs + status + save */}
-                          <div className="flex items-center gap-2 mt-2 flex-wrap sm:flex-nowrap">
-                            {/* Score inputs */}
-                            <div className="flex items-center gap-1.5">
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                min="0"
-                                max="999"
-                                value={row.homeInput}
-                                onChange={(e) => updateRow(p.match_id, { homeInput: e.target.value })}
-                                placeholder="H"
-                                className="bg-background font-mono text-xs h-8 w-14 text-center"
-                                disabled={row.saving}
-                                aria-label={`${p.home_team} score`}
-                              />
-                              <span className="text-[10px] text-muted-foreground/50">-</span>
-                              <Input
-                                type="number"
-                                inputMode="numeric"
-                                min="0"
-                                max="999"
-                                value={row.awayInput}
-                                onChange={(e) => updateRow(p.match_id, { awayInput: e.target.value })}
-                                placeholder="A"
-                                className="bg-background font-mono text-xs h-8 w-14 text-center"
-                                disabled={row.saving}
-                                aria-label={`${p.away_team} score`}
-                              />
+                          {/* Row 2: score inputs + status + actions — BIGGER + BETTER */}
+                          <div className="flex items-center gap-3 flex-wrap">
+                            {/* Score inputs — wider + taller for easy entry */}
+                            <div className="flex items-center gap-2">
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[9px] text-muted-foreground/60 font-bold uppercase truncate max-w-[60px]">{p.home_team?.split(" ").slice(-2).join(" ") || "Home"}</span>
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min="0"
+                                  max="999"
+                                  value={row.homeInput}
+                                  onChange={(e) => updateRow(p.match_id, { homeInput: e.target.value })}
+                                  placeholder="0"
+                                  className="bg-background font-mono text-lg font-bold h-12 w-20 text-center"
+                                  disabled={row.saving || row.scrapingSingle}
+                                  aria-label={`${p.home_team} score`}
+                                />
+                              </div>
+                              <span className="text-sm text-muted-foreground/40 font-bold pt-5">-</span>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-[9px] text-muted-foreground/60 font-bold uppercase truncate max-w-[60px]">{p.away_team?.split(" ").slice(-2).join(" ") || "Away"}</span>
+                                <Input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min="0"
+                                  max="999"
+                                  value={row.awayInput}
+                                  onChange={(e) => updateRow(p.match_id, { awayInput: e.target.value })}
+                                  placeholder="0"
+                                  className="bg-background font-mono text-lg font-bold h-12 w-20 text-center"
+                                  disabled={row.saving || row.scrapingSingle}
+                                  aria-label={`${p.away_team} score`}
+                                />
+                              </div>
                             </div>
 
-                            {/* Status dropdown */}
+                            {/* Status dropdown — bigger */}
                             <select
                               value={row.statusInput}
                               onChange={(e) => updateRow(p.match_id, { statusInput: e.target.value as ResultStatus })}
-                              className="bg-background border border-border/50 rounded h-8 px-2 text-xs"
-                              disabled={row.saving}
+                              className="bg-background border border-border/50 rounded-md h-10 px-3 text-sm font-medium"
+                              disabled={row.saving || row.scrapingSingle}
                             >
                               {VALID_STATUSES.map((s) => (
                                 <option key={s} value={s}>{s}</option>
                               ))}
                             </select>
 
-                            {/* Save button */}
-                            <Button
-                              size="sm"
-                              variant={row.dirty ? "default" : "outline"}
-                              onClick={() => saveOne(p.match_id)}
-                              disabled={row.saving || !row.dirty}
-                              className="h-8 gap-1 shrink-0 ml-auto"
-                            >
-                              {row.saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
-                              <span className="hidden sm:inline">{row.saving ? "Saving" : row.dirty ? "Save" : "Saved"}</span>
-                            </Button>
+                            {/* Action buttons — right aligned */}
+                            <div className="flex items-center gap-2 ml-auto">
+                              {/* Per-match scrape button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => scrapeSingle(p.match_id)}
+                                disabled={row.scrapingSingle || row.saving}
+                                className="gap-1.5 h-10 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
+                                title="Scrape this match's result from Flashscore now"
+                              >
+                                {row.scrapingSingle ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                                <span className="hidden sm:inline">{row.scrapingSingle ? "Scraping..." : "Scrape"}</span>
+                              </Button>
+
+                              {/* Save button */}
+                              <Button
+                                size="sm"
+                                variant={row.dirty ? "default" : "outline"}
+                                onClick={() => saveOne(p.match_id)}
+                                disabled={row.saving || row.scrapingSingle || !row.dirty}
+                                className="h-10 gap-1.5 px-4"
+                              >
+                                {row.saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                <span>{row.saving ? "Saving" : row.dirty ? "Save" : "Saved"}</span>
+                              </Button>
+                            </div>
                           </div>
 
-                          {/* Per-row message */}
-                          {row.msg && (
-                            <p className={`text-[10px] mt-1.5 flex items-center gap-1 ${row.msg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>
-                              {row.msg.kind === "ok" ? <Check className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                              {row.msg.text}
-                            </p>
+                          {/* Per-row messages */}
+                          {(row.msg || row.scrapeMsg) && (
+                            <div className="flex flex-col gap-1">
+                              {row.scrapeMsg && (
+                                <p className={`text-[11px] flex items-center gap-1.5 ${row.scrapeMsg.kind === "ok" ? "text-neon-cyan" : "text-neon-red"}`}>
+                                  {row.scrapeMsg.kind === "ok" ? <Play className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                  {row.scrapeMsg.text}
+                                </p>
+                              )}
+                              {row.msg && (
+                                <p className={`text-[11px] flex items-center gap-1.5 ${row.msg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>
+                                  {row.msg.kind === "ok" ? <Check className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
+                                  {row.msg.text}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </CardContent>
                       </Card>
