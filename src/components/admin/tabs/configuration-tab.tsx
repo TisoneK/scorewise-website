@@ -11,6 +11,7 @@
 
 "use client";
 
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -67,6 +68,9 @@ import {
   Search,
   Cpu,
   Globe,
+  Clock,
+  Calendar,
+  Trophy,
 } from "lucide-react";
 import type {
   ServiceConfigEntry,
@@ -170,6 +174,8 @@ export function ConfigurationTab({
 }: ConfigurationTabProps) {
   return (
     <>
+      <SchedulingSection serviceConfigs={serviceConfigs} handleSaveConfig={handleSaveConfig} handlePushConfig={handlePushConfig} />
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold">Service Configuration</h2>
@@ -773,5 +779,298 @@ export function ConfigurationTab({
         </CardContent>
       </Card>
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SchedulingSection — visual UI for configuring auto-scrape settings
+// ─────────────────────────────────────────────────────────────────────────
+
+function SchedulingSection({
+  serviceConfigs,
+  handleSaveConfig,
+  handlePushConfig,
+}: {
+  serviceConfigs: ServiceConfigEntry[];
+  handleSaveConfig: (id: string, service: string, key: string, value: string, secret: boolean) => void;
+  handlePushConfig: (service: "engine" | "scraper", keys?: string[]) => void | Promise<void>;
+}) {
+  // Helper: get a config value from the flat list
+  const getConfig = (service: string, key: string): string => {
+    const entry = serviceConfigs.find((c) => c.service === service && c.key === key);
+    return entry?._hasValue ? entry.value : "";
+  };
+
+  // ── Tomorrow match scrape schedule ─────────────────────────────
+  const tomorrowEnabled = getConfig("scraper", "auto_scrape_tomorrow") === "true";
+  const tomorrowTime = getConfig("scraper", "auto_scrape_tomorrow_time") || "06:00";
+
+  // ── Results scrape schedule ────────────────────────────────────
+  const resultsEnabled = getConfig("scraper", "auto_scrape_results") === "true";
+  const resultsInterval = getConfig("scraper", "auto_scrape_results_interval") || "10";
+
+  // ── Scraper behavior settings ──────────────────────────────────
+  const maxWorkers = getConfig("scraper", "RESULTS_MAX_WORKERS") || "3";
+  const incrementalPush = getConfig("scraper", "RESULTS_INCREMENTAL_PUSH") !== "false";
+  const matchDuration = getConfig("scraper", "RESULTS_MATCH_DURATION_MINUTES") || "170";
+  const priorityMode = getConfig("scraper", "RESULTS_PRIORITY_MODE") || "status";
+
+  // ── Website cron secret ────────────────────────────────────────
+  const cronSecret = getConfig("website", "cron_secret");
+
+  const [saving, setSaving] = useState<string | null>(null);
+  const [pushing, setPushing] = useState(false);
+
+  // Local state for form fields (initialized from config, updated on change)
+  const [tomorrowEnabledState, setTomorrowEnabledState] = useState(tomorrowEnabled);
+  const [tomorrowTimeState, setTomorrowTimeState] = useState(tomorrowTime);
+  const [resultsEnabledState, setResultsEnabledState] = useState(resultsEnabled);
+  const [resultsIntervalState, setResultsIntervalState] = useState(resultsInterval);
+  const [maxWorkersState, setMaxWorkersState] = useState(maxWorkers);
+  const [incrementalPushState, setIncrementalPushState] = useState(incrementalPush);
+  const [matchDurationState, setMatchDurationState] = useState(matchDuration);
+  const [priorityModeState, setPriorityModeState] = useState(priorityMode);
+
+  // Sync local state when serviceConfigs changes (e.g. after fetch)
+  useEffect(() => {
+    setTomorrowEnabledState(getConfig("scraper", "auto_scrape_tomorrow") === "true");
+    setTomorrowTimeState(getConfig("scraper", "auto_scrape_tomorrow_time") || "06:00");
+    setResultsEnabledState(getConfig("scraper", "auto_scrape_results") === "true");
+    setResultsIntervalState(getConfig("scraper", "auto_scrape_results_interval") || "10");
+    setMaxWorkersState(getConfig("scraper", "RESULTS_MAX_WORKERS") || "3");
+    setIncrementalPushState(getConfig("scraper", "RESULTS_INCREMENTAL_PUSH") !== "false");
+    setMatchDurationState(getConfig("scraper", "RESULTS_MATCH_DURATION_MINUTES") || "170");
+    setPriorityModeState(getConfig("scraper", "RESULTS_PRIORITY_MODE") || "status");
+  }, [serviceConfigs]);
+
+  const saveAndPush = async (key: string, service: string, value: string, secret = false) => {
+    setSaving(key);
+    // Find the existing config entry to get its ID
+    const existing = serviceConfigs.find((c) => c.service === service && c.key === key);
+    if (existing) {
+      handleSaveConfig(existing.id, service, key, value, secret);
+    } else {
+      // New config — use handleSaveConfig with empty ID (the parent handler creates it)
+      handleSaveConfig("", service, key, value, secret);
+    }
+    setSaving(null);
+  };
+
+  const handleSaveAll = async () => {
+    setPushing(true);
+    // Save all settings to the website DB
+    const settings = [
+      { service: "scraper", key: "auto_scrape_tomorrow", value: tomorrowEnabledState ? "true" : "false", secret: false },
+      { service: "scraper", key: "auto_scrape_tomorrow_time", value: tomorrowTimeState, secret: false },
+      { service: "scraper", key: "auto_scrape_results", value: resultsEnabledState ? "true" : "false", secret: false },
+      { service: "scraper", key: "auto_scrape_results_interval", value: resultsIntervalState, secret: false },
+      { service: "scraper", key: "RESULTS_MAX_WORKERS", value: maxWorkersState, secret: false },
+      { service: "scraper", key: "RESULTS_INCREMENTAL_PUSH", value: incrementalPushState ? "true" : "false", secret: false },
+      { service: "scraper", key: "RESULTS_MATCH_DURATION_MINUTES", value: matchDurationState, secret: false },
+      { service: "scraper", key: "RESULTS_PRIORITY_MODE", value: priorityModeState, secret: false },
+    ];
+    for (const s of settings) {
+      const existing = serviceConfigs.find((c) => c.service === s.service && c.key === s.key);
+      handleSaveConfig(existing?.id || "", s.service, s.key, s.value, s.secret);
+    }
+    // Push scraper settings to the scraper service
+    await handlePushConfig("scraper", [
+      "scraper:RESULTS_MAX_WORKERS",
+      "scraper:RESULTS_INCREMENTAL_PUSH",
+      "scraper:RESULTS_MATCH_DURATION_MINUTES",
+      "scraper:RESULTS_PRIORITY_MODE",
+    ]);
+    setPushing(false);
+  };
+
+  return (
+    <Card className="bg-card/60 border-border/40 mb-4">
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Clock className="w-4 h-4 text-neon-cyan" />
+          Scheduling & Automation
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+
+        {/* ── Tomorrow Match Scrape ─────────────────────────── */}
+        <div className="rounded-lg border border-border/40 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-neon-cyan" />
+              <span className="text-sm font-bold">Auto-Scrape Tomorrow's Matches</span>
+            </div>
+            <Switch checked={tomorrowEnabledState} onCheckedChange={setTomorrowEnabledState} />
+          </div>
+          {tomorrowEnabledState && (
+            <div className="flex items-center gap-2 pl-6">
+              <Label className="text-xs text-muted-foreground">Daily at:</Label>
+              <Input
+                type="time"
+                value={tomorrowTimeState}
+                onChange={(e) => setTomorrowTimeState(e.target.value)}
+                className="w-28 h-8 text-xs bg-background"
+              />
+              <span className="text-[10px] text-muted-foreground">
+                (External cron triggers <code className="text-neon-cyan">/api/cron/scrape-tomorrow</code>)
+              </span>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground/60 pl-6">
+            Collects tomorrow's match data (odds, H2H) from Flashscore → engine predicts → users see predictions
+          </p>
+        </div>
+
+        {/* ── Results Scrape ────────────────────────────────── */}
+        <div className="rounded-lg border border-border/40 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-neon-green" />
+              <span className="text-sm font-bold">Auto-Scrape Results</span>
+            </div>
+            <Switch checked={resultsEnabledState} onCheckedChange={setResultsEnabledState} />
+          </div>
+          {resultsEnabledState && (
+            <div className="flex items-center gap-2 pl-6">
+              <Label className="text-xs text-muted-foreground">Every:</Label>
+              <select
+                value={resultsIntervalState}
+                onChange={(e) => setResultsIntervalState(e.target.value)}
+                className="bg-background border border-border/50 rounded h-8 px-2 text-xs"
+              >
+                <option value="5">5 minutes</option>
+                <option value="10">10 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+              </select>
+              <span className="text-[10px] text-muted-foreground">
+                (External cron triggers <code className="text-neon-cyan">/api/cron/scrape-results</code>)
+              </span>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground/60 pl-6">
+            Fetches final scores from Flashscore → updates predictions with WIN/LOSS/PUSH badges
+          </p>
+        </div>
+
+        {/* ── Scraper Behavior ──────────────────────────────── */}
+        <div className="rounded-lg border border-border/40 p-3 space-y-3">
+          <div className="flex items-center gap-2">
+            <Settings className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-bold">Scraper Behavior</span>
+          </div>
+
+          {/* Max workers */}
+          <div className="flex items-center justify-between pl-6">
+            <div>
+              <Label className="text-xs font-semibold">Concurrent Browser Instances</Label>
+              <p className="text-[10px] text-muted-foreground/60">More = faster but uses more RAM (~300MB each)</p>
+            </div>
+            <select
+              value={maxWorkersState}
+              onChange={(e) => setMaxWorkersState(e.target.value)}
+              className="bg-background border border-border/50 rounded h-8 px-2 text-xs w-20"
+            >
+              <option value="1">1 (slow, low RAM)</option>
+              <option value="2">2 (balanced)</option>
+              <option value="3">3 (fast, ~900MB)</option>
+            </select>
+          </div>
+
+          {/* Incremental push */}
+          <div className="flex items-center justify-between pl-6">
+            <div>
+              <Label className="text-xs font-semibold">Incremental Push</Label>
+              <p className="text-[10px] text-muted-foreground/60">Push each result immediately vs batch at end</p>
+            </div>
+            <Switch checked={incrementalPushState} onCheckedChange={setIncrementalPushState} />
+          </div>
+
+          {/* Match duration */}
+          <div className="flex items-center justify-between pl-6">
+            <div>
+              <Label className="text-xs font-semibold">Match Duration (minutes)</Label>
+              <p className="text-[10px] text-muted-foreground/60">When to consider a match "likely finished"</p>
+            </div>
+            <Input
+              type="number"
+              min="30"
+              max="600"
+              value={matchDurationState}
+              onChange={(e) => setMatchDurationState(e.target.value)}
+              className="w-20 h-8 text-xs bg-background text-center"
+            />
+          </div>
+
+          {/* Priority mode */}
+          <div className="flex items-center justify-between pl-6">
+            <div>
+              <Label className="text-xs font-semibold">Priority Sorting</Label>
+              <p className="text-[10px] text-muted-foreground/60">Order matches are processed</p>
+            </div>
+            <select
+              value={priorityModeState}
+              onChange={(e) => setPriorityModeState(e.target.value)}
+              className="bg-background border border-border/50 rounded h-8 px-2 text-xs w-32"
+            >
+              <option value="status">By status (FINISHED→LIVE→SCHEDULED)</option>
+              <option value="time">By time (earliest first)</option>
+              <option value="off">No sorting</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ── External Cron Setup Instructions ─────────────── */}
+        {!cronSecret ? (
+          <div className="rounded-lg border border-neon-yellow/30 bg-neon-yellow/5 p-3">
+            <p className="text-xs text-neon-yellow flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              CRON_SECRET not set — auto-scrape endpoints won't work.
+              Set it in the config table below (service=website, key=cron_secret).
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-border/40 bg-background/30 p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-muted-foreground">External Cron Setup (free):</p>
+            <p className="text-[10px] text-muted-foreground/70">
+              1. Sign up at <a href="https://cron-job.org" target="_blank" rel="noopener" className="text-neon-cyan underline">cron-job.org</a> (free, no credit card)
+            </p>
+            <p className="text-[10px] text-muted-foreground/70">
+              2. Create a job pointing to:
+            </p>
+            <div className="bg-background/60 rounded p-2 border border-border/30">
+              <code className="text-[10px] text-neon-green break-all">
+                https://scorewise-ke.vercel.app/api/cron/scrape-results?secret={cronSecret.substring(0, 8)}...
+              </code>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              3. Set schedule: every {resultsIntervalState} minutes (or daily at {tomorrowTimeState} for tomorrow matches)
+            </p>
+            <p className="text-[10px] text-muted-foreground/70">
+              4. For tomorrow matches, create a second job pointing to:
+            </p>
+            <div className="bg-background/60 rounded p-2 border border-border/30">
+              <code className="text-[10px] text-neon-green break-all">
+                https://scorewise-ke.vercel.app/api/cron/scrape-tomorrow?secret={cronSecret.substring(0, 8)}...
+              </code>
+            </div>
+          </div>
+        )}
+
+        {/* ── Save button ───────────────────────────────────── */}
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            onClick={handleSaveAll}
+            disabled={pushing}
+            className="gap-1.5"
+          >
+            {pushing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            Save & Push to Scraper
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
