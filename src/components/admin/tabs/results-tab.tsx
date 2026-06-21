@@ -429,8 +429,14 @@ export function ResultsTab() {
 
         const jobStatus = pollData.status;
         if (jobStatus === "DONE") {
-          // Extract result
-          const result = pollData.result || {};
+          // Extract result — the job result is nested:
+          // pollData.result = { status: "ok", result: { home_score, away_score, status } }
+          // or pollData.result = { status: "error", message: "..." }
+          const outerResult = pollData.result || {};
+          if (outerResult.status === "error") {
+            throw new Error(outerResult.message || "Scrape failed");
+          }
+          const result = outerResult.result || {};
           const matchStatus = result.status || "unknown";
           const home = result.home_score;
           const away = result.away_score;
