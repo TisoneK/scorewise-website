@@ -162,12 +162,20 @@ export function PredictionCard({
                 ))}
             </p>
             {/* Countdown badge — shows time to kickoff or time since kickoff.
-                Only rendered after mount to avoid SSR hydration mismatch (Date.now() differs). */}
-            {showDateTime && mounted && (() => {
+                Only rendered after mount to avoid SSR hydration mismatch.
+                Hidden for FINAL matches (irrelevant — match is over). */}
+            {showDateTime && mounted && !isFinal && (() => {
               const countdown = timeToKickoff(p.date, p.time);
               if (!countdown) return null;
               const isPast = countdown.includes("ago");
               const isNow = countdown.includes("now");
+              // For past matches (LIVE/AWAITING), only show if within 3 hours
+              // — beyond that it's irrelevant ("started 21h ago" is useless)
+              if (isPast && !isNow) {
+                const hoursMatch = countdown.match(/(\d+)h/);
+                const hours = hoursMatch ? parseInt(hoursMatch[1]) : 0;
+                if (hours >= 3) return null;
+              }
               const isSoon = countdown.includes("in") && parseInt(countdown.replace(/[^0-9]/g, "")) <= 30;
               const color = isNow || isPast
                 ? "text-neon-red border-neon-red/30 bg-neon-red/5"
