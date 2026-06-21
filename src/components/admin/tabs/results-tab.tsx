@@ -442,23 +442,47 @@ export function ResultsTab() {
           const away = result.away_score;
           const scoreStr = (home != null && away != null) ? `${home}-${away}` : "no score";
 
-          // The scraper already pushed the result to the website via webhook,
-          // which updated the DB directly. No need to fill inputs + mark dirty +
-          // require a manual Save. Just show the message and refresh from server.
+          // Fill local inputs with the scraped scores immediately so the admin
+          // sees them — don't rely solely on fetchPredictions() because the
+          // webhook might not have processed yet (timing race).
+          // Set dirty=false because the scraper's webhook should have saved
+          // to the DB already. If the webhook failed, the admin can still
+          // manually edit + Save.
+          const mappedStatus = (() => {
+            const s = matchStatus.toUpperCase();
+            if (s === "FINISHED" || s.includes("AFTER") || s === "FT") return "FINAL" as ResultStatus;
+            if (s.includes("IN_PROGRESS") || s === "LIVE" ||
+                s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
+                s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
+                s.includes("QUARTER") || s.includes("PERIOD") || s.includes("OVERTIME") ||
+                s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)) return "LIVE" as ResultStatus;
+            if (s.includes("POSTPONED") || s.includes("DELAYED")) return "POSTPONED" as ResultStatus;
+            if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
+            if (home != null && away != null) return "LIVE" as ResultStatus;
+            return prev?.[matchId]?.statusInput || "PENDING" as ResultStatus;
+          })();
+
           setRows((prev) => ({
             ...prev,
             [matchId]: {
               ...prev[matchId],
               scrapingSingle: false,
-              dirty: false,
+              homeInput: home != null ? String(home) : prev[matchId].homeInput,
+              awayInput: away != null ? String(away) : prev[matchId].awayInput,
+              statusInput: mappedStatus,
+              savedHome: home,
+              savedAway: away,
+              savedStatus: mappedStatus,
+              dirty: false,  // webhook should have saved — no manual Save needed
               scrapeMsg: { kind: "ok", text: `Scraped: ${matchStatus}, ${scoreStr}` },
             },
           }));
 
-          // Refresh from server to pick up the webhook-pushed result.
-          // The webhook already updated: homeScore, awayScore, resultStatus,
-          // resultSource='scraper'. fetchPredictions() syncs local state.
-          setTimeout(() => fetchPredictions(), 2000);
+          // Refresh from server to confirm the webhook saved correctly.
+          // If the webhook saved → server data matches local → no visible change.
+          // If the webhook failed → local inputs still show the scraped scores
+          // (admin can manually click Save if needed).
+          setTimeout(() => fetchPredictions(), 3000);
           return;
         }
 
