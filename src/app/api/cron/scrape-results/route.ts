@@ -162,12 +162,11 @@ export async function GET(request: Request) {
     });
   }
 
-  // ── Trigger the scraper ────────────────────────────────────────────────
-  // Use today's date as the hint — the scraper falls back to /api/predictions/exists
-  // if no local matches file exists, so it'll scrape ALL matches in the DB.
-  const today = new Date();
-  const dateStr = `${String(today.getDate()).padStart(2, "0")}.${String(today.getMonth() + 1).padStart(2, "0")}.${today.getFullYear()}`;
-
+  // ── Trigger single-match scrapes for each match ────────────────────────
+  // Instead of triggering the slow batch scraper (which takes 7+ min and OOMs),
+  // enqueue individual single-match scrapes via the queue. Each match gets
+  // its own job, processed 1 at a time (max_workers=1), each taking ~10s.
+  // Results are pushed back via webhook as each completes.
   const scraperUrl = await getScraperUrl();
   if (!scraperUrl) {
     console.error("[cron/scrape-results] Scraper URL not configured");
@@ -177,52 +176,38 @@ export async function GET(request: Request) {
     );
   }
 
-  try {
-    const scrapeRes = await fetch(`${scraperUrl}/api/scrape/results`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: dateStr }),
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!scrapeRes.ok) {
-      const text = await scrapeRes.text().catch(() => "");
-      console.error(`[cron/scrape-results] Scraper returned ${scrapeRes.status}: ${text}`);
-      return NextResponse.json(
-        {
-          status: "error",
-          message: `Scraper returned ${scrapeRes.status}`,
-          details: text.slice(0, 200),
-          matchesNeedingResults,
-          triggered: false,
-        },
-        { status: 502 },
-      );
+  let enqueued = 0;
+  let failed = 0;
+  for (const match of needingResults) {
+    try {
+      const singleRes = await fetch(`${scraperUrl}/api/scrape/results/single`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ match_id: match.matchId }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (singleRes.ok) {
+        enqueued++;
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
     }
-
-    const data = await scrapeRes.json();
-    console.log(`[cron/scrape-results] Scraper triggered: ${data.scrape_id || data.run_id || "unknown"}`);
-
-    return NextResponse.json({
-      status: "ok",
-      message: `Triggered scraper for ${dateStr} — ${matchesNeedingResults} match(es) need results.`,
-      matchesNeedingResults,
-      sampleMatchIds,
-      triggered: true,
-      scrapeId: data.scrape_id || data.run_id,
-      date: dateStr,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (fetchErr) {
-    console.error("[cron/scrape-results] Could not reach scraper:", fetchErr);
-    return NextResponse.json(
-      {
-        status: "offline",
-        message: `Could not reach scraper at ${scraperUrl}`,
-        matchesNeedingResults,
-        triggered: false,
-      },
-      { status: 502 },
-    );
   }
+
+  console.log(
+    `[cron/scrape-results] Enqueued ${enqueued} single-match scrapes (${failed} failed). ` +
+    `Queue will process them 1 at a time (~10s each).`
+  );
+
+  return NextResponse.json({
+    status: "ok",
+    message: `Enqueued ${enqueued} single-match scrapes (${failed} failed). Results will update as each match is scraped.`,
+    matchesNeedingResults,
+    enqueued,
+    failed,
+    triggered: true,
+    timestamp: new Date().toISOString(),
+  });
 }
