@@ -35,6 +35,7 @@ import {
   getTimezoneAbbr,
 } from "@/lib/timezone";
 import { computeOverUnderOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
+import { timeToKickoff } from "@/lib/countdown";
 
 /** Map a confidence label to a star count (0-5) for the visual rating. */
 function confStars(conf: string): number {
@@ -133,28 +134,48 @@ export function PredictionCard({
   return (
     <div className="rounded-lg bg-card/80 border border-border/40 hover:border-neon-green/20 transition-all overflow-hidden">
 
-      {/* HEADER — league + local date/time at the TOP */}
+      {/* HEADER — league + local date/time + countdown at the TOP */}
       {(showLeague && leagueBits) || (showDateTime && matchDate) ? (
         <div className="px-3 py-1.5 bg-background/40 border-b border-border/20">
-          <p className="text-[10px] text-muted-foreground/70 truncate text-center">
-            {[
-              showLeague && leagueBits,
-              showDateTime && matchDate && (
-                <span key="dt" className="inline-flex items-center gap-1">
-                  <Calendar className="w-2.5 h-2.5 inline" />
-                  {formatLocalDateTime(matchDate)}{" "}
-                  <span className="text-muted-foreground/50">{tzAbbr}</span>
+          <div className="flex items-center justify-center gap-1.5">
+            <p className="text-[10px] text-muted-foreground/70 truncate">
+              {[
+                showLeague && leagueBits,
+                showDateTime && matchDate && (
+                  <span key="dt" className="inline-flex items-center gap-1">
+                    <Calendar className="w-2.5 h-2.5 inline" />
+                    {formatLocalDateTime(matchDate)}{" "}
+                    <span className="text-muted-foreground/50">{tzAbbr}</span>
+                  </span>
+                ),
+              ]
+                .filter(Boolean)
+                .map((node, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="mx-1.5 text-muted-foreground/30">•</span>}
+                    {node}
+                  </span>
+                ))}
+            </p>
+            {/* Countdown badge — shows time to kickoff or time since kickoff */}
+            {showDateTime && (() => {
+              const countdown = timeToKickoff(p.date, p.time);
+              if (!countdown) return null;
+              const isPast = countdown.includes("ago");
+              const isNow = countdown.includes("now");
+              const isSoon = countdown.includes("in") && parseInt(countdown.replace(/[^0-9]/g, "")) <= 30;
+              const color = isNow || isPast
+                ? "text-neon-red border-neon-red/30 bg-neon-red/5"
+                : isSoon
+                  ? "text-neon-yellow border-neon-yellow/30 bg-neon-yellow/5"
+                  : "text-neon-cyan border-neon-cyan/30 bg-neon-cyan/5";
+              return (
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${color} shrink-0`}>
+                  {isNow || isPast ? "🔴 " : "⏱ "}{countdown}
                 </span>
-              ),
-            ]
-              .filter(Boolean)
-              .map((node, i) => (
-                <span key={i}>
-                  {i > 0 && <span className="mx-1.5 text-muted-foreground/30">•</span>}
-                  {node}
-                </span>
-              ))}
-          </p>
+              );
+            })()}
+          </div>
         </div>
       ) : null}
 
