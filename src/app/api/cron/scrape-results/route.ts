@@ -121,8 +121,12 @@ export async function GET(request: Request) {
       const matchStart = Date.UTC(year, month - 1, day, hour, minute);
       if (isNaN(matchStart)) continue;
 
-      // If match should be finished by now (start + 2h50m < now)
-      if (matchStart + MATCH_DURATION_MS < now) {
+      // Scrape matches that have STARTED (now > start_time):
+      //   - LIVE: now is between start and start+2h50m (need live score updates)
+      //   - AWAITING_RESULT: now is past start+2h50m (likely finished, need final score)
+      // Skip matches that haven't started yet (now < start_time) and
+      // matches that are already FINAL/POSTPONED/CANCELLED (filtered by SQL).
+      if (matchStart < now) {
         needingResults.push({
           matchId: row.matchId as string,
           homeTeam: row.homeTeam as string,
