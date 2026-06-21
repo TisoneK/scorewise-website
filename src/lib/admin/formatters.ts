@@ -61,7 +61,9 @@ export function renderLogDetails(
   if (action === "USER_DELETE")
     return `Deleted user ${details.deletedEmail || ""} (${details.deletedRole || ""})`;
   if (action === "USER_ROLE_CHANGE")
-    return `Changed ${details.targetEmail || ""}: ${details.oldRole || ""} → ${details.newRole || ""}`;
+    return `Changed ${details.targetEmail || ""}: ${details.oldRole || ""} → ${details.newRole || ""} (by ${details.changedBy || "admin"})`;
+  if (action === "USER_INFO_UPDATE")
+    return `Updated ${details.targetEmail || ""}: name "${details.oldName || "—"}" → "${details.newName || "—"}" (by ${details.changedBy || "admin"})`;
   if (action === "SERVICE_CHECK")
     return `Checked ${details.url || "service"}`;
   if (action === "SERVICE_TRIGGER") {
