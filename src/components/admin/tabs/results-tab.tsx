@@ -442,37 +442,23 @@ export function ResultsTab() {
           const away = result.away_score;
           const scoreStr = (home != null && away != null) ? `${home}-${away}` : "no score";
 
-          // Update the row inputs with the scraped values
+          // The scraper already pushed the result to the website via webhook,
+          // which updated the DB directly. No need to fill inputs + mark dirty +
+          // require a manual Save. Just show the message and refresh from server.
           setRows((prev) => ({
             ...prev,
             [matchId]: {
               ...prev[matchId],
               scrapingSingle: false,
-              homeInput: home != null ? String(home) : prev[matchId].homeInput,
-              awayInput: away != null ? String(away) : prev[matchId].awayInput,
-              // Map Flashscore status to our status
-              statusInput: (() => {
-                const s = matchStatus.toUpperCase();
-                if (s === "FINISHED" || s.includes("AFTER") || s === "FT") return "FINAL" as ResultStatus;
-                if (s.includes("IN_PROGRESS") || s === "LIVE" ||
-                    s.includes("Q1") || s.includes("Q2") || s.includes("Q3") || s.includes("Q4") ||
-                    s.includes("HT") || s.includes("HALF") || s.includes("BREAK") ||
-                    s.includes("QUARTER") || s.includes("PERIOD") ||
-                    s.match(/\d+:\d+/) || s.match(/\d+(ST|ND|RD|TH)\s*(QUARTER|PERIOD|Q)/i)) return "LIVE" as ResultStatus;
-                if (s.includes("POSTPONED")) return "POSTPONED" as ResultStatus;
-                if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
-                if (home != null && away != null) return "LIVE" as ResultStatus;
-                return prev[matchId].statusInput;
-              })(),
-              dirty: true,
+              dirty: false,
               scrapeMsg: { kind: "ok", text: `Scraped: ${matchStatus}, ${scoreStr}` },
             },
           }));
 
-          // Auto-save
-          setTimeout(() => saveOne(matchId), 500);
-          // Refresh from server
-          setTimeout(() => fetchPredictions(), 3000);
+          // Refresh from server to pick up the webhook-pushed result.
+          // The webhook already updated: homeScore, awayScore, resultStatus,
+          // resultSource='scraper'. fetchPredictions() syncs local state.
+          setTimeout(() => fetchPredictions(), 2000);
           return;
         }
 
