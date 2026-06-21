@@ -92,6 +92,10 @@ export function UserPredictionsView() {
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<ConfFilter>("ALL");
   const [recFilter, setRecFilter] = useState<RecFilter>("ALL");
+  // Mounted state — prevents SSR hydration mismatch from time-based functions
+  // (computeEffectiveStatus, timeToKickoff, isTodayLocal all use new Date())
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const fetchPredictions = useCallback(async () => {
     try {
@@ -230,6 +234,17 @@ export function UserPredictionsView() {
 
   const totalCount = grouped.reduce((sum, g) => sum + g.predictions.length, 0);
   const tzAbbr = getTimezoneAbbr();
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="w-8 h-8 rounded-full border-2 border-neon-green/30 border-t-neon-green animate-spin mx-auto mb-3" />
+          <p className="text-xs text-muted-foreground">Loading predictions...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

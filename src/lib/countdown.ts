@@ -1,4 +1,12 @@
 /**
+ * Countdown utilities — time to kickoff and kickoff badges.
+ *
+ * Depends on parseMatchDateTime from @/lib/timezone.
+ */
+
+import { parseMatchDateTime } from "@/lib/timezone";
+
+/**
  * Returns a human-readable countdown to kickoff, e.g.:
  *   "in 2h 15m"     — match starts in 2 hours 15 min
  *   "in 45m"        — match starts in 45 minutes

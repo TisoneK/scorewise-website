@@ -25,7 +25,7 @@
  * via src/lib/timezone.ts.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, TrendingDown, Star, Trophy, Calendar, Ticket, Copy, Check, Radio, Clock } from "lucide-react";
 import type { Prediction } from "@/lib/types";
@@ -110,6 +110,10 @@ export function PredictionCard({
 
   // Copy-to-clipboard state
   const [copied, setCopied] = useState(false);
+  // Mounted state — countdown uses Date.now() which differs between server
+  // and client, so we only render it after mount to avoid hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   const betCode = p.bet_code || null;
 
   const handleCopy = async () => {
@@ -157,8 +161,9 @@ export function PredictionCard({
                   </span>
                 ))}
             </p>
-            {/* Countdown badge — shows time to kickoff or time since kickoff */}
-            {showDateTime && (() => {
+            {/* Countdown badge — shows time to kickoff or time since kickoff.
+                Only rendered after mount to avoid SSR hydration mismatch (Date.now() differs). */}
+            {showDateTime && mounted && (() => {
               const countdown = timeToKickoff(p.date, p.time);
               if (!countdown) return null;
               const isPast = countdown.includes("ago");
