@@ -318,8 +318,13 @@ export function UserPredictionsView() {
           </p>
         </div>
 
-        {/* SYSTEM TRACK RECORD — public stats banner */}
-        <PublicStatsBanner />
+        {/* SYSTEM TRACK RECORD — split into two SEPARATE cards per user request:
+            1) Over/Under track record (totals algorithm)
+            2) Win track record (winner algorithm — moneyline / 1X2)
+            These are intentionally NOT combined so users can see how each
+            market is performing independently. */}
+        <PublicStatsBanner algorithm="totals" />
+        <PublicStatsBanner algorithm="winner" />
 
         {/* TOP PICKS — the 3 best picks for today, ranked by algorithm strength */}
         {!loading && !error && topPicks.length > 0 && (

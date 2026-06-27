@@ -2,8 +2,33 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
-import { computeAnalytics, computePublicStats } from "@/lib/analytics";
+import { computeAnalytics } from "@/lib/analytics";
 export const dynamic = 'force-dynamic';
+
+/**
+ * Strip admin-only fields (scatter, calibration, daily, byLeague, lineDeviation)
+ * from an AnalyticsSummary so public users only see headline numbers.
+ * Preserves the shape needed by PublicStatsBanner.
+ */
+function publicize(s: ReturnType<typeof computeAnalytics>) {
+  return {
+    totalPredictions: s.totalPredictions,
+    resolved: s.resolved,
+    pending: s.pending,
+    wins: s.wins,
+    losses: s.losses,
+    pushes: s.pushes,
+    hitRate: s.hitRate,
+    roiPercent: s.roiPercent,
+    totalStaked: s.totalStaked,
+    totalProfit: s.totalProfit,
+    currentStreak: s.currentStreak,
+    longestWinStreak: s.longestWinStreak,
+    longestLossStreak: s.longestLossStreak,
+    recentForm: s.recentForm,
+    byRecommendation: s.byRecommendation,
+  };
+}
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -32,6 +57,14 @@ export async function GET() {
     const totals = computeAnalytics(preds, "TOTALS");
     const winner = computeAnalytics(preds, "WINNER");
     if (isOp) return NextResponse.json({ updated_at: new Date().toISOString(), role: "admin", totals, winner });
-    return NextResponse.json({ updated_at: new Date().toISOString(), role: "user", ...computePublicStats(totals, winner) });
+    // Public users: return BOTH algorithm buckets SEPARATELY (no combining).
+    // The frontend renders two distinct System Track Record cards — one for
+    // Over/Under (totals) and one for Win (winner) — per user request.
+    return NextResponse.json({
+      updated_at: new Date().toISOString(),
+      role: "user",
+      totals: publicize(totals),
+      winner: publicize(winner),
+    });
   } catch (error) { console.error('[analytics] Error:', error); return NextResponse.json({ error: 'Failed' }, { status: 500 }); }
 }
