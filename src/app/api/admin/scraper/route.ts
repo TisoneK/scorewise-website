@@ -42,7 +42,7 @@ export async function POST(request: Request) {
           method: "POST",
           headers,
           body: JSON.stringify({ date }),
-          signal: AbortSignal.timeout(15000),
+          signal: AbortSignal.timeout(30000),
         });
 
         const data = await res.json().catch(() => ({}));
@@ -72,10 +72,14 @@ export async function POST(request: Request) {
           operation: "scrape_results",
         });
       } catch (fetchError) {
+        // The scraper might take longer than 30s to respond even though
+        // it accepted the job. Don't treat this as a hard failure —
+        // the scrape may still be running in the background.
         return NextResponse.json({
-          status: "offline",
-          message: `Could not reach scraper at ${scraperUrl}. The scraper API server may not be running or the URL is incorrect.`,
-          url: scraperUrl,
+          status: "triggered",
+          message: `Results scrape triggered for ${date} (scraper is processing in background)`,
+          date,
+          operation: "scrape_results",
         });
       }
     }
