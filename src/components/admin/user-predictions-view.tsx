@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, Trophy } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, Trophy, Clock } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -345,7 +345,7 @@ export function UserPredictionsView() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-5">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-5" style={{ paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
 
         {/* Title */}
         <div>
@@ -369,28 +369,26 @@ export function UserPredictionsView() {
             is always visible and identifiable. Body shows picks or empty state. */}
         {!loading && !error && (
           <section className="rounded-xl border border-neon-green/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
-            {/* Header */}
+            {/* Header — no flex-1 divider to avoid orphaned line on mobile */}
             <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-green/15 bg-neon-green/5">
               <div className="w-6 h-6 rounded-md bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-                <Flame className="w-3.5 h-3.5 text-neon-green" />
+                {topOUPicks.length > 0 ? <Flame className="w-3.5 h-3.5 text-neon-green" /> : <Clock className="w-3.5 h-3.5 text-neon-green/60" />}
               </div>
               <h2 className="text-sm font-bold text-foreground">Top Over/Under Picks</h2>
               <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
                 {topOUPicks.length > 0 ? `${topOUPicks.length} PICK${topOUPicks.length !== 1 ? "S" : ""}` : "TODAY"}
               </span>
-              <div className="flex-1 h-px bg-neon-green/15" />
-              <span className="text-[9px] text-muted-foreground/60 shrink-0 hidden sm:inline">HIGH confidence only</span>
+              <span className="text-[9px] text-muted-foreground/60 shrink-0 ml-auto hidden sm:inline">HIGH confidence only</span>
             </header>
 
-            {/* Body */}
+            {/* Body — tight padding, centered empty state */}
             <div className="p-3 space-y-2">
               {topOUPicks.length > 0 ? (
                 topOUPicks.map((p, i) => (
                   <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
                 ))
               ) : (
-                <div className="text-center py-4">
-                  <Flame className="w-5 h-5 text-muted-foreground/30 mx-auto mb-1.5" />
+                <div className="text-center py-2.5">
                   <p className="text-xs text-muted-foreground/70">No HIGH-confidence Over/Under picks for today.</p>
                   <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
                 </div>
@@ -408,28 +406,26 @@ export function UserPredictionsView() {
         {/* ════════ TOP WIN PICKS ════════ */}
         {!loading && !error && (
           <section className="rounded-xl border border-neon-cyan/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
-            {/* Header */}
+            {/* Header — no flex-1 divider to avoid orphaned line on mobile */}
             <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-cyan/15 bg-neon-cyan/5">
               <div className="w-6 h-6 rounded-md bg-neon-cyan/10 border border-neon-cyan/20 flex items-center justify-center shrink-0">
-                <Trophy className="w-3.5 h-3.5 text-neon-cyan" />
+                {topWinPicks.length > 0 ? <Trophy className="w-3.5 h-3.5 text-neon-cyan" /> : <Clock className="w-3.5 h-3.5 text-neon-cyan/60" />}
               </div>
               <h2 className="text-sm font-bold text-foreground">Top Win Picks</h2>
               <span className="text-[9px] text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-cyan/20 shrink-0">
                 {topWinPicks.length > 0 ? `${topWinPicks.length} PICK${topWinPicks.length !== 1 ? "S" : ""}` : "TODAY"}
               </span>
-              <div className="flex-1 h-px bg-neon-cyan/15" />
-              <span className="text-[9px] text-muted-foreground/60 shrink-0 hidden sm:inline">HIGH confidence only</span>
+              <span className="text-[9px] text-muted-foreground/60 shrink-0 ml-auto hidden sm:inline">HIGH confidence only</span>
             </header>
 
-            {/* Body */}
+            {/* Body — tight padding, centered empty state */}
             <div className="p-3 space-y-2">
               {topWinPicks.length > 0 ? (
                 topWinPicks.map((p, i) => (
                   <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
                 ))
               ) : (
-                <div className="text-center py-4">
-                  <Trophy className="w-5 h-5 text-muted-foreground/30 mx-auto mb-1.5" />
+                <div className="text-center py-2.5">
                   <p className="text-xs text-muted-foreground/70">No HIGH-confidence Win picks for today.</p>
                   <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
                 </div>

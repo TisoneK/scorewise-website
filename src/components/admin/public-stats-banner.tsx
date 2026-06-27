@@ -197,31 +197,34 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
         </div>
       ) : (
         // ── COLLAPSED BODY — compact 3-stat row ──
+        // Uses flex-1 on each stat so they share width equally and the
+        // STREAK column can't get pushed off-screen by floating overlays.
+        // min-w-0 allows graceful shrinking on very narrow viewports.
         <div className="px-3 py-2.5">
-          <div className="flex items-center justify-around gap-2">
+          <div className="flex items-stretch gap-1">
             {/* Hit Rate */}
-            <div className="text-center">
+            <div className="text-center flex-1 min-w-0 py-1">
               <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Hit Rate</p>
               <p className={`text-base font-black font-mono ${hitTone}`}>{d.hitRate.toFixed(1)}%</p>
             </div>
-            <div className="w-px h-8 bg-border/30" />
+            <div className="w-px bg-border/30 self-stretch" />
             {/* ROI */}
-            <div className="text-center">
+            <div className="text-center flex-1 min-w-0 py-1">
               <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">ROI</p>
               <p className={`text-base font-black font-mono ${roiTone}`}>{d.roiPercent >= 0 ? "+" : ""}{d.roiPercent.toFixed(1)}%</p>
             </div>
-            <div className="w-px h-8 bg-border/30" />
+            <div className="w-px bg-border/30 self-stretch" />
             {/* Streak */}
-            <div className="text-center">
+            <div className="text-center flex-1 min-w-0 py-1">
               <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Streak</p>
               <div className="flex items-center justify-center gap-0.5">
                 {streakIcon}
                 <p className={`text-base font-black font-mono ${streakTone}`}>{st ?? "—"}{d.currentStreak.length || ""}</p>
               </div>
             </div>
-            <div className="w-px h-8 bg-border/30 hidden sm:block" />
+            <div className="w-px bg-border/30 self-stretch hidden sm:block" />
             {/* W/L summary — hidden on very small screens */}
-            <div className="text-center hidden sm:block">
+            <div className="text-center flex-1 min-w-0 py-1 hidden sm:block">
               <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Record</p>
               <p className="text-base font-black font-mono text-foreground">{d.wins}-{d.losses}{d.pushes > 0 ? `-${d.pushes}` : ""}</p>
             </div>
@@ -232,13 +235,13 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
       {/* ════════ FOOTER — recent form track (always visible) ════════ */}
       <div className="px-3 py-1.5 border-t border-border/20 bg-background/30">
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-semibold shrink-0">
+          <span className="text-[9px] text-muted-foreground/60 uppercase tracking-wider font-semibold shrink-0 leading-none">
             Form
           </span>
           {expanded ? (
-            <span className="text-[9px] text-muted-foreground/40 shrink-0">last 15 (oldest → newest)</span>
+            <span className="text-[9px] text-muted-foreground/40 shrink-0 leading-none">last 15 (oldest → newest)</span>
           ) : (
-            <span className="text-[9px] text-muted-foreground/40 shrink-0">L5</span>
+            <span className="text-[9px] text-muted-foreground/40 shrink-0 leading-none">L5</span>
           )}
           <div className="flex-1 flex items-center justify-center gap-1">
             {renderFormDots(expanded ? rfExpanded : rfCollapsed, expanded ? "md" : "sm")}
@@ -247,7 +250,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setExpanded(false); }}
-              className="text-[9px] text-muted-foreground hover:text-foreground underline shrink-0"
+              className="text-[9px] text-muted-foreground hover:text-foreground underline shrink-0 leading-none"
             >
               collapse
             </button>
