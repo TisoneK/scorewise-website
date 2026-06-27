@@ -136,7 +136,11 @@ export function PredictionCard({
   };
 
   return (
-    <div className="rounded-lg bg-card/80 border border-border/40 hover:border-neon-green/20 transition-all overflow-hidden">
+    <div className={`rounded-lg bg-card/80 border transition-all overflow-hidden ${
+      rank !== undefined
+        ? "border-neon-green/30 hover:border-neon-green/50 hover:shadow-[0_0_16px_-4px_rgba(34,197,94,0.3)]"
+        : "border-border/40 hover:border-neon-green/20"
+    }`}>
 
       {/* HEADER — league + local date/time + countdown at the TOP */}
       {(showLeague && leagueBits) || (showDateTime && matchDate) ? (
@@ -194,10 +198,23 @@ export function PredictionCard({
 
       {/* MAIN ROW — teams + prediction + confidence */}
       <div className="flex items-center gap-3 p-3">
-        {/* Optional rank badge (Top Picks only) */}
+        {/* Optional rank badge (Top Picks only) — stylish podium-style badge */}
         {rank !== undefined && (
-          <div className="shrink-0 w-7 h-7 rounded-full bg-neon-green/10 border border-neon-green/30 flex items-center justify-center self-start mt-0.5">
-            <span className="text-xs font-black text-neon-green">{rank}</span>
+          <div className="shrink-0 flex flex-col items-center self-stretch justify-center">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center border-2 ${
+              rank === 1
+                ? "bg-neon-green/15 border-neon-green/50 shadow-[0_0_12px_-2px_rgba(34,197,94,0.5)]"
+                : rank === 2
+                  ? "bg-neon-cyan/15 border-neon-cyan/50 shadow-[0_0_12px_-2px_rgba(34,211,238,0.4)]"
+                  : "bg-neon-yellow/10 border-neon-yellow/40 shadow-[0_0_12px_-2px_rgba(234,179,8,0.3)]"
+            }`}>
+              <span className={`text-sm font-black ${
+                rank === 1 ? "text-neon-green" : rank === 2 ? "text-neon-cyan" : "text-neon-yellow"
+              }`}>{rank}</span>
+            </div>
+            <span className="text-[7px] text-muted-foreground/50 uppercase tracking-wider font-bold mt-0.5">
+              {rank === 1 ? "top" : "pick"}
+            </span>
           </div>
         )}
 

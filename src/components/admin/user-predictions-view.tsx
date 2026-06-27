@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, Trophy } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -364,58 +364,84 @@ export function UserPredictionsView() {
         <PublicStatsBanner algorithm="totals" />
         <PublicStatsBanner algorithm="winner" />
 
-        {/* TOP OVER/UNDER PICKS — best HIGH-confidence OVER/UNDER picks for today */}
-        {!loading && !error && topOUPicks.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-neon-green" />
+        {/* ════════ TOP OVER/UNDER PICKS ════════ */}
+        {/* Always rendered with header/footer even when empty so the section
+            is always visible and identifiable. Body shows picks or empty state. */}
+        {!loading && !error && (
+          <section className="rounded-xl border border-neon-green/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
+            {/* Header */}
+            <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-green/15 bg-neon-green/5">
+              <div className="w-6 h-6 rounded-md bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+                <Flame className="w-3.5 h-3.5 text-neon-green" />
+              </div>
               <h2 className="text-sm font-bold text-foreground">Top Over/Under Picks</h2>
-              <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20">
-                ANALYST VERIFIED
+              <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
+                {topOUPicks.length > 0 ? `${topOUPicks.length} PICK${topOUPicks.length !== 1 ? "S" : ""}` : "TODAY"}
               </span>
-              <div className="flex-1 h-px bg-border/30" />
+              <div className="flex-1 h-px bg-neon-green/15" />
+              <span className="text-[9px] text-muted-foreground/60 shrink-0 hidden sm:inline">HIGH confidence only</span>
+            </header>
+
+            {/* Body */}
+            <div className="p-3 space-y-2">
+              {topOUPicks.length > 0 ? (
+                topOUPicks.map((p, i) => (
+                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <Flame className="w-5 h-5 text-muted-foreground/30 mx-auto mb-1.5" />
+                  <p className="text-xs text-muted-foreground/70">No HIGH-confidence Over/Under picks for today.</p>
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
+                </div>
+              )}
             </div>
-            <p className="text-[10px] text-muted-foreground/70 -mt-1">
-              Ranked by algorithm strength — rate signal, historical consistency, and test alignment.
-            </p>
-            <div className="grid gap-2">
-              {topOUPicks.map((p, i) => (
-                <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-              ))}
-            </div>
-          </div>
+
+            {/* Footer */}
+            <footer className="px-3 py-1.5 border-t border-neon-green/15 bg-background/30 flex items-center justify-between">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best totals</span>
+              <span className="text-[9px] text-muted-foreground/40">Max 3 picks · ranked by strength</span>
+            </footer>
+          </section>
         )}
 
-        {/* TOP WIN PICKS — best HIGH-confidence moneyline picks for today */}
-        {!loading && !error && topWinPicks.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Flame className="w-4 h-4 text-neon-cyan" />
+        {/* ════════ TOP WIN PICKS ════════ */}
+        {!loading && !error && (
+          <section className="rounded-xl border border-neon-cyan/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
+            {/* Header */}
+            <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-cyan/15 bg-neon-cyan/5">
+              <div className="w-6 h-6 rounded-md bg-neon-cyan/10 border border-neon-cyan/20 flex items-center justify-center shrink-0">
+                <Trophy className="w-3.5 h-3.5 text-neon-cyan" />
+              </div>
               <h2 className="text-sm font-bold text-foreground">Top Win Picks</h2>
-              <span className="text-[9px] text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-cyan/20">
-                ANALYST VERIFIED
+              <span className="text-[9px] text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-cyan/20 shrink-0">
+                {topWinPicks.length > 0 ? `${topWinPicks.length} PICK${topWinPicks.length !== 1 ? "S" : ""}` : "TODAY"}
               </span>
-              <div className="flex-1 h-px bg-border/30" />
-            </div>
-            <p className="text-[10px] text-muted-foreground/70 -mt-1">
-              Ranked by odds value, head-to-head dominance, and current winning streak.
-            </p>
-            <div className="grid gap-2">
-              {topWinPicks.map((p, i) => (
-                <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-              ))}
-            </div>
-          </div>
-        )}
+              <div className="flex-1 h-px bg-neon-cyan/15" />
+              <span className="text-[9px] text-muted-foreground/60 shrink-0 hidden sm:inline">HIGH confidence only</span>
+            </header>
 
-        {/* Fallback message if NEITHER Top Picks section has any qualifying picks today */}
-        {!loading && !error && topOUPicks.length === 0 && topWinPicks.length === 0 && data?.predictions && data.predictions.length > 0 && (
-          <Card className="bg-card/40 border-border/30">
-            <CardContent className="p-4 text-center">
-              <Flame className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-xs text-muted-foreground">No HIGH-confidence picks for today — check back later or browse all predictions below.</p>
-            </CardContent>
-          </Card>
+            {/* Body */}
+            <div className="p-3 space-y-2">
+              {topWinPicks.length > 0 ? (
+                topWinPicks.map((p, i) => (
+                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <Trophy className="w-5 h-5 text-muted-foreground/30 mx-auto mb-1.5" />
+                  <p className="text-xs text-muted-foreground/70">No HIGH-confidence Win picks for today.</p>
+                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <footer className="px-3 py-1.5 border-t border-neon-cyan/15 bg-background/30 flex items-center justify-between">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best moneylines</span>
+              <span className="text-[9px] text-muted-foreground/40">Max 3 picks · ranked by strength</span>
+            </footer>
+          </section>
         )}
 
         {/* Search + Filters */}
