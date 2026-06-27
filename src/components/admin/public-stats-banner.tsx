@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Target, Coins, Flame, Snowflake, Activity, TrendingUp } from "lucide-react";
+import { Target, Coins, Flame, Snowflake, Activity, TrendingUp, ChevronDown } from "lucide-react";
 
 /**
  * Shape returned by `/api/analytics` for public users.
@@ -33,13 +33,14 @@ interface PublicStatsBannerProps {
   algorithm?: AlgorithmKey;
 }
 
-const ALG_META: Record<AlgorithmKey, { title: string; subtitle: string; tone: string; iconBg: string; iconColor: string }> = {
+const ALG_META: Record<AlgorithmKey, { title: string; subtitle: string; tone: string; iconBg: string; iconColor: string; accent: "neon-green" | "neon-cyan" }> = {
   totals: {
     title: "Over / Under Track Record",
     subtitle: "Totals market — picks on OVER or UNDER the bookmaker line",
     tone: "border-neon-green/20",
     iconBg: "bg-neon-green/10 border border-neon-green/20",
     iconColor: "text-neon-green",
+    accent: "neon-green",
   },
   winner: {
     title: "Win Track Record",
@@ -47,6 +48,7 @@ const ALG_META: Record<AlgorithmKey, { title: string; subtitle: string; tone: st
     tone: "border-neon-cyan/20",
     iconBg: "bg-neon-cyan/10 border border-neon-cyan/20",
     iconColor: "text-neon-cyan",
+    accent: "neon-cyan",
   },
 };
 
@@ -54,6 +56,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   const [data, setData] = useState<PublicStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const fetchStats = useCallback(async () => {
     try { const res = await fetch("/api/analytics"); if (!res.ok) throw new Error(); const j = (await res.json()) as PublicStatsResponse; setData(j); setError(false); }
     catch { setError(true); } finally { setLoading(false); }
@@ -63,9 +66,13 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   const meta = ALG_META[algorithm];
 
   if (loading) return (
-    <Card className={`bg-card/60 border-border/40 animate-pulse`}>
-      <CardContent className="p-4 grid grid-cols-2 md:grid-cols-4 gap-3">
-        {Array.from({length:4}).map((_,i)=>(<div key={i} className="space-y-2"><div className="h-2.5 w-20 bg-muted/40 rounded" /><div className="h-6 w-16 bg-muted/40 rounded" /></div>))}
+    <Card className="bg-card/60 border-border/40 animate-pulse">
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3">
+          <div className="w-5 h-5 rounded-md bg-muted/40" />
+          <div className="h-2.5 w-32 bg-muted/40 rounded" />
+          <div className="h-5 w-16 bg-muted/40 rounded ml-auto" />
+        </div>
       </CardContent>
     </Card>
   );
@@ -82,17 +89,63 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   const roiTone = d.roiPercent >= 0 ? "text-neon-green" : "text-neon-red";
   const st = d.currentStreak.type;
   const rf = d.recentForm.slice(-15);
+  const streakTone = st === "W" ? "text-neon-green" : st === "L" ? "text-neon-red" : st === "P" ? "text-neon-yellow" : "text-muted-foreground";
 
+  // ── COLLAPSED VIEW — compact one-row summary ─────────────────────────
+  // Shows the three numbers users care about most (Hit Rate, ROI, Streak)
+  // in a single row. Clicking the card expands it to the full breakdown.
+  if (!expanded) {
+    return (
+      <Card className={`bg-gradient-to-br from-card/80 to-card/40 ${meta.tone} cursor-pointer hover:from-card/90 hover:to-card/50 transition-colors`}>
+        <CardContent className="p-3" onClick={() => setExpanded(true)}>
+          <div className="flex items-center gap-3">
+            <div className={`w-6 h-6 rounded-md ${meta.iconBg} flex items-center justify-center shrink-0`}>
+              <Activity className={`w-3.5 h-3.5 ${meta.iconColor}`} />
+            </div>
+            <div className="min-w-0 flex-1 flex items-center gap-3 flex-wrap">
+              <span className="text-xs font-bold truncate">{meta.title}</span>
+              <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+                {/* Hit Rate */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold hidden sm:inline">HR</span>
+                  <span className={`text-sm font-black font-mono ${hitTone}`}>{d.hitRate.toFixed(1)}%</span>
+                </div>
+                {/* ROI */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold hidden sm:inline">ROI</span>
+                  <span className={`text-sm font-black font-mono ${roiTone}`}>{d.roiPercent >= 0 ? "+" : ""}{d.roiPercent.toFixed(1)}%</span>
+                </div>
+                {/* Streak */}
+                <div className="flex items-center gap-1">
+                  {st === "W" ? <Flame className="w-3 h-3 text-neon-green" /> : st === "L" ? <Snowflake className="w-3 h-3 text-neon-red" /> : null}
+                  <span className={`text-sm font-black font-mono ${streakTone}`}>{st ?? "—"}{d.currentStreak.length || ""}</span>
+                </div>
+                {/* W/L summary */}
+                <span className="text-[10px] text-muted-foreground/70 hidden md:inline">{d.wins}W / {d.losses}L{d.pushes > 0 ? ` / ${d.pushes}P` : ""}</span>
+              </div>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // ── EXPANDED VIEW — full breakdown with all stat blocks ─────────────
   return (
     <Card className={`bg-gradient-to-br from-card/80 to-card/40 ${meta.tone}`}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-2 mb-3">
+        <div
+          className="flex items-center gap-2 mb-3 cursor-pointer"
+          onClick={() => setExpanded(false)}
+        >
           <div className={`w-6 h-6 rounded-md ${meta.iconBg} flex items-center justify-center`}>
             <Activity className={`w-3.5 h-3.5 ${meta.iconColor}`} />
           </div>
           <h3 className="text-sm font-bold">{meta.title}</h3>
-          <Badge variant="outline" className={`text-[9px] ${meta.tone} ${meta.iconColor} bg-${algorithm === "totals" ? "neon-green" : "neon-cyan"}/5`}>LIVE</Badge>
+          <Badge variant="outline" className={`text-[9px] ${meta.tone} ${meta.iconColor} bg-${meta.accent}/5`}>LIVE</Badge>
           <span className="text-[10px] text-muted-foreground/60 ml-auto">{d.resolved} resolved · {d.pending} pending</span>
+          <ChevronDown className="w-4 h-4 text-muted-foreground transition-transform rotate-180" />
         </div>
         <p className="text-[10px] text-muted-foreground/70 -mt-2 mb-3">{meta.subtitle}</p>
 
@@ -112,7 +165,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
               {st === "W" ? <Flame className="w-3 h-3 text-neon-green" /> : st === "L" ? <Snowflake className="w-3 h-3 text-neon-red" /> : <Activity className="w-3 h-3 text-muted-foreground" />}
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Current Streak</span>
             </div>
-            <p className={`text-2xl font-black font-mono ${st === "W" ? "text-neon-green" : st === "L" ? "text-neon-red" : st === "P" ? "text-neon-yellow" : "text-muted-foreground"}`}>{st ?? "—"}{d.currentStreak.length || ""}</p>
+            <p className={`text-2xl font-black font-mono ${streakTone}`}>{st ?? "—"}{d.currentStreak.length || ""}</p>
             <p className="text-[10px] text-muted-foreground/70">{st === "W" ? "Hot streak" : st === "L" ? "Cold streak — be cautious" : st === "P" ? "Push run" : "No resolved bets yet"}</p>
           </div>
           <div className="bg-background/40 rounded-lg p-3">
@@ -165,7 +218,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
               </TooltipProvider>
             ))}
           </div>
-          <p className="text-[9px] text-muted-foreground/60 mt-1.5">Based on {d.resolved} resolved matches · updates every 5 min</p>
+          <p className="text-[9px] text-muted-foreground/60 mt-1.5">Based on {d.resolved} resolved matches · updates every 5 min · <button type="button" className="underline hover:text-foreground" onClick={() => setExpanded(false)}>collapse</button></p>
         </div>
       </CardContent>
     </Card>
