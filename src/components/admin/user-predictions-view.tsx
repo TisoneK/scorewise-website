@@ -25,6 +25,7 @@ import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settin
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
+import { PublicStatsBanner } from "./public-stats-banner";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -316,6 +317,9 @@ export function UserPredictionsView() {
             <span className="ml-2 text-[10px] text-muted-foreground/60">· times shown in your local TZ ({tzAbbr})</span>
           </p>
         </div>
+
+        {/* SYSTEM TRACK RECORD — public stats banner */}
+        <PublicStatsBanner />
 
         {/* TOP PICKS — the 3 best picks for today, ranked by algorithm strength */}
         {!loading && !error && topPicks.length > 0 && (
