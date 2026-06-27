@@ -271,43 +271,31 @@ export function ResultsTab() {
    * The button shows a spinner during the scrape.
    */
   /**
-   * "Scrape Results" button — enqueues ALL non-done matches as individual
-   * single-match scrape jobs. The queue handles concurrency (max 3 at a time),
-   * so clicking this on 20 matches will process 3 at a time until all are done.
+   * "Scrape Results" button — triggers the scraper's BULK results endpoint
+   * which uses a SINGLE browser to process all matches for today's date.
    *
-   * Each match shows its own status independently (Queued → Running → Done).
-   * No blocking — the button returns immediately after enqueuing all jobs.
+   * This is far more memory-efficient than enqueuing individual single-match
+   * scrapes (each of which launches its own Chrome browser = ~300MB each).
+   * With 50+ matches, individual scrapes cause OOM kills on Railway's 1GB
+   * container. The bulk endpoint uses 1 browser for all matches.
+   *
+   * The scraper pushes results incrementally to the website via webhook
+   * as each match is scraped — users see updates in real-time.
    */
   const triggerResultsScrape = async () => {
     setScraping(true);
     setScrapeMsg(null);
 
-    // Collect ONLY matches that need result updates:
-    //   - LIVE (in progress — need live score updates)
-    //   - AWAITING_RESULT (start time + 2h50m < now, no FINAL yet — likely finished)
-    // Skip: FINAL (done), POSTPONED, CANCELLED, and PENDING (hasn't started yet —
-    // no point scraping a match that Flashscore hasn't started showing yet).
+    // Collect matches that need result updates (for counting/display only)
     const matchesToScrape: string[] = [];
     if (data?.predictions) {
       for (const p of data.predictions) {
         const rs = p.result_status;
-        // Skip matches that already have a final result
         if (rs === "FINAL" || rs === "POSTPONED" || rs === "CANCELLED") continue;
-
-        // Check the match's effective status based on start time
         const matchDate = parseMatchDateTime(p.date, p.time);
         if (!matchDate) continue;
-
         const now = Date.now();
-        const startMs = matchDate.getTime();
-        const likelyFinishedMs = startMs + MATCH_DURATION_MS;
-
-        // Only scrape matches that have STARTED (now > start_time)
-        // — LIVE: now is between start and start+2h50m
-        // — AWAITING: now is past start+2h50m (should be finished)
-        // Skip PENDING matches that haven't started yet (now < start_time)
-        if (now < startMs) continue;
-
+        if (now < matchDate.getTime()) continue;
         matchesToScrape.push(p.match_id);
       }
     }
@@ -318,11 +306,6 @@ export function ResultsTab() {
       setTimeout(() => setScrapeMsg(null), 5000);
       return;
     }
-
-    setScrapeMsg({
-      kind: "ok",
-      text: `Enqueuing ${matchesToScrape.length} match(es) for scraping... (3 at a time, queue handles the rest)`,
-    });
 
     // Mark all matches as "scraping" so the UI shows spinners
     setRows((prev) => {
@@ -335,29 +318,71 @@ export function ResultsTab() {
       return next;
     });
 
-    // Enqueue all matches — the scrapeSingle function handles polling + auto-fill
-    // Fire them all off concurrently (the queue on the scraper side handles limits)
-    let enqueued = 0;
-    let failed = 0;
-    for (const matchId of matchesToScrape) {
-      try {
-        // Don't await — fire and forget so all get enqueued quickly
-        scrapeSingle(matchId).catch((e) => {
-          logger?.warn?.(`Batch scrape failed for ${matchId}: ${e}`);
-          failed++;
-        });
-        enqueued++;
-      } catch {
-        failed++;
-      }
-    }
-
-    setScraping(false);
     setScrapeMsg({
       kind: "ok",
-      text: `Enqueued ${enqueued} match(es). ${failed > 0 ? `${failed} failed to enqueue.` : ""} Watch each row update as results come in.`,
+      text: `Scraping ${matchesToScrape.length} matches via bulk endpoint (single browser, memory-efficient)...`,
     });
-    setTimeout(() => setScrapeMsg(null), 10000);
+
+    try {
+      // Call the scraper's bulk results endpoint — uses ONE browser for all matches
+      // The scraper pushes results incrementally via webhook as each match completes
+      const res = await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "scrape_results", date: new Date().toLocaleDateString("en-GB").replace(/\//g, ".") }),
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData.message || resData.error || `HTTP ${res.status}`);
+      }
+
+      setScrapeMsg({
+        kind: "ok",
+        text: `Bulk scrape triggered for ${matchesToScrape.length} matches. Results will update automatically as the scraper processes each match.`,
+      });
+
+      // Poll for updates — the scraper pushes results via webhook,
+      // so we just need to refresh our data periodically to see them
+      const pollInterval = setInterval(() => {
+        fetchPredictions();
+      }, 10000); // refresh every 10s
+
+      // Stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setScraping(false);
+        // Clear all scraping spinners
+        setRows((prev) => {
+          const next = { ...prev };
+          for (const mid of matchesToScrape) {
+            if (next[mid]) {
+              next[mid] = { ...next[mid], scrapingSingle: false };
+            }
+          }
+          return next;
+        });
+        setScrapeMsg({
+          kind: "ok",
+          text: `Bulk scrape complete. Check individual rows for results.`,
+        });
+        setTimeout(() => setScrapeMsg(null), 5000);
+      }, 5 * 60 * 1000);
+
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setScrapeMsg({ kind: "err", text: `Bulk scrape failed: ${errMsg}` });
+      setScraping(false);
+      // Clear all scraping spinners
+      setRows((prev) => {
+        const next = { ...prev };
+        for (const mid of matchesToScrape) {
+          if (next[mid]) {
+            next[mid] = { ...next[mid], scrapingSingle: false };
+          }
+        }
+        return next;
+      });
+    }
   };
 
   // Group predictions by category (live / awaiting / upcoming / final / other)
