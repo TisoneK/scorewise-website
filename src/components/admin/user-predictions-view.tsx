@@ -119,50 +119,27 @@ export function UserPredictionsView() {
     return () => clearInterval(interval);
   }, [fetchPredictions]);
 
-  // ── Top Picks: the 3 BEST predictions for today ──────────────────────
-  // Strict criteria — these are the picks most likely to win:
-  //   1. Must be HIGH confidence
-  //   2. Must be OVER or UNDER (no NO_BET)
-  //   3. Must be today's match (user's local timezone)
-  //   4. Must not already have a FINAL result (don't recommend finished matches)
-  //   5. Ranked by "pick strength" — a composite score from the engine's
-  //      algorithm outputs (average_rate, matches_above/below ratio, test adjustments)
+  // ── Top Over/Under Picks: 3 BEST OVER/UNDER picks for today ───────────
+  // Strict criteria:
+  //   1. HIGH confidence
+  //   2. recommendation is OVER or UNDER (excludes NO_BET and Win picks)
+  //   3. Today's match (user's local timezone)
+  //   4. Not already FINAL/POSTPONED/CANCELLED
+  //   5. Ranked by composite strength score (rate signal + consistency + test alignment)
   //   6. Limited to at most 3 picks
-  const topPicks = useMemo(() => {
+  const topOUPicks = useMemo(() => {
     if (!data?.predictions) return [];
     return data.predictions
       .filter((p) => {
-        // Strict filter: only HIGH confidence OVER/UNDER picks for today
         if (p.confidence?.toUpperCase() !== "HIGH") return false;
-        if (!p.recommendation || p.recommendation.toUpperCase() === "NO_BET") return false;
+        const r = p.recommendation?.toUpperCase();
+        if (r !== "OVER" && r !== "UNDER") return false;
         const d = parseMatchDateTime(p.date, p.time);
         if (!d || !isTodayLocal(d)) return false;
-        // Don't recommend matches that are already finished
         if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") return false;
         return true;
       })
       .map((p) => {
-        // ── Compute pick strength score ──────────────────────────────
-        // Higher score = stronger pick = more likely to win.
-        // Based on the engine's algorithm outputs:
-        //
-        // - average_rate: how far the historical average total is from the
-        //   bookmaker line. Higher absolute value = stronger signal.
-        //   e.g., avg_rate = -15 (UNDER) means historical totals are 15 points
-        //   below the line — strong UNDER signal.
-        //
-        // - matches_above/below ratio: how consistently the historical data
-        //   supports the recommendation.
-        //   e.g., 5 below / 1 above = 83% support for UNDER.
-        //
-        // - increment/decrement tests: the engine's adjustment tests.
-        //   Higher increment_test = stronger OVER, higher decrement_test = stronger UNDER.
-        //   A pick where the test direction matches the recommendation is stronger.
-        //
-        // - team_winner confidence: if the engine also predicted a winner with
-        //   HIGH confidence, that's an additional signal of match control.
-        //
-        // Score components (each normalized 0-1, then weighted):
         const avgRate = Math.abs(p.average_rate || 0);
         const above = p.matches_above || 0;
         const below = p.matches_below || 0;
@@ -170,34 +147,95 @@ export function UserPredictionsView() {
         const isOver = p.recommendation?.toUpperCase() === "OVER";
         const isUnder = p.recommendation?.toUpperCase() === "UNDER";
 
-        // 1. Rate signal strength (0-1): |avg_rate| / 20 (cap at 1.0)
-        //    avg_rate of 20+ is extremely strong
+        // 1. Rate signal strength: |avg_rate| / 20 (cap 1.0)
         const rateStrength = Math.min(avgRate / 20, 1.0);
 
-        // 2. Consistency ratio (0-1): how many historical matches agree with the rec
-        //    e.g., UNDER with 5/6 below = 0.83 consistency
+        // 2. Consistency ratio: how many historical matches agree with the rec
         const agreeCount = isOver ? above : isUnder ? below : 0;
         const consistency = total > 0 ? agreeCount / total : 0;
 
-        // 3. Test alignment (0-1): does the increment/decrement test support the rec?
-        //    OVER wants high increment_test, UNDER wants high decrement_test
+        // 3. Test alignment: OVER wants high increment_test, UNDER wants high decrement_test
         const testAligned = isOver
           ? Math.min((p.increment_test || 0) / 5, 1.0)
           : isUnder
             ? Math.min((p.decrement_test || 0) / 5, 1.0)
             : 0;
 
-        // 4. Winner confidence bonus (0-0.15): extra points if team winner is also HIGH
+        // 4. Winner bonus: extra signal if engine also picked a winner
         const winnerBonus = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? 0.15 : 0;
 
-        // Weighted composite score (0-1+):
-        // 40% rate strength + 35% consistency + 20% test alignment + 5% winner bonus
         const strength = (rateStrength * 0.40) + (consistency * 0.35) + (testAligned * 0.20) + winnerBonus;
-
         return { ...p, _strength: strength };
       })
-      .sort((a, b) => (b._strength || 0) - (a._strength || 0)) // strongest first
-      .slice(0, 3); // at most 3 picks
+      .sort((a, b) => (b._strength || 0) - (a._strength || 0))
+      .slice(0, 3);
+  }, [data]);
+
+  // ── Top Win Picks: 3 BEST WIN (moneyline) picks for today ─────────────
+  // Strict criteria:
+  //   1. team_winner_confidence is HIGH (separate from over/under confidence)
+  //   2. team_winner is HOME_TEAM or AWAY_TEAM (excludes NO_WINNER_PREDICTION)
+  //   3. Today's match (user's local timezone)
+  //   4. Not already FINAL/POSTPONED/CANCELLED
+  //   5. Ranked by composite strength score (odds value + h2h dominance + streak)
+  //   6. Limited to at most 3 picks
+  const topWinPicks = useMemo(() => {
+    if (!data?.predictions) return [];
+    return data.predictions
+      .filter((p) => {
+        if (p.team_winner_confidence?.toUpperCase() !== "HIGH") return false;
+        const w = p.team_winner?.toUpperCase();
+        if (w !== "HOME_TEAM" && w !== "AWAY_TEAM") return false;
+        const d = parseMatchDateTime(p.date, p.time);
+        if (!d || !isTodayLocal(d)) return false;
+        if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") return false;
+        return true;
+      })
+      .map((p) => {
+        const w = p.team_winner?.toUpperCase();
+        const isHome = w === "HOME_TEAM";
+        const isAway = w === "AWAY_TEAM";
+
+        // 1. Odds value (0-1): lower decimal odds = stronger pick (more likely).
+        //    Odds of 1.20 → very strong (0.83). Odds of 3.00 → weak (0.33).
+        const odds = isHome ? p.home_odds : isAway ? p.away_odds : null;
+        const oddsStrength = odds && odds > 0 ? Math.min(1.5 / Number(odds), 1.0) : 0;
+
+        // 2. H2H dominance (0-1): how often the picked team wins head-to-head
+        //    Uses winning_streak_data.h2h_totals_wins / total_h2h_matches
+        const h2h = p.winning_streak_data;
+        let h2hStrength = 0;
+        if (h2h && h2h.total_h2h_matches > 0) {
+          const pickedWins = isHome ? h2h.home_team_h2h_wins : h2h.away_team_h2h_wins;
+          h2hStrength = pickedWins / h2h.total_h2h_matches;
+        }
+
+        // 3. Recent form (0-1): how many of the picked team's recent matches they won
+        const homeRecent = h2h?.home_team_recent_wins || 0;
+        const awayRecent = h2h?.away_team_recent_wins || 0;
+        const totalRecent = homeRecent + awayRecent;
+        const recentStrength = totalRecent > 0
+          ? (isHome ? homeRecent : awayRecent) / totalRecent
+          : 0;
+
+        // 4. Winning streak bonus (0-0.15): extra points if picked team is on a hot streak
+        const streak = isHome ? (h2h?.home_team_winning_streak || 0) : (h2h?.away_team_winning_streak || 0);
+        const streakBonus = Math.min(streak / 5, 1.0) * 0.15;
+
+        // 5. Over/Under alignment bonus (0-0.10): if the O/U recommendation also
+        //    points the same direction (high-scoring → favours stronger team),
+        //    that's a small extra signal of match control
+        const ouBonus = p.confidence?.toUpperCase() === "HIGH" &&
+                        (p.recommendation === "OVER" || p.recommendation === "UNDER")
+          ? 0.10
+          : 0;
+
+        // Weighted: 40% odds + 30% h2h + 15% recent + 15% streak + 10% ou alignment
+        const strength = (oddsStrength * 0.40) + (h2hStrength * 0.30) + (recentStrength * 0.15) + streakBonus + ouBonus;
+        return { ...p, _strength: strength };
+      })
+      .sort((a, b) => (b._strength || 0) - (a._strength || 0))
+      .slice(0, 3);
   }, [data]);
 
   // All predictions: filtered, sorted, grouped by LOCAL date.
@@ -326,12 +364,12 @@ export function UserPredictionsView() {
         <PublicStatsBanner algorithm="totals" />
         <PublicStatsBanner algorithm="winner" />
 
-        {/* TOP PICKS — the 3 best picks for today, ranked by algorithm strength */}
-        {!loading && !error && topPicks.length > 0 && (
+        {/* TOP OVER/UNDER PICKS — best HIGH-confidence OVER/UNDER picks for today */}
+        {!loading && !error && topOUPicks.length > 0 && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <Flame className="w-4 h-4 text-neon-green" />
-              <h2 className="text-sm font-bold text-foreground">Top Picks</h2>
+              <h2 className="text-sm font-bold text-foreground">Top Over/Under Picks</h2>
               <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20">
                 ANALYST VERIFIED
               </span>
@@ -341,11 +379,43 @@ export function UserPredictionsView() {
               Ranked by algorithm strength — rate signal, historical consistency, and test alignment.
             </p>
             <div className="grid gap-2">
-              {topPicks.map((p, i) => (
+              {topOUPicks.map((p, i) => (
                 <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
               ))}
             </div>
           </div>
+        )}
+
+        {/* TOP WIN PICKS — best HIGH-confidence moneyline picks for today */}
+        {!loading && !error && topWinPicks.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Flame className="w-4 h-4 text-neon-cyan" />
+              <h2 className="text-sm font-bold text-foreground">Top Win Picks</h2>
+              <span className="text-[9px] text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-cyan/20">
+                ANALYST VERIFIED
+              </span>
+              <div className="flex-1 h-px bg-border/30" />
+            </div>
+            <p className="text-[10px] text-muted-foreground/70 -mt-1">
+              Ranked by odds value, head-to-head dominance, and current winning streak.
+            </p>
+            <div className="grid gap-2">
+              {topWinPicks.map((p, i) => (
+                <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Fallback message if NEITHER Top Picks section has any qualifying picks today */}
+        {!loading && !error && topOUPicks.length === 0 && topWinPicks.length === 0 && data?.predictions && data.predictions.length > 0 && (
+          <Card className="bg-card/40 border-border/30">
+            <CardContent className="p-4 text-center">
+              <Flame className="w-5 h-5 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">No HIGH-confidence picks for today — check back later or browse all predictions below.</p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Search + Filters */}
