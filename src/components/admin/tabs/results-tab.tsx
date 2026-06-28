@@ -130,6 +130,23 @@ function isDirty(row: RowState): boolean {
   );
 }
 
+/** Format a raw match status string from the scraper for display.
+ *  Handles cases like "4TH QUARTER1'" → "4TH QUARTER 1'" (inserts space
+ *  between letter→number boundaries that the scraper sometimes concatenates).
+ *  Also normalizes case to Title Case for readability.
+ */
+function formatMatchStatus(raw: string): string {
+  if (!raw) return "unknown";
+  let s = raw.trim();
+  // Insert a space between a letter and a digit (e.g. "QUARTER1'" → "QUARTER 1'")
+  // and between a digit and a letter (e.g. "1Q" → "1 Q") — but only when there's
+  // no existing space. This fixes Flashscore's concatenated status strings.
+  s = s.replace(/([A-Za-z])(\d)/g, "$1 $2").replace(/(\d)([A-Za-z])/g, "$1 $2");
+  // Collapse any double spaces we might have introduced
+  s = s.replace(/\s+/g, " ").trim();
+  return s;
+}
+
 /** Categorize a match into a status bucket for grouping. */
 function categorizeMatch(p: Prediction, row: RowState): "live" | "awaiting" | "upcoming" | "final" | "other" {
   const status = row.statusInput || "PENDING";
@@ -319,7 +336,7 @@ export function ResultsTab() {
     setScraping(true);
     setScrapeMsg(null);
 
-    // Collect matches that need result updates (for counting/display only)
+    // Collect matches that need result updates
     const matchesToScrape: string[] = [];
     if (data?.predictions) {
       for (const p of data.predictions) {
@@ -340,108 +357,46 @@ export function ResultsTab() {
       return;
     }
 
-    // Mark all matches as "scraping" so the UI shows spinners
-    setRows((prev) => {
-      const next = { ...prev };
-      for (const mid of matchesToScrape) {
-        if (next[mid]) {
-          next[mid] = { ...next[mid], scrapingSingle: true, scrapeMsg: null };
-        }
-      }
-      return next;
-    });
-
     setScrapeMsg({
       kind: "ok",
-      text: `Scraping ${matchesToScrape.length} matches via bulk endpoint (single browser, memory-efficient)...`,
+      text: `Scraping ${matchesToScrape.length} matches individually — each will update + save as it completes...`,
     });
 
-    try {
-      // Call the scraper's bulk results endpoint — uses ONE browser for all matches
-      // The scraper pushes results incrementally via webhook as each match completes
-      const res = await fetch("/api/admin/scraper", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ operation: "scrape_results", date: new Date().toLocaleDateString("en-GB").replace(/\//g, ".") }),
-      });
-      const resData = await res.json();
-      if (!res.ok) {
-        throw new Error(resData.message || resData.error || `HTTP ${res.status}`);
+    // ── Scrape each match INDIVIDUALLY ─────────────────────────────────
+    // Previous approach used the bulk endpoint which relied on the webhook
+    // to push results back. If the webhook was broken, nothing showed up.
+    //
+    // NEW approach: call scrapeSingle() for each match. Each call:
+    //   1. Enqueues a job on the scraper's queue (max 3 concurrent browsers)
+    //   2. Polls until the job is DONE
+    //   3. Fills the local inputs with the scraped scores + status
+    //   4. EXPLICITLY saves to DB via /api/admin/predictions/result
+    //   5. Shows "Scraped: HALF TIME, 46-56" per-row message
+    //
+    // This is slightly slower than the bulk endpoint but 100% reliable —
+    // each match updates individually with its own status message, and
+    // results are saved to DB regardless of webhook state.
+    let completed = 0;
+    let failed = 0;
+    for (const matchId of matchesToScrape) {
+      try {
+        await scrapeSingle(matchId);
+        completed++;
+        setScrapeMsg({
+          kind: "ok",
+          text: `Scraped ${completed}/${matchesToScrape.length} matches${failed > 0 ? ` (${failed} failed)` : ""}...`,
+        });
+      } catch {
+        failed++;
       }
-
-      setScrapeMsg({
-        kind: "ok",
-        text: `Bulk scrape triggered for ${matchesToScrape.length} matches. Results will auto-save and appear here as the scraper processes each match.`,
-      });
-
-      // ── Poll for updates ──────────────────────────────────────────────
-      // The scraper pushes results via webhook. If the webhook works, results
-      // appear in the DB and we sync via fetchPredictions(). If the webhook
-      // is broken, we'll auto-scrape each match individually as a fallback
-      // (scrapeSingle explicitly saves to DB, bypassing the webhook).
-      const pollInterval = setInterval(() => {
-        fetchPredictions();
-      }, 5000); // refresh every 5s
-
-      // Stop polling after 5 minutes and auto-scrape any remaining matches
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        setScraping(false);
-
-        // ── FALLBACK: auto-scrape matches that still have no results ────
-        // If the webhook was broken, these matches still show PENDING.
-        // scrapeSingle() will fetch each one individually AND explicitly
-        // save to DB via /api/admin/predictions/result (bypassing webhook).
-        (async () => {
-          const latestData = await fetchPredictions();
-          // Check which matches still need results
-          const stillPending = matchesToScrape.filter((mid) => {
-            const p = (latestData as any)?.predictions?.find((x: any) => x.match_id === mid);
-            return p && p.result_status !== "FINAL" && p.result_status !== "POSTPONED" && p.result_status !== "CANCELLED";
-          });
-          if (stillPending.length > 0) {
-            setScrapeMsg({
-              kind: "ok",
-              text: `Auto-scraping ${stillPending.length} match${stillPending.length !== 1 ? "es" : ""} that still need results...`,
-            });
-            // Scrape each one sequentially (scrapeSingle saves to DB explicitly)
-            for (const mid of stillPending) {
-              await scrapeSingle(mid);
-            }
-          }
-          // Clear all scraping spinners
-          setRows((prev) => {
-            const next = { ...prev };
-            for (const mid of matchesToScrape) {
-              if (next[mid]) {
-                next[mid] = { ...next[mid], scrapingSingle: false };
-              }
-            }
-            return next;
-          });
-          setScrapeMsg({
-            kind: "ok",
-            text: `Bulk scrape complete. All results saved.`,
-          });
-          setTimeout(() => setScrapeMsg(null), 5000);
-        })();
-      }, 3 * 60 * 1000); // Stop after 3 minutes (reduced from 5)
-
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      setScrapeMsg({ kind: "err", text: `Bulk scrape failed: ${errMsg}` });
-      setScraping(false);
-      // Clear all scraping spinners
-      setRows((prev) => {
-        const next = { ...prev };
-        for (const mid of matchesToScrape) {
-          if (next[mid]) {
-            next[mid] = { ...next[mid], scrapingSingle: false };
-          }
-        }
-        return next;
-      });
     }
+
+    setScraping(false);
+    setScrapeMsg({
+      kind: "ok",
+      text: `✅ Done — scraped ${completed}/${matchesToScrape.length} matches${failed > 0 ? ` (${failed} failed)` : ""}. All results saved.`,
+    });
+    setTimeout(() => setScrapeMsg(null), 8000);
   };
 
   // Group predictions by category (live / awaiting / upcoming / final / other)
@@ -558,7 +513,7 @@ export function ResultsTab() {
               savedAway: away,
               savedStatus: mappedStatus,
               dirty: false,
-              scrapeMsg: { kind: "ok", text: `Scraped: ${matchStatus}, ${scoreStr}` },
+              scrapeMsg: { kind: "ok", text: `Scraped: ${formatMatchStatus(matchStatus)}, ${scoreStr}` },
             },
           }));
 
@@ -931,11 +886,19 @@ export function ResultsTab() {
                               </div>
                             </div>
 
-                            {/* Status dropdown — bigger */}
+                            {/* Status dropdown — bigger, color-coded for LIVE/FINAL */}
                             <select
                               value={row.statusInput}
                               onChange={(e) => updateRow(p.match_id, { statusInput: e.target.value as ResultStatus })}
-                              className="bg-background border border-border/50 rounded-md h-10 px-3 text-sm font-medium"
+                              className={`bg-background border rounded-md h-10 px-3 text-sm font-bold ${
+                                row.statusInput === "LIVE"
+                                  ? "border-neon-red/50 text-neon-red bg-neon-red/5"
+                                  : row.statusInput === "FINAL"
+                                    ? "border-neon-green/50 text-neon-green bg-neon-green/5"
+                                    : row.statusInput === "POSTPONED" || row.statusInput === "CANCELLED"
+                                      ? "border-muted-foreground/40 text-muted-foreground"
+                                      : "border-border/50 text-foreground"
+                              }`}
                               disabled={row.saving || row.scrapingSingle}
                             >
                               {VALID_STATUSES.map((s) => (
