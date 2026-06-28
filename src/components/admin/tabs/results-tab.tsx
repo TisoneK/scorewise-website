@@ -16,7 +16,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -168,7 +168,7 @@ function ScrapeMessageText({ text }: { text: string }) {
     <>
       {before}
       <span className="text-neon-red font-bold">{minutes}</span>
-      <span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>
+      <span className="text-neon-red font-bold animate-hard-blink"> {apostrophe}</span>
       {after}
     </>
   );
@@ -208,7 +208,18 @@ export function ResultsTab() {
   const [batchMsg, setBatchMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [liveAutoRefresh, setLiveAutoRefresh] = useState(false);
+  const [lastLiveRefresh, setLastLiveRefresh] = useState<Date | null>(null);
   const tzAbbr = getTimezoneAbbr();
+
+  // Ref to hold the latest data so the live auto-refresh effect can read
+  // the current LIVE matches without re-subscribing on every data change.
+  // Without this, the 30s interval would reset every time fetchPredictions
+  // updates `data` (which happens after every scrapeSingle call).
+  const dataRef = useRef<StoredPredictions | null>(null);
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   const fetchPredictions = useCallback(async (): Promise<StoredPredictions | null> => {
     try {
@@ -606,6 +617,73 @@ export function ResultsTab() {
     }
   };
 
+  // ── LIVE AUTO-REFRESH ────────────────────────────────────────────────
+  // When enabled, polls LIVE matches every 30 seconds and re-scrapes them
+  // so users see real-time livescore updates (e.g. "4TH QUARTER 1', 94-78"
+  // updating to "4TH QUARTER 3', 96-80" as the match progresses).
+  //
+  // Priority system:
+  //   - FINAL matches: NEVER re-scraped (already have final scores)
+  //   - LIVE matches: re-scraped every 30s (real-time livescore)
+  //   - PENDING/AWAITING: NOT re-scraped by auto-refresh (use manual Scrape Results)
+  //
+  // Uses dataRef (not data) so the interval doesn't reset on every data update.
+  // Uses scrapeSingleRef so the effect doesn't re-run when scrapeSingle changes.
+  const scrapeSingleRef = useRef(scrapeSingle);
+  useEffect(() => {
+    scrapeSingleRef.current = scrapeSingle;
+  });
+
+  useEffect(() => {
+    if (!liveAutoRefresh) return;
+    let cancelled = false;
+
+    const refreshLiveMatches = async () => {
+      // Get all LIVE matches from current data (via ref to avoid re-subscribing)
+      const liveMatchIds: string[] = [];
+      const currentData = dataRef.current;
+      if (currentData?.predictions) {
+        for (const p of currentData.predictions) {
+          const rs = p.result_status;
+          if (rs === "LIVE") liveMatchIds.push(p.match_id);
+          // Also include matches that have started but still show PENDING
+          if (rs === "PENDING" || rs === null) {
+            const matchDate = parseMatchDateTime(p.date, p.time);
+            if (matchDate) {
+              const now = Date.now();
+              const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
+              if (now > matchDate.getTime() && now < likelyFinishedAt) {
+                liveMatchIds.push(p.match_id);
+              }
+            }
+          }
+        }
+      }
+
+      if (liveMatchIds.length === 0 || cancelled) return;
+
+      // Scrape each LIVE match sequentially (scrapeSingle saves to DB explicitly)
+      for (const matchId of liveMatchIds) {
+        if (cancelled) break;
+        try {
+          await scrapeSingleRef.current(matchId);
+        } catch {
+          // Ignore individual failures — keep going
+        }
+      }
+      setLastLiveRefresh(new Date());
+    };
+
+    // Run immediately, then every 30 seconds
+    refreshLiveMatches();
+    const intervalId = setInterval(refreshLiveMatches, 30_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [liveAutoRefresh]); // Only re-subscribes when toggle changes
+
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
     const filtered = data.predictions.filter((p) => {
@@ -677,10 +755,27 @@ export function ResultsTab() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
               <Button variant="outline" size="sm" onClick={fetchPredictions} disabled={loading} className="gap-1.5 h-8">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
                 <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              {/* LIVE AUTO-REFRESH TOGGLE — when ON, re-scrapes LIVE matches every 30s */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLiveAutoRefresh(!liveAutoRefresh)}
+                className={`gap-1.5 h-8 transition-all ${
+                  liveAutoRefresh
+                    ? "border-neon-red/50 text-neon-red bg-neon-red/10 hover:bg-neon-red/20"
+                    : "border-border/40 text-muted-foreground hover:text-neon-red"
+                }`}
+                title={liveAutoRefresh
+                  ? `Live auto-refresh ON — re-scraping LIVE matches every 30s. Last refresh: ${lastLiveRefresh ? lastLiveRefresh.toLocaleTimeString() : "never"}`
+                  : "Turn on live auto-refresh — re-scrapes LIVE matches every 30s for real-time livescore updates"}
+              >
+                {liveAutoRefresh ? <Radio className="w-3.5 h-3.5 animate-pulse" /> : <Radio className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{liveAutoRefresh ? "LIVE ON" : "LIVE OFF"}</span>
               </Button>
               <Button
                 variant="outline"
@@ -710,6 +805,17 @@ export function ResultsTab() {
             <div className={`text-xs flex items-center gap-1.5 ${scrapeMsg.kind === "ok" ? "text-neon-cyan" : "text-neon-red"}`}>
               {scrapeMsg.kind === "ok" ? <DownloadCloud className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
               {scrapeMsg.text}
+            </div>
+          )}
+
+          {/* Live auto-refresh status indicator */}
+          {liveAutoRefresh && (
+            <div className="text-xs flex items-center gap-1.5 text-neon-red">
+              <Radio className="w-3.5 h-3.5 animate-pulse" />
+              <span>Live auto-refresh ON — re-scraping LIVE matches every 30s</span>
+              {lastLiveRefresh && (
+                <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
+              )}
             </div>
           )}
 
