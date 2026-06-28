@@ -2,6 +2,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import { db } from "@/lib/db-libsql";
 
 // Warn if NEXTAUTH_SECRET is not set — tokens will use a fallback secret
@@ -27,8 +28,6 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!user) return null;
-
-        // Google-only users (no passwordHash) can't sign in with credentials
         if (!user.passwordHash) return null;
 
         const isValid = await bcrypt.compare(
@@ -47,9 +46,9 @@ export const authOptions: NextAuthOptions = {
     }),
     // ── Google OAuth ──────────────────────────────────────────────────
     // Auto-creates a user on first Google sign-in (no separate signup step).
-    // clientId/clientSecret must be set as GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-    // env vars in Vercel. If they're missing, the provider is silently omitted
-    // so the app doesn't crash — credentials-only auth still works.
+    // Google users get a random unguessable placeholder passwordHash — they
+    // can never log in via credentials (bcrypt.compare will always fail).
+    // This avoids needing a schema migration (passwordHash stays NOT NULL).
     ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
       ? [GoogleProvider({
           clientId: process.env.GOOGLE_CLIENT_ID,
@@ -72,13 +71,17 @@ export const authOptions: NextAuthOptions = {
           where: { email: user.email },
         });
         if (!existing) {
-          // First Google sign-in — create a USER account with no password
+          // Generate a random password that no one will ever know.
+          // Hash it with bcrypt so the DB column constraint (NOT NULL) is
+          // satisfied. Google users authenticate via OAuth, never credentials.
+          const randomPassword = crypto.randomUUID() + crypto.randomUUID() + crypto.randomUUID();
+          const placeholderHash = await bcrypt.hash(randomPassword, 12);
           await db.user.create({
             data: {
               email: user.email,
               name: user.name || undefined,
               role: "USER",
-              // passwordHash stays null — this user authenticates via Google only
+              passwordHash: placeholderHash,
             },
           });
         }
@@ -86,13 +89,9 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
     // ── jwt callback — attach role + id from DB ───────────────────────
-    // For CredentialsProvider, the user object already has role + id from authorize().
-    // For GoogleProvider, the user object comes from Google's profile and has no role —
-    // so we fetch it from our DB on first sign-in.
     async jwt({ token, user, account }) {
       if (user) {
         if (account?.provider === "google") {
-          // Google sign-in: fetch role + id from our DB (Google profile doesn't include role)
           const dbUser = await db.user.findUnique({
             where: { email: user.email! },
           });
@@ -101,7 +100,6 @@ export const authOptions: NextAuthOptions = {
             token.id = dbUser.id;
           }
         } else {
-          // Credentials sign-in: user already has role + id from authorize()
           token.role = (user as unknown as { role: string }).role;
           token.id = (user as unknown as { id: string }).id;
         }

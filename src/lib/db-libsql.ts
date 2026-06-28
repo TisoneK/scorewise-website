@@ -64,7 +64,7 @@ export const db = {
       const rs = await getClient().execute(sql)
       return rows<any>(rs)
     },
-    async create({ data, select }: { data: { id?: string; email: string; name?: string | null; passwordHash?: string | null; role: string; createdAt?: string; updatedAt?: string }; select?: Record<string, boolean> }) {
+    async create({ data, select }: { data: { id?: string; email: string; name?: string | null; passwordHash: string; role: string; createdAt?: string; updatedAt?: string }; select?: Record<string, boolean> }) {
       const id = data.id || crypto.randomUUID()
       const createdAt = data.createdAt || now()
       const updatedAt = data.updatedAt || now()

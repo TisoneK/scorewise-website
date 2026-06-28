@@ -12,7 +12,7 @@ model User {
   id            String       @id @default(cuid())
   email         String       @unique
   name          String?
-  passwordHash  String?      // Optional — null for Google OAuth users, set for credentials users
+  passwordHash  String       // Required in DB. Google OAuth users get a random unguessable placeholder hash.
   role          String       @default("USER") // ADMIN, OPERATOR, or USER
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
