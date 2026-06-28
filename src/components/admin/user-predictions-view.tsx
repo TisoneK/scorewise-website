@@ -93,9 +93,12 @@ export function UserPredictionsView() {
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<ConfFilter>("ALL");
   const [recFilter, setRecFilter] = useState<RecFilter>("ALL");
-  // Collapsed date groups — dates the user has manually collapsed.
-  // Today + tomorrow are expanded by default. All other dates start collapsed.
+  // Expanded date groups — dates the user has manually expanded.
+  // Today + tomorrow are expanded by DEFAULT. All other dates start collapsed.
   // User can click any date header to toggle expand/collapse.
+  // We track the OVERRIDES from default behavior, not the collapsed state directly,
+  // so that adding new dates (e.g. when a new day arrives) get the correct default.
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   // Mounted state — prevents SSR hydration mismatch from time-based functions
   // (computeEffectiveStatus, timeToKickoff, isTodayLocal all use new Date())
@@ -103,24 +106,39 @@ export function UserPredictionsView() {
   useEffect(() => { setMounted(true); }, []);
 
   /** Toggle a date group between expanded/collapsed. */
-  const toggleDateCollapse = (dateKey: string) => {
-    setCollapsedDates((prev) => {
-      const next = new Set(prev);
-      if (next.has(dateKey)) next.delete(dateKey);
-      else next.add(dateKey);
-      return next;
-    });
+  const toggleDateCollapse = (dateKey: string, isToday: boolean, isTomorrow: boolean) => {
+    const isDefaultExpanded = isToday || isTomorrow;
+    if (isDefaultExpanded) {
+      // Default is expanded → toggling collapses it
+      setCollapsedDates((prev) => {
+        const next = new Set(prev);
+        if (next.has(dateKey)) next.delete(dateKey); // un-collapse → back to default expanded
+        else next.add(dateKey); // collapse
+        return next;
+      });
+    } else {
+      // Default is collapsed → toggling expands it
+      setExpandedDates((prev) => {
+        const next = new Set(prev);
+        if (next.has(dateKey)) next.delete(dateKey); // un-expand → back to default collapsed
+        else next.add(dateKey); // expand
+        return next;
+      });
+    }
   };
 
   /** Check if a date group should be collapsed.
    *  Default: today + tomorrow are expanded, all others collapsed.
    *  User can override by clicking the date header. */
   const isDateCollapsed = (dateKey: string, isToday: boolean, isTomorrow: boolean): boolean => {
-    // If user has explicitly toggled this date, respect their choice
-    if (collapsedDates.has(dateKey)) return true;
-    // Otherwise: today + tomorrow are expanded by default, others collapsed
-    if (isToday || isTomorrow) return false;
-    return true;
+    const isDefaultExpanded = isToday || isTomorrow;
+    if (isDefaultExpanded) {
+      // Default expanded — collapsed only if user explicitly collapsed it
+      return collapsedDates.has(dateKey);
+    } else {
+      // Default collapsed — expanded only if user explicitly expanded it
+      return !expandedDates.has(dateKey);
+    }
   };
 
   const fetchPredictions = useCallback(async () => {
@@ -506,7 +524,7 @@ export function UserPredictionsView() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {/* All predictions label */}
             <div className="flex items-center justify-between">
               <p className="text-xs sm:text-sm text-muted-foreground font-semibold uppercase tracking-wide">All Predictions</p>
@@ -523,12 +541,12 @@ export function UserPredictionsView() {
               const collapsed = isDateCollapsed(group.dateKey, isTodayGroup, isTomorrowGroup);
 
               return (
-              <div key={group.dateKey} className="space-y-2">
+              <div key={group.dateKey} className="space-y-3">
                 {/* Date header — clickable to expand/collapse */}
                 <button
                   type="button"
-                  onClick={() => toggleDateCollapse(group.dateKey)}
-                  className="flex items-center gap-2 pt-2 w-full text-left hover:bg-card/30 -mx-1 px-1 rounded transition-colors"
+                  onClick={() => toggleDateCollapse(group.dateKey, isTodayGroup, isTomorrowGroup)}
+                  className="flex items-center gap-2 pt-3 pb-2 w-full text-left hover:bg-card/30 -mx-1 px-1 rounded transition-colors"
                 >
                   <Calendar className={`w-3.5 h-3.5 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                   <span className={`text-xs font-bold uppercase tracking-wide ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-foreground"}`}>
