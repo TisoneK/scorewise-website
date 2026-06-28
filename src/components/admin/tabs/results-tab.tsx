@@ -147,6 +147,33 @@ function formatMatchStatus(raw: string): string {
   return s;
 }
 
+/** Render a scrape message with the time portion (e.g. "1'", "12'") highlighted
+ *  in red. The apostrophe (') blinks to indicate the match is live.
+ *
+ *  Example: "Scraped: 4TH QUARTER 1', 94-78"
+ *           → "Scraped: 4TH QUARTER " (cyan) + "1" (red) + "'" (red, blinking) + ", 94-78" (cyan)
+ */
+function ScrapeMessageText({ text }: { text: string }) {
+  // Match patterns like "1'", "12'", "45'" — digits followed by an apostrophe
+  const timeMatch = text.match(/(\d+)(')/);
+  if (!timeMatch || timeMatch.index === undefined) {
+    // No time pattern — just render as plain text
+    return <>{text}</>;
+  }
+  const before = text.substring(0, timeMatch.index);
+  const minutes = timeMatch[1]; // the digits
+  const apostrophe = timeMatch[2]; // the '
+  const after = text.substring(timeMatch.index + timeMatch[0].length);
+  return (
+    <>
+      {before}
+      <span className="text-neon-red font-bold">{minutes}</span>
+      <span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>
+      {after}
+    </>
+  );
+}
+
 /** Categorize a match into a status bucket for grouping. */
 function categorizeMatch(p: Prediction, row: RowState): "live" | "awaiting" | "upcoming" | "final" | "other" {
   const status = row.statusInput || "PENDING";
@@ -941,7 +968,7 @@ export function ResultsTab() {
                               {row.scrapeMsg && (
                                 <p className={`text-[11px] flex items-center gap-1.5 ${row.scrapeMsg.kind === "ok" ? "text-neon-cyan" : "text-neon-red"}`}>
                                   {row.scrapeMsg.kind === "ok" ? <Play className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
-                                  {row.scrapeMsg.text}
+                                  <ScrapeMessageText text={row.scrapeMsg.text} />
                                 </p>
                               )}
                               {row.msg && (
