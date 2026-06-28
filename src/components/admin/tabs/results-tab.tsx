@@ -132,16 +132,17 @@ function isDirty(row: RowState): boolean {
 
 /** Format a raw match status string from the scraper for display.
  *  Handles cases like "4TH QUARTER1'" → "4TH QUARTER 1'" (inserts space
- *  between letter→number boundaries that the scraper sometimes concatenates).
- *  Also normalizes case to Title Case for readability.
+ *  between letter→digit boundaries only — e.g. "QUARTER1" → "QUARTER 1").
+ *  Does NOT insert space between digit→letter (so "4TH" stays as "4TH").
  */
 function formatMatchStatus(raw: string): string {
   if (!raw) return "unknown";
   let s = raw.trim();
-  // Insert a space between a letter and a digit (e.g. "QUARTER1'" → "QUARTER 1'")
-  // and between a digit and a letter (e.g. "1Q" → "1 Q") — but only when there's
-  // no existing space. This fixes Flashscore's concatenated status strings.
-  s = s.replace(/([A-Za-z])(\d)/g, "$1 $2").replace(/(\d)([A-Za-z])/g, "$1 $2");
+  // Insert a space ONLY between a letter and a digit (e.g. "QUARTER1'" → "QUARTER 1'")
+  // This fixes Flashscore's concatenated status strings where the quarter name
+  // runs directly into the time. We do NOT add space between digit→letter
+  // because that would break "4TH" → "4 TH" (wrong).
+  s = s.replace(/([A-Za-z])(\d)/g, "$1 $2");
   // Collapse any double spaces we might have introduced
   s = s.replace(/\s+/g, " ").trim();
   return s;
@@ -149,9 +150,7 @@ function formatMatchStatus(raw: string): string {
 
 /** Render a scrape message with the time portion (e.g. "1'", "12'") highlighted
  *  in red. The apostrophe (') blinks to indicate the match is live.
- *
- *  Example: "Scraped: 4TH QUARTER 1', 94-78"
- *           → "Scraped: 4TH QUARTER " (cyan) + "1" (red) + "'" (red, blinking) + ", 94-78" (cyan)
+ *  No space between the digit and the apostrophe — renders as "1'" not "1 '".
  */
 function ScrapeMessageText({ text }: { text: string }) {
   // Match patterns like "1'", "12'", "45'" — digits followed by an apostrophe
@@ -164,14 +163,9 @@ function ScrapeMessageText({ text }: { text: string }) {
   const minutes = timeMatch[1]; // the digits
   const apostrophe = timeMatch[2]; // the '
   const after = text.substring(timeMatch.index + timeMatch[0].length);
-  return (
-    <>
-      {before}
-      <span className="text-neon-red font-bold">{minutes}</span>
-      <span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>
-      {after}
-    </>
-  );
+  // NOTE: spans must be on the same line with no whitespace between them,
+  // otherwise React inserts a space → "1 '" instead of "1'".
+  return <>{before}<span className="text-neon-red font-bold">{minutes}</span><span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>{after}</>;
 }
 
 /** Categorize a match into a status bucket for grouping. */
