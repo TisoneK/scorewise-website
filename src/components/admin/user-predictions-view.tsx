@@ -542,33 +542,39 @@ export function UserPredictionsView() {
 
               return (
               <div key={group.dateKey} className="space-y-3">
-                {/* Date header — clickable to expand/collapse */}
+                {/* Date header — clickable to expand/collapse, styled as a distinct header bar */}
                 <button
                   type="button"
                   onClick={() => toggleDateCollapse(group.dateKey, isTodayGroup, isTomorrowGroup)}
-                  className="flex items-center gap-2 pt-3 pb-2 w-full text-left hover:bg-card/30 -mx-1 px-1 rounded transition-colors"
+                  className={`flex items-center gap-2 w-full text-left rounded-lg border transition-all px-3 py-2.5 ${
+                    isTodayGroup
+                      ? "bg-neon-green/10 border-neon-green/30 hover:bg-neon-green/15 hover:border-neon-green/50"
+                      : isTomorrowGroup
+                        ? "bg-neon-cyan/10 border-neon-cyan/30 hover:bg-neon-cyan/15 hover:border-neon-cyan/50"
+                        : "bg-card/60 border-border hover:bg-card/80 hover:border-neon-green/30"
+                  }`}
                 >
-                  <Calendar className={`w-3.5 h-3.5 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
+                  <Calendar className={`w-4 h-4 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                   <span className={`text-xs font-bold uppercase tracking-wide ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-foreground"}`}>
                     {group.label}
                   </span>
                   {isTodayGroup && (
-                    <span className="text-[9px] font-black text-neon-green bg-neon-green/10 border border-neon-green/30 px-1.5 py-0.5 rounded-full">
+                    <span className="text-[9px] font-black text-neon-green bg-neon-green/20 border border-neon-green/40 px-1.5 py-0.5 rounded-full">
                       TODAY
                     </span>
                   )}
                   {isTomorrowGroup && (
-                    <span className="text-[9px] font-bold text-neon-cyan bg-neon-cyan/10 border border-neon-cyan/30 px-1.5 py-0.5 rounded-full">
+                    <span className="text-[9px] font-bold text-neon-cyan bg-neon-cyan/20 border border-neon-cyan/40 px-1.5 py-0.5 rounded-full">
                       TOMORROW
                     </span>
                   )}
                   <div className="flex-1 h-px bg-border/30" />
-                  <span className="text-[10px] text-muted-foreground/50">{group.predictions.length} match{group.predictions.length !== 1 ? "es" : ""}</span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`} />
+                  <span className="text-[10px] text-muted-foreground/70 font-medium">{group.predictions.length} match{group.predictions.length !== 1 ? "es" : ""}</span>
+                  <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${collapsed ? "" : "rotate-180"} ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                 </button>
                 {/* Cards — hidden when collapsed */}
                 {!collapsed && (
-                  <div className="grid gap-2 sm:gap-3">
+                  <div className="grid gap-2 sm:gap-3 pt-1">
                     {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
                   </div>
                 )}
