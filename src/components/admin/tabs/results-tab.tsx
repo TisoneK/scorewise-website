@@ -449,6 +449,8 @@ export function ResultsTab() {
     }
 
     setScraping(false);
+    // Fetch updated data from DB so the UI reflects the freshly scraped results
+    await fetchPredictions();
     setScrapeMsg({
       kind: "ok",
       text: `✅ Done — scraped ${completed}/${matchesToScrape.length} matches${failed > 0 ? ` (${failed} failed)` : ""}. All results saved.`,
@@ -835,9 +837,19 @@ export function ResultsTab() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button variant="outline" size="sm" onClick={fetchPredictions} disabled={loading} className="gap-1.5 h-8">
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline">Refresh</span>
+              {/* Refresh — triggers a scrape of all matches that need results,
+                  then fetches the updated data from DB. Use as a manual fallback
+                  if auto-refresh missed something or you want to force-update now. */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={triggerResultsScrape}
+                disabled={scraping || loading}
+                className="gap-1.5 h-8 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
+                title="Scrape all matches that need results + refresh from DB"
+              >
+                {(scraping || loading) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{scraping ? "Scraping..." : "Refresh"}</span>
               </Button>
               <Button
                 variant="outline"
