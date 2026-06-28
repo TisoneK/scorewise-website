@@ -822,15 +822,18 @@ export function ResultsTab() {
                 {scraping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{scraping ? "Scraping..." : "Scrape Results"}</span>
               </Button>
-              <Button
-                size="sm"
-                onClick={saveAll}
-                disabled={savingAll || dirtyCount === 0}
-                className="gap-1.5 h-8"
-              >
-                {savingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                Save All{dirtyCount > 0 ? ` (${dirtyCount})` : ""}
-              </Button>
+              {/* Save All — only visible when there are dirty rows (manual edits) */}
+              {dirtyCount > 0 && (
+                <Button
+                  size="sm"
+                  onClick={saveAll}
+                  disabled={savingAll}
+                  className="gap-1.5 h-8"
+                >
+                  {savingAll ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  Save All ({dirtyCount})
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1088,17 +1091,28 @@ export function ResultsTab() {
                                 <span className="hidden sm:inline">{row.scrapingSingle ? "Scraping..." : "Scrape"}</span>
                               </Button>
 
-                              {/* Save button */}
-                              <Button
-                                size="sm"
-                                variant={row.dirty ? "default" : "outline"}
-                                onClick={() => saveOne(p.match_id)}
-                                disabled={row.saving || row.scrapingSingle || !row.dirty}
-                                className="h-10 gap-1.5 px-4"
-                              >
-                                {row.saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                                <span>{row.saving ? "Saving" : row.dirty ? "Save" : "Saved"}</span>
-                              </Button>
+                              {/* Save button — only visible when row is dirty (manual edit) */}
+                              {row.dirty ? (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  onClick={() => saveOne(p.match_id)}
+                                  disabled={row.saving || row.scrapingSingle}
+                                  className="h-10 gap-1.5 px-4"
+                                >
+                                  {row.saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                                  <span>{row.saving ? "Saving" : "Save"}</span>
+                                </Button>
+                              ) : (
+                                /* Subtle "Saved" indicator — only for rows that have actual data
+                                   (scores or non-PENDING status). PENDING + no scores = nothing saved. */
+                                (row.savedHome !== null || row.savedAway !== null || row.savedStatus !== "PENDING") && (
+                                  <span className="flex items-center gap-1 text-[10px] text-neon-green/60 font-medium px-2 h-10">
+                                    <Check className="w-3 h-3" />
+                                    Saved
+                                  </span>
+                                )
+                              )}
                             </div>
                           </div>
 
