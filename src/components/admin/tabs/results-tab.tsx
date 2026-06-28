@@ -151,21 +151,31 @@ function formatMatchStatus(raw: string): string {
 /** Render a scrape message with the time portion (e.g. "1'", "12'") highlighted
  *  in red. The apostrophe (') blinks to indicate the match is live.
  *  No space between the digit and the apostrophe — renders as "1'" not "1 '".
+ *
+ *  Handles two cases:
+ *  1. Scraper returned apostrophe: "4TH QUARTER 1', 64-70" → 1' red+blink
+ *  2. Scraper omitted apostrophe: "4TH QUARTER 1, 64-70" → 1' red+blink (added)
  */
 function ScrapeMessageText({ text }: { text: string }) {
-  // Match patterns like "1'", "12'", "45'" — digits followed by an apostrophe
-  const timeMatch = text.match(/(\d+)(')/);
+  // Try to match digits followed by apostrophe: "1'", "12'"
+  let timeMatch = text.match(/(\d+)(')/);
+  if (!timeMatch || timeMatch.index === undefined) {
+    // No apostrophe — try matching digits right before the comma
+    // (e.g. "4TH QUARTER 1, 64-70" — the "1" is the live minute)
+    timeMatch = text.match(/(\d+)(?=\s*,)/);
+  }
   if (!timeMatch || timeMatch.index === undefined) {
     // No time pattern — just render as plain text
     return <>{text}</>;
   }
   const before = text.substring(0, timeMatch.index);
   const minutes = timeMatch[1]; // the digits
-  const apostrophe = timeMatch[2]; // the '
   const after = text.substring(timeMatch.index + timeMatch[0].length);
+  // Always render a blinking apostrophe after the minutes — whether or not the
+  // scraper included one. This indicates the match is live.
   // NOTE: spans must be on the same line with no whitespace between them,
   // otherwise React inserts a space → "1 '" instead of "1'".
-  return <>{before}<span className="text-neon-red font-bold">{minutes}</span><span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>{after}</>;
+  return <>{before}<span className="text-neon-red font-bold">{minutes}</span><span className="text-neon-red font-bold animate-hard-blink">'</span>{after}</>;
 }
 
 /** Categorize a match into a status bucket for grouping. */
