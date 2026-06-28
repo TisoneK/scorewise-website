@@ -283,9 +283,18 @@ export function PredictionCard({
             const diff = (total != null && line != null) ? total - line : null;
             const diffStr = diff != null ? (diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)) : null;
             const diffDirection = diff != null ? (diff >= 0 ? "OVER" : "UNDER") : null;
-            const diffTone = diff != null
-              ? (diff >= 0 ? "text-neon-green" : "text-neon-red")
-              : "";
+
+            // Color is determined by the OUTCOME of the prediction, not the
+            // sign of the difference.
+            // - UNDER prediction: total < line = WIN (green), total > line = LOSS (red)
+            // - OVER prediction: total > line = WIN (green), total < line = LOSS (red)
+            const diffTone = (() => {
+              if (diff == null || !isOver || !isUnder) return "";
+              const isUnderRec = p.recommendation?.toUpperCase() === "UNDER";
+              const totalWentUnder = diff < 0;
+              const predictionWon = (isUnderRec && totalWentUnder) || (!isUnderRec && !totalWentUnder);
+              return predictionWon ? "text-neon-green" : "text-neon-red";
+            })();
 
             return (
               <div className={`flex items-center gap-2 mt-1.5 text-[11px] font-bold flex-wrap ${
