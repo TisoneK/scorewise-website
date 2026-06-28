@@ -136,17 +136,18 @@ export function PredictionCard({
   };
 
   return (
-    <div className={`rounded-lg bg-card/80 border transition-all overflow-hidden ${
+    <div className={`rounded-lg bg-card/80 border-2 transition-all overflow-hidden ${
       rank !== undefined
-        ? "border-neon-green/30 hover:border-neon-green/50 hover:shadow-[0_0_16px_-4px_rgba(34,197,94,0.3)]"
-        : "border-border/40 hover:border-neon-green/20"
+        ? "border-neon-green/40 hover:border-neon-green/60 hover:shadow-[0_0_16px_-4px_rgba(34,197,94,0.3)]"
+        : "border-border/60 hover:border-neon-green/40"
     }`}>
 
-      {/* HEADER — league + local date/time + countdown at the TOP */}
+      {/* HEADER — league + local date/time on LEFT, countdown on RIGHT */}
       {(showLeague && leagueBits) || (showDateTime && matchDate) ? (
         <div className="px-3 py-1.5 bg-background/40 border-b border-border/20">
-          <div className="flex items-center justify-center gap-1.5">
-            <p className="text-[10px] text-muted-foreground/70 truncate">
+          <div className="flex items-center justify-between gap-2">
+            {/* LEFT: league + date/time */}
+            <p className="text-[10px] text-muted-foreground/70 truncate text-left">
               {[
                 showLeague && leagueBits,
                 showDateTime && matchDate && (
@@ -165,7 +166,7 @@ export function PredictionCard({
                   </span>
                 ))}
             </p>
-            {/* Countdown badge — shows time to kickoff or time since kickoff.
+            {/* RIGHT: Countdown badge — shows time to kickoff or time since kickoff.
                 Only rendered after mount to avoid SSR hydration mismatch.
                 Hidden for FINAL matches (irrelevant — match is over). */}
             {showDateTime && mounted && !isFinal && (() => {
@@ -226,7 +227,7 @@ export function PredictionCard({
             <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
             {p.away_team || "Away"}
           </p>
-          {/* Prediction + line + odds + winner */}
+          {/* Prediction + line + odds (totals row) */}
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             {(isOver || isUnder) && (
               <span className={`flex items-center gap-0.5 text-xs font-bold ${accentColor}`}>
@@ -242,41 +243,51 @@ export function PredictionCard({
             {odds != null && (
               <span className="text-[10px] font-mono text-muted-foreground">@{odds}</span>
             )}
-            {hasWinner && winnerName && (
-              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-                <Trophy className="w-2.5 h-2.5 text-neon-cyan" />
-                {winnerName}
-                {winnerOdds != null && <span className="font-mono">@{winnerOdds}</span>}
-              </span>
-            )}
           </div>
-          {/* Result line — auto-shows LIVE when match kicks off (based on start time),
-              shows final score + WIN/LOSS/PUSH when FINAL */}
+          {/* Win prediction — stacked BELOW totals, not beside */}
+          {hasWinner && winnerName && (
+            <div className="flex items-center gap-0.5 mt-1 text-[10px] text-muted-foreground">
+              <Trophy className="w-2.5 h-2.5 text-neon-cyan" />
+              {winnerName}
+              {winnerOdds != null && <span className="font-mono">@{winnerOdds}</span>}
+            </div>
+          )}
+          {/* Result line — shows status (LIVE/AWAITING/PENDING) + full score
+              with full team names + outcome badges (WON/LOST/PUSH) */}
           {(isLive || isFinal || isAwaiting) && (
-            <div className={`flex items-center gap-1.5 mt-1 text-[11px] font-bold ${
+            <div className={`flex items-center gap-1.5 mt-1.5 text-[11px] font-bold flex-wrap ${
               isLive ? "text-neon-red" : isAwaiting ? "text-neon-yellow" : "text-foreground"
             }`}>
               {isLive && <Radio className="w-3 h-3 animate-pulse shrink-0" />}
               {isAwaiting && <Clock className="w-3 h-3 shrink-0" />}
               {p.home_score != null && p.away_score != null ? (
                 <span className="font-mono">
-                  {p.home_team?.split(" ").pop() || "H"} {p.home_score} - {p.away_score} {p.away_team?.split(" ").pop() || "A"}
+                  {p.home_team || "Home"} {p.home_score} - {p.away_score} {p.away_team || "Away"}
                 </span>
               ) : (
                 <span className="text-[10px] uppercase tracking-wide">
                   {isLive ? "Live" : isAwaiting ? "Awaiting result" : "Pending"}
                 </span>
               )}
-              {isFinal && ouOutcome !== "MISSING" && (
-                <span className={`px-1 py-0 rounded text-[9px] border ${ouOutcome === "WIN" ? "border-neon-green/30 bg-neon-green/10 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/30 bg-neon-red/10 text-neon-red" : "border-neon-yellow/30 bg-neon-yellow/10 text-neon-yellow"}`}>
-                  {p.recommendation} {ouOutcome === "WIN" ? "✓" : ouOutcome === "LOSS" ? "✗" : "PUSH"}
-                </span>
-              )}
-              {isFinal && winOutcome !== "MISSING" && (
-                <span className={`px-1 py-0 rounded text-[9px] border ${winOutcome === "WIN" ? "border-neon-green/30 bg-neon-green/10 text-neon-green" : "border-neon-red/30 bg-neon-red/10 text-neon-red"}`}>
-                  W {winOutcome === "WIN" ? "✓" : "✗"}
-                </span>
-              )}
+              {/* Outcome badges — only for FINAL matches */}
+              {isFinal && ouOutcome !== "MISSING" && (() => {
+                const ouTone = ouOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/40 bg-neon-red/10 text-neon-red" : "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow";
+                const ouLabel = ouOutcome === "WIN" ? "WON ✓" : ouOutcome === "LOSS" ? "LOST ✗" : "PUSH";
+                return (
+                  <span className={`px-1.5 py-0 rounded text-[9px] border font-bold ${ouTone}`}>
+                    {p.recommendation} {ouLabel}
+                  </span>
+                );
+              })()}
+              {isFinal && winOutcome !== "MISSING" && (() => {
+                const winTone = winOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : winOutcome === "LOSS" ? "border-neon-red/40 bg-neon-red/10 text-neon-red" : "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow";
+                const winLabel = winOutcome === "WIN" ? "WON ✓" : winOutcome === "LOSS" ? "LOST ✗" : "PUSH";
+                return (
+                  <span className={`px-1.5 py-0 rounded text-[9px] border font-bold ${winTone}`}>
+                    WIN {winLabel}
+                  </span>
+                );
+              })()}
             </div>
           )}
         </div>
