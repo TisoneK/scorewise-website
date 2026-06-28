@@ -77,33 +77,34 @@ function getRowState(p: Prediction, prev?: RowState): RowState {
   const savedAway = p.away_score ?? null;
   const savedStatus = (p.result_status as ResultStatus | null) || "PENDING";
 
-  // ── Auto-refresh inputs when the server state changes (e.g. scraper saved
-  // new scores via webhook). The previous logic used `prev?.homeInput ?? ...`
-  // which treated empty string "" as a valid value and refused to refresh —
-  // so scraped scores never appeared in the inputs until manual refresh.
+  // ── Preserve user's manual edits (dirty rows) ────────────────────────
+  // If the user has manually edited a row (dirty=true), DON'T overwrite
+  // their inputs with server state. This prevents the auto-refresh from
+  // wiping out manual changes before the user clicks Save.
   //
-  // NEW logic: only preserve the user's in-flight input if it's non-empty AND
-  // differs from the saved value (i.e. the user is actively typing). If the
-  // input is empty OR matches the saved value, refresh from server state so
-  // scraped results flow through automatically.
-  const prevHome = prev?.homeInput ?? "";
-  const prevAway = prev?.awayInput ?? "";
-  const prevStatus = prev?.statusInput ?? savedStatus;
+  // For non-dirty rows, sync from server state so scraped results flow
+  // through automatically.
+  if (prev?.dirty) {
+    // User has unsaved manual edits — preserve everything
+    return {
+      homeInput: prev.homeInput,
+      awayInput: prev.awayInput,
+      statusInput: prev.statusInput,
+      savedHome,  // update saved* from server so isDirty() recomputes correctly
+      savedAway,
+      savedStatus,
+      dirty: true,  // still dirty — user hasn't saved yet
+      saving: false,
+      msg: prev.msg ?? null,
+      scrapingSingle: false,
+      scrapeMsg: prev.scrapeMsg ?? null,
+    };
+  }
 
-  // If the server has a new score that the user hasn't manually edited to
-  // something different, sync the input to the server's value.
-  const homeInput = (prevHome !== "" && prevHome !== String(savedHome ?? ""))
-    ? prevHome  // user has manually typed something different — preserve it
-    : (savedHome !== null ? String(savedHome) : "");  // sync from server
-  const awayInput = (prevAway !== "" && prevAway !== String(savedAway ?? ""))
-    ? prevAway
-    : (savedAway !== null ? String(savedAway) : "");
-
-  // Status: if the server's status changed (e.g. PENDING → FINAL via scraper),
-  // adopt the server's status unless the user is mid-edit on a different status.
-  const statusInput = (prevStatus !== savedStatus && prevStatus !== "PENDING" && prev?.dirty)
-    ? prevStatus  // user is actively changing the status — preserve
-    : savedStatus;
+  // Non-dirty row — sync inputs from server state
+  const homeInput = savedHome !== null ? String(savedHome) : "";
+  const awayInput = savedAway !== null ? String(savedAway) : "";
+  const statusInput = savedStatus;
 
   return {
     homeInput,
@@ -112,7 +113,7 @@ function getRowState(p: Prediction, prev?: RowState): RowState {
     savedHome,
     savedAway,
     savedStatus,
-    dirty: prev?.dirty ?? false,
+    dirty: false,
     saving: false,
     msg: prev?.msg ?? null,
     scrapingSingle: false,
@@ -230,6 +231,15 @@ export function ResultsTab() {
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
+
+  // Ref to hold the latest rows state so the auto-refresh can check which
+  // rows are dirty (user has manual unsaved edits). Dirty rows are SKIPPED
+  // during auto-refresh — the user's manual edits take priority until they
+  // click Save or Save All.
+  const rowsRef = useRef<Record<string, RowState>>({});
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   const fetchPredictions = useCallback(async (): Promise<StoredPredictions | null> => {
     try {
@@ -652,20 +662,33 @@ export function ResultsTab() {
       // Get all LIVE matches from current data (via ref to avoid re-subscribing)
       const liveMatchIds: string[] = [];
       const currentData = dataRef.current;
+      const currentRows = rowsRef.current;
       if (currentData?.predictions) {
         for (const p of currentData.predictions) {
           const rs = p.result_status;
-          if (rs === "LIVE") liveMatchIds.push(p.match_id);
+          const isLive = rs === "LIVE";
           // Also include matches that have started but still show PENDING
+          let isStartedPending = false;
           if (rs === "PENDING" || rs === null) {
             const matchDate = parseMatchDateTime(p.date, p.time);
             if (matchDate) {
               const now = Date.now();
               const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
               if (now > matchDate.getTime() && now < likelyFinishedAt) {
-                liveMatchIds.push(p.match_id);
+                isStartedPending = true;
               }
             }
+          }
+          if (isLive || isStartedPending) {
+            // ── SKIP dirty rows ──────────────────────────────────────────
+            // If the user has manually edited this row (dirty=true), DON'T
+            // auto-scrape it — their manual edits take priority. They can
+            // click Save to persist, or Refresh to discard.
+            const row = currentRows[p.match_id];
+            if (row?.dirty) {
+              continue; // skip — preserve user's manual edits
+            }
+            liveMatchIds.push(p.match_id);
           }
         }
       }
@@ -673,6 +696,7 @@ export function ResultsTab() {
       if (liveMatchIds.length === 0 || cancelled) return;
 
       // Scrape each LIVE match sequentially (scrapeSingle saves to DB explicitly)
+      // Dirty rows were already filtered out above — only non-dirty rows are scraped.
       for (const matchId of liveMatchIds) {
         if (cancelled) break;
         try {
