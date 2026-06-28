@@ -152,9 +152,10 @@ function formatMatchStatus(raw: string): string {
  *  in red. The apostrophe (') blinks to indicate the match is live.
  *  No space between the digit and the apostrophe — renders as "1'" not "1 '".
  *
- *  Handles two cases:
- *  1. Scraper returned apostrophe: "4TH QUARTER 1', 64-70" → 1' red+blink
- *  2. Scraper omitted apostrophe: "4TH QUARTER 1, 64-70" → 1' red+blink (added)
+ *  Handles multiple scraper output formats:
+ *  1. With apostrophe: "4TH QUARTER 1', 64-70" → 1' red+blink
+ *  2. Without apostrophe, before comma: "4TH QUARTER 1, 64-70" → 1' red+blink
+ *  3. Without apostrophe, at end: "4TH QUARTER 1" → 1' red+blink
  */
 function ScrapeMessageText({ text }: { text: string }) {
   // Try to match digits followed by apostrophe: "1'", "12'"
@@ -163,6 +164,11 @@ function ScrapeMessageText({ text }: { text: string }) {
     // No apostrophe — try matching digits right before the comma
     // (e.g. "4TH QUARTER 1, 64-70" — the "1" is the live minute)
     timeMatch = text.match(/(\d+)(?=\s*,)/);
+  }
+  if (!timeMatch || timeMatch.index === undefined) {
+    // No comma either — try matching trailing digits at end of string
+    // (e.g. "4TH QUARTER 1" with no score)
+    timeMatch = text.match(/(\d+)$/);
   }
   if (!timeMatch || timeMatch.index === undefined) {
     // No time pattern — just render as plain text
