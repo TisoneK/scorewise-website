@@ -93,10 +93,35 @@ export function UserPredictionsView() {
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<ConfFilter>("ALL");
   const [recFilter, setRecFilter] = useState<RecFilter>("ALL");
+  // Collapsed date groups — dates the user has manually collapsed.
+  // Today + tomorrow are expanded by default. All other dates start collapsed.
+  // User can click any date header to toggle expand/collapse.
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
   // Mounted state — prevents SSR hydration mismatch from time-based functions
   // (computeEffectiveStatus, timeToKickoff, isTodayLocal all use new Date())
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  /** Toggle a date group between expanded/collapsed. */
+  const toggleDateCollapse = (dateKey: string) => {
+    setCollapsedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateKey)) next.delete(dateKey);
+      else next.add(dateKey);
+      return next;
+    });
+  };
+
+  /** Check if a date group should be collapsed.
+   *  Default: today + tomorrow are expanded, all others collapsed.
+   *  User can override by clicking the date header. */
+  const isDateCollapsed = (dateKey: string, isToday: boolean, isTomorrow: boolean): boolean => {
+    // If user has explicitly toggled this date, respect their choice
+    if (collapsedDates.has(dateKey)) return true;
+    // Otherwise: today + tomorrow are expanded by default, others collapsed
+    if (isToday || isTomorrow) return false;
+    return true;
+  };
 
   const fetchPredictions = useCallback(async () => {
     try {
@@ -490,16 +515,21 @@ export function UserPredictionsView() {
 
             {/* Grouped predictions (by local date, sorted by relevance) */}
             {grouped.map((group) => {
-              // Check if this group is today — add a highlight badge
+              // Check if this group is today/tomorrow — for default expand/collapse
               const firstPred = group.predictions[0];
               const groupDate = firstPred ? parseMatchDateTime(firstPred.date, firstPred.time) : null;
-              const isTodayGroup = groupDate && isTodayLocal(groupDate);
-              const isTomorrowGroup = groupDate && isTomorrowLocal(groupDate);
+              const isTodayGroup = !!(groupDate && isTodayLocal(groupDate));
+              const isTomorrowGroup = !!(groupDate && isTomorrowLocal(groupDate));
+              const collapsed = isDateCollapsed(group.dateKey, isTodayGroup, isTomorrowGroup);
 
               return (
               <div key={group.dateKey} className="space-y-2">
-                {/* Date header — highlighted for today */}
-                <div className="flex items-center gap-2 pt-2">
+                {/* Date header — clickable to expand/collapse */}
+                <button
+                  type="button"
+                  onClick={() => toggleDateCollapse(group.dateKey)}
+                  className="flex items-center gap-2 pt-2 w-full text-left hover:bg-card/30 -mx-1 px-1 rounded transition-colors"
+                >
                   <Calendar className={`w-3.5 h-3.5 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                   <span className={`text-xs font-bold uppercase tracking-wide ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-foreground"}`}>
                     {group.label}
@@ -516,11 +546,14 @@ export function UserPredictionsView() {
                   )}
                   <div className="flex-1 h-px bg-border/30" />
                   <span className="text-[10px] text-muted-foreground/50">{group.predictions.length} match{group.predictions.length !== 1 ? "es" : ""}</span>
-                </div>
-                {/* Cards */}
-                <div className="grid gap-2 sm:gap-3">
-                  {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
-                </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${collapsed ? "" : "rotate-180"}`} />
+                </button>
+                {/* Cards — hidden when collapsed */}
+                {!collapsed && (
+                  <div className="grid gap-2 sm:gap-3">
+                    {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
+                  </div>
+                )}
               </div>
               );
             })}
