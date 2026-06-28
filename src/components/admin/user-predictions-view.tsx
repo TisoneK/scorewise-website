@@ -162,124 +162,84 @@ export function UserPredictionsView() {
     return () => clearInterval(interval);
   }, [fetchPredictions]);
 
-  // ── Top Over/Under Picks: 3 BEST OVER/UNDER picks for today ───────────
-  // Strict criteria:
-  //   1. HIGH confidence
-  //   2. recommendation is OVER or UNDER (excludes NO_BET and Win picks)
-  //   3. Today's match (user's local timezone)
-  //   4. Not already FINAL/POSTPONED/CANCELLED
-  //   5. Ranked by composite strength score (rate signal + consistency + test alignment)
-  //   6. Limited to at most 3 picks
-  const topOUPicks = useMemo(() => {
-    if (!data?.predictions) return [];
-    return data.predictions
+  // ── Strength scoring (reusable for per-date top picks) ──────────────
+  /** Compute O/U pick strength score for a prediction. */
+  const computeOUStrength = useCallback((p: Prediction): number => {
+    const avgRate = Math.abs(p.average_rate || 0);
+    const above = p.matches_above || 0;
+    const below = p.matches_below || 0;
+    const total = above + below;
+    const isOver = p.recommendation?.toUpperCase() === "OVER";
+    const isUnder = p.recommendation?.toUpperCase() === "UNDER";
+    const rateStrength = Math.min(avgRate / 20, 1.0);
+    const agreeCount = isOver ? above : isUnder ? below : 0;
+    const consistency = total > 0 ? agreeCount / total : 0;
+    const testAligned = isOver
+      ? Math.min((p.increment_test || 0) / 5, 1.0)
+      : isUnder
+        ? Math.min((p.decrement_test || 0) / 5, 1.0)
+        : 0;
+    const winnerBonus = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? 0.15 : 0;
+    return (rateStrength * 0.40) + (consistency * 0.35) + (testAligned * 0.20) + winnerBonus;
+  }, []);
+
+  /** Compute 1X2 pick strength score for a prediction. */
+  const computeWinStrength = useCallback((p: Prediction): number => {
+    const w = p.team_winner?.toUpperCase();
+    const isHome = w === "HOME_TEAM";
+    const isAway = w === "AWAY_TEAM";
+    const odds = isHome ? p.home_odds : isAway ? p.away_odds : null;
+    const oddsStrength = odds && odds > 0 ? Math.min(1.5 / Number(odds), 1.0) : 0;
+    const h2h = p.winning_streak_data;
+    let h2hStrength = 0;
+    if (h2h && h2h.total_h2h_matches > 0) {
+      const pickedWins = isHome ? h2h.home_team_h2h_wins : h2h.away_team_h2h_wins;
+      h2hStrength = pickedWins / h2h.total_h2h_matches;
+    }
+    const homeRecent = h2h?.home_team_recent_wins || 0;
+    const awayRecent = h2h?.away_team_recent_wins || 0;
+    const totalRecent = homeRecent + awayRecent;
+    const recentStrength = totalRecent > 0 ? (isHome ? homeRecent : awayRecent) / totalRecent : 0;
+    const streak = isHome ? (h2h?.home_team_winning_streak || 0) : (h2h?.away_team_winning_streak || 0);
+    const streakBonus = Math.min(streak / 5, 1.0) * 0.15;
+    const ouBonus = p.confidence?.toUpperCase() === "HIGH" &&
+                    (p.recommendation === "OVER" || p.recommendation === "UNDER") ? 0.10 : 0;
+    return (oddsStrength * 0.40) + (h2hStrength * 0.30) + (recentStrength * 0.15) + streakBonus + ouBonus;
+  }, []);
+
+  /** Get top picks (O/U + 1X2) for a specific set of predictions.
+   *  - For today/tomorrow (excludeFinal=true): only upcoming/live matches
+   *  - For past dates (excludeFinal=false): include all matches (for tracking) */
+  const getTopPicksForGroup = useCallback((predictions: Prediction[], excludeFinal: boolean) => {
+    const ou = predictions
       .filter((p) => {
         if (p.confidence?.toUpperCase() !== "HIGH") return false;
         const r = p.recommendation?.toUpperCase();
         if (r !== "OVER" && r !== "UNDER") return false;
-        const d = parseMatchDateTime(p.date, p.time);
-        if (!d || !isTodayLocal(d)) return false;
-        if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") return false;
+        if (excludeFinal && (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED")) return false;
         return true;
       })
-      .map((p) => {
-        const avgRate = Math.abs(p.average_rate || 0);
-        const above = p.matches_above || 0;
-        const below = p.matches_below || 0;
-        const total = above + below;
-        const isOver = p.recommendation?.toUpperCase() === "OVER";
-        const isUnder = p.recommendation?.toUpperCase() === "UNDER";
-
-        // 1. Rate signal strength: |avg_rate| / 20 (cap 1.0)
-        const rateStrength = Math.min(avgRate / 20, 1.0);
-
-        // 2. Consistency ratio: how many historical matches agree with the rec
-        const agreeCount = isOver ? above : isUnder ? below : 0;
-        const consistency = total > 0 ? agreeCount / total : 0;
-
-        // 3. Test alignment: OVER wants high increment_test, UNDER wants high decrement_test
-        const testAligned = isOver
-          ? Math.min((p.increment_test || 0) / 5, 1.0)
-          : isUnder
-            ? Math.min((p.decrement_test || 0) / 5, 1.0)
-            : 0;
-
-        // 4. Winner bonus: extra signal if engine also picked a winner
-        const winnerBonus = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? 0.15 : 0;
-
-        const strength = (rateStrength * 0.40) + (consistency * 0.35) + (testAligned * 0.20) + winnerBonus;
-        return { ...p, _strength: strength };
-      })
+      .map((p) => ({ ...p, _strength: computeOUStrength(p) }))
       .sort((a, b) => (b._strength || 0) - (a._strength || 0))
       .slice(0, 3);
-  }, [data]);
 
-  // ── Top Win Picks: 3 BEST WIN (moneyline) picks for today ─────────────
-  // Strict criteria:
-  //   1. team_winner_confidence is HIGH (separate from over/under confidence)
-  //   2. team_winner is HOME_TEAM or AWAY_TEAM (excludes NO_WINNER_PREDICTION)
-  //   3. Today's match (user's local timezone)
-  //   4. Not already FINAL/POSTPONED/CANCELLED
-  //   5. Ranked by composite strength score (odds value + h2h dominance + streak)
-  //   6. Limited to at most 3 picks
-  const topWinPicks = useMemo(() => {
-    if (!data?.predictions) return [];
-    return data.predictions
+    const win = predictions
       .filter((p) => {
         if (p.team_winner_confidence?.toUpperCase() !== "HIGH") return false;
         const w = p.team_winner?.toUpperCase();
         if (w !== "HOME_TEAM" && w !== "AWAY_TEAM") return false;
-        const d = parseMatchDateTime(p.date, p.time);
-        if (!d || !isTodayLocal(d)) return false;
-        if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") return false;
+        if (excludeFinal && (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED")) return false;
         return true;
       })
-      .map((p) => {
-        const w = p.team_winner?.toUpperCase();
-        const isHome = w === "HOME_TEAM";
-        const isAway = w === "AWAY_TEAM";
-
-        // 1. Odds value (0-1): lower decimal odds = stronger pick (more likely).
-        //    Odds of 1.20 → very strong (0.83). Odds of 3.00 → weak (0.33).
-        const odds = isHome ? p.home_odds : isAway ? p.away_odds : null;
-        const oddsStrength = odds && odds > 0 ? Math.min(1.5 / Number(odds), 1.0) : 0;
-
-        // 2. H2H dominance (0-1): how often the picked team wins head-to-head
-        //    Uses winning_streak_data.h2h_totals_wins / total_h2h_matches
-        const h2h = p.winning_streak_data;
-        let h2hStrength = 0;
-        if (h2h && h2h.total_h2h_matches > 0) {
-          const pickedWins = isHome ? h2h.home_team_h2h_wins : h2h.away_team_h2h_wins;
-          h2hStrength = pickedWins / h2h.total_h2h_matches;
-        }
-
-        // 3. Recent form (0-1): how many of the picked team's recent matches they won
-        const homeRecent = h2h?.home_team_recent_wins || 0;
-        const awayRecent = h2h?.away_team_recent_wins || 0;
-        const totalRecent = homeRecent + awayRecent;
-        const recentStrength = totalRecent > 0
-          ? (isHome ? homeRecent : awayRecent) / totalRecent
-          : 0;
-
-        // 4. Winning streak bonus (0-0.15): extra points if picked team is on a hot streak
-        const streak = isHome ? (h2h?.home_team_winning_streak || 0) : (h2h?.away_team_winning_streak || 0);
-        const streakBonus = Math.min(streak / 5, 1.0) * 0.15;
-
-        // 5. Over/Under alignment bonus (0-0.10): if the O/U recommendation also
-        //    points the same direction (high-scoring → favours stronger team),
-        //    that's a small extra signal of match control
-        const ouBonus = p.confidence?.toUpperCase() === "HIGH" &&
-                        (p.recommendation === "OVER" || p.recommendation === "UNDER")
-          ? 0.10
-          : 0;
-
-        // Weighted: 40% odds + 30% h2h + 15% recent + 15% streak + 10% ou alignment
-        const strength = (oddsStrength * 0.40) + (h2hStrength * 0.30) + (recentStrength * 0.15) + streakBonus + ouBonus;
-        return { ...p, _strength: strength };
-      })
+      .map((p) => ({ ...p, _strength: computeWinStrength(p) }))
       .sort((a, b) => (b._strength || 0) - (a._strength || 0))
       .slice(0, 3);
-  }, [data]);
+
+    return { ou, win };
+  }, [computeOUStrength, computeWinStrength]);
+
+  // ── Today's top picks — used for per-date rendering (computed inline per group)
+  // The getTopPicksForGroup function above is called per date group in the render.
 
   // All predictions: filtered, sorted, grouped by LOCAL date.
   const grouped = useMemo(() => {
@@ -407,76 +367,6 @@ export function UserPredictionsView() {
         <PublicStatsBanner algorithm="totals" />
         <PublicStatsBanner algorithm="winner" />
 
-        {/* ════════ TOP PICKS (unified card) ════════ */}
-        {/* Single card with two internal sections:
-            - Over/Under (totals) — green accent
-            - Win (moneyline) — cyan accent
-            Each sub-section only renders when it has picks.
-            If NEITHER has picks, show a single "No top picks today" message.
-            No algorithm jargon, no "HIGH confidence" exposure. */}
-        {!loading && !error && (topOUPicks.length > 0 || topWinPicks.length > 0) && (
-          <section className="rounded-xl border border-border/40 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
-            {/* Header — single unified title */}
-            <header className="flex items-center gap-2 px-3 py-2 border-b border-border/30 bg-background/30">
-              <div className="w-6 h-6 rounded-md bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-                <Flame className="w-3.5 h-3.5 text-neon-green" />
-              </div>
-              <h2 className="text-sm font-bold text-foreground">Top Picks</h2>
-              <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
-                {topOUPicks.length + topWinPicks.length} PICK{(topOUPicks.length + topWinPicks.length) !== 1 ? "S" : ""}
-              </span>
-            </header>
-
-            {/* ── Sub-section: Over/Under (only if picks exist) ── */}
-            {topOUPicks.length > 0 && (
-              <div className="border-b border-border/20">
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-green/5">
-                  <div className="w-1 h-3 rounded-full bg-neon-green shrink-0" />
-                  <span className="text-[10px] font-bold text-neon-green uppercase tracking-wider">Over / Under</span>
-                  <span className="text-[9px] text-muted-foreground/50 ml-auto">{topOUPicks.length} pick{topOUPicks.length !== 1 ? "s" : ""}</span>
-                </div>
-                <div className="p-3 space-y-2">
-                  {topOUPicks.map((p, i) => (
-                    <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ── Sub-section: Win (only if picks exist) ── */}
-            {topWinPicks.length > 0 && (
-              <div>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-cyan/5">
-                  <div className="w-1 h-3 rounded-full bg-neon-cyan shrink-0" />
-                  <span className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider">1X2</span>
-                  <span className="text-[9px] text-muted-foreground/50 ml-auto">{topWinPicks.length} pick{topWinPicks.length !== 1 ? "s" : ""}</span>
-                </div>
-                <div className="p-3 space-y-2">
-                  {topWinPicks.map((p, i) => (
-                    <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Footer */}
-            <footer className="px-3 py-1.5 border-t border-border/20 bg-background/30 flex items-center justify-between">
-              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best</span>
-              <span className="text-[9px] text-muted-foreground/40">Browse all below</span>
-            </footer>
-          </section>
-        )}
-
-        {/* ── No top picks today (only when BOTH sections are empty) ── */}
-        {!loading && !error && topOUPicks.length === 0 && topWinPicks.length === 0 && data?.predictions && data.predictions.length > 0 && (
-          <Card className="bg-card/40 border-border/30">
-            <CardContent className="p-4 text-center">
-              <p className="text-xs text-muted-foreground">No top picks today.</p>
-              <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Search + Filters */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
           <div className="relative flex-1">
@@ -567,11 +457,73 @@ export function UserPredictionsView() {
                   <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${collapsed ? "" : "rotate-180"} ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                 </button>
                 {/* Cards — hidden when collapsed */}
-                {!collapsed && (
-                  <div className="grid gap-2 sm:gap-3 pt-1">
-                    {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
-                  </div>
-                )}
+                {!collapsed && (() => {
+                  // Compute top picks for this date group
+                  // For today/tomorrow: exclude FINAL (only upcoming/live)
+                  // For past dates: include all (for tracking historical performance)
+                  const excludeFinal = isTodayGroup || isTomorrowGroup;
+                  const groupTopPicks = getTopPicksForGroup(group.predictions, excludeFinal);
+                  const hasTopPicks = groupTopPicks.ou.length > 0 || groupTopPicks.win.length > 0;
+                  const totalTopPicks = groupTopPicks.ou.length + groupTopPicks.win.length;
+
+                  return (
+                    <div className="pt-1 space-y-3">
+                      {/* ── Per-date Top Picks sub-section ── */}
+                      {hasTopPicks && (
+                        <div className="rounded-lg border-2 border-neon-green/30 bg-card/60 overflow-hidden">
+                          {/* Header */}
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-green/5 border-b border-neon-green/15">
+                            <Flame className="w-3 h-3 text-neon-green shrink-0" />
+                            <span className="text-[10px] font-bold text-neon-green uppercase tracking-wider">Top Picks</span>
+                            <span className="text-[9px] text-neon-green/80 bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
+                              {totalTopPicks}
+                            </span>
+                          </div>
+                          {/* O/U picks */}
+                          {groupTopPicks.ou.length > 0 && (
+                            <div className="border-b border-border/20">
+                              <div className="flex items-center gap-1.5 px-3 py-1 bg-neon-green/5">
+                                <div className="w-0.5 h-2.5 rounded-full bg-neon-green shrink-0" />
+                                <span className="text-[9px] font-bold text-neon-green/80 uppercase tracking-wider">O/U</span>
+                              </div>
+                              <div className="p-2 space-y-2">
+                                {groupTopPicks.ou.map((p, i) => (
+                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {/* 1X2 picks */}
+                          {groupTopPicks.win.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-1.5 px-3 py-1 bg-neon-cyan/5">
+                                <div className="w-0.5 h-2.5 rounded-full bg-neon-cyan shrink-0" />
+                                <span className="text-[9px] font-bold text-neon-cyan/80 uppercase tracking-wider">1X2</span>
+                              </div>
+                              <div className="p-2 space-y-2">
+                                {groupTopPicks.win.map((p, i) => (
+                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── All matches ── */}
+                      {hasTopPicks && (
+                        <div className="flex items-center gap-2 pt-1">
+                          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider font-semibold">All Matches</span>
+                          <div className="flex-1 h-px bg-border/30" />
+                          <span className="text-[10px] text-muted-foreground/50">{group.predictions.length} total</span>
+                        </div>
+                      )}
+                      <div className="grid gap-2 sm:gap-3">
+                        {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
               );
             })}
