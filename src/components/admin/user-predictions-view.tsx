@@ -542,17 +542,11 @@ export function UserPredictionsView() {
 
               return (
               <div key={group.dateKey} className="space-y-3">
-                {/* Date header — clickable to expand/collapse, styled as a distinct header bar */}
+                {/* Date header — clickable to expand/collapse, same bg card as prediction cards */}
                 <button
                   type="button"
                   onClick={() => toggleDateCollapse(group.dateKey, isTodayGroup, isTomorrowGroup)}
-                  className={`flex items-center gap-2 w-full text-left rounded-lg border transition-all px-3 py-2.5 ${
-                    isTodayGroup
-                      ? "bg-neon-green/10 border-neon-green/30 hover:bg-neon-green/15 hover:border-neon-green/50"
-                      : isTomorrowGroup
-                        ? "bg-neon-cyan/10 border-neon-cyan/30 hover:bg-neon-cyan/15 hover:border-neon-cyan/50"
-                        : "bg-card/60 border-border hover:bg-card/80 hover:border-neon-green/30"
-                  }`}
+                  className="flex items-center gap-2 w-full text-left rounded-lg border-2 bg-card/90 px-3 py-2.5 transition-all hover:border-neon-green/40"
                 >
                   <Calendar className={`w-4 h-4 shrink-0 ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-muted-foreground"}`} />
                   <span className={`text-xs font-bold uppercase tracking-wide ${isTodayGroup ? "text-neon-green" : isTomorrowGroup ? "text-neon-cyan" : "text-foreground"}`}>
