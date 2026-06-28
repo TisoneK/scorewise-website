@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, Trophy, Clock } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -364,80 +364,74 @@ export function UserPredictionsView() {
         <PublicStatsBanner algorithm="totals" />
         <PublicStatsBanner algorithm="winner" />
 
-        {/* ════════ TOP OVER/UNDER PICKS ════════ */}
-        {/* Always rendered with header/footer even when empty so the section
-            is always visible and identifiable. Body shows picks or empty state. */}
-        {!loading && !error && (
-          <section className="rounded-xl border border-neon-green/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
-            {/* Header — no flex-1 divider to avoid orphaned line on mobile */}
-            <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-green/15 bg-neon-green/5">
+        {/* ════════ TOP PICKS (unified card) ════════ */}
+        {/* Single card with two internal sections:
+            - Over/Under (totals) — green accent
+            - Win (moneyline) — cyan accent
+            Each sub-section only renders when it has picks.
+            If NEITHER has picks, show a single "No top picks today" message.
+            No algorithm jargon, no "HIGH confidence" exposure. */}
+        {!loading && !error && (topOUPicks.length > 0 || topWinPicks.length > 0) && (
+          <section className="rounded-xl border border-border/40 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
+            {/* Header — single unified title */}
+            <header className="flex items-center gap-2 px-3 py-2 border-b border-border/30 bg-background/30">
               <div className="w-6 h-6 rounded-md bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-                {topOUPicks.length > 0 ? <Flame className="w-3.5 h-3.5 text-neon-green" /> : <Clock className="w-3.5 h-3.5 text-neon-green/60" />}
+                <Flame className="w-3.5 h-3.5 text-neon-green" />
               </div>
-              <h2 className="text-sm font-bold text-foreground">Top Over/Under Picks</h2>
+              <h2 className="text-sm font-bold text-foreground">Top Picks</h2>
               <span className="text-[9px] text-neon-green bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
-                {topOUPicks.length > 0 ? `${topOUPicks.length} PICK${topOUPicks.length !== 1 ? "S" : ""}` : "TODAY"}
+                {topOUPicks.length + topWinPicks.length} PICK{(topOUPicks.length + topWinPicks.length) !== 1 ? "S" : ""}
               </span>
-              <span className="text-[9px] text-muted-foreground/60 shrink-0 ml-auto hidden sm:inline">HIGH confidence only</span>
             </header>
 
-            {/* Body — tight padding, centered empty state */}
-            <div className="p-3 space-y-2">
-              {topOUPicks.length > 0 ? (
-                topOUPicks.map((p, i) => (
-                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-                ))
-              ) : (
-                <div className="text-center py-2.5">
-                  <p className="text-xs text-muted-foreground/70">No HIGH-confidence Over/Under picks for today.</p>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
+            {/* ── Sub-section: Over/Under (only if picks exist) ── */}
+            {topOUPicks.length > 0 && (
+              <div className="border-b border-border/20">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-green/5">
+                  <div className="w-1 h-3 rounded-full bg-neon-green shrink-0" />
+                  <span className="text-[10px] font-bold text-neon-green uppercase tracking-wider">Over / Under</span>
+                  <span className="text-[9px] text-muted-foreground/50 ml-auto">{topOUPicks.length} pick{topOUPicks.length !== 1 ? "s" : ""}</span>
                 </div>
-              )}
-            </div>
+                <div className="p-3 space-y-2">
+                  {topOUPicks.map((p, i) => (
+                    <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Sub-section: Win (only if picks exist) ── */}
+            {topWinPicks.length > 0 && (
+              <div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-cyan/5">
+                  <div className="w-1 h-3 rounded-full bg-neon-cyan shrink-0" />
+                  <span className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider">Win</span>
+                  <span className="text-[9px] text-muted-foreground/50 ml-auto">{topWinPicks.length} pick{topWinPicks.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="p-3 space-y-2">
+                  {topWinPicks.map((p, i) => (
+                    <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Footer */}
-            <footer className="px-3 py-1.5 border-t border-neon-green/15 bg-background/30 flex items-center justify-between">
-              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best totals</span>
-              <span className="text-[9px] text-muted-foreground/40">Max 3 picks · ranked by strength</span>
+            <footer className="px-3 py-1.5 border-t border-border/20 bg-background/30 flex items-center justify-between">
+              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best</span>
+              <span className="text-[9px] text-muted-foreground/40">Browse all below</span>
             </footer>
           </section>
         )}
 
-        {/* ════════ TOP WIN PICKS ════════ */}
-        {!loading && !error && (
-          <section className="rounded-xl border border-neon-cyan/20 bg-gradient-to-br from-card/60 to-card/30 overflow-hidden">
-            {/* Header — no flex-1 divider to avoid orphaned line on mobile */}
-            <header className="flex items-center gap-2 px-3 py-2 border-b border-neon-cyan/15 bg-neon-cyan/5">
-              <div className="w-6 h-6 rounded-md bg-neon-cyan/10 border border-neon-cyan/20 flex items-center justify-center shrink-0">
-                {topWinPicks.length > 0 ? <Trophy className="w-3.5 h-3.5 text-neon-cyan" /> : <Clock className="w-3.5 h-3.5 text-neon-cyan/60" />}
-              </div>
-              <h2 className="text-sm font-bold text-foreground">Top Win Picks</h2>
-              <span className="text-[9px] text-neon-cyan bg-neon-cyan/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-cyan/20 shrink-0">
-                {topWinPicks.length > 0 ? `${topWinPicks.length} PICK${topWinPicks.length !== 1 ? "S" : ""}` : "TODAY"}
-              </span>
-              <span className="text-[9px] text-muted-foreground/60 shrink-0 ml-auto hidden sm:inline">HIGH confidence only</span>
-            </header>
-
-            {/* Body — tight padding, centered empty state */}
-            <div className="p-3 space-y-2">
-              {topWinPicks.length > 0 ? (
-                topWinPicks.map((p, i) => (
-                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
-                ))
-              ) : (
-                <div className="text-center py-2.5">
-                  <p className="text-xs text-muted-foreground/70">No HIGH-confidence Win picks for today.</p>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <footer className="px-3 py-1.5 border-t border-neon-cyan/15 bg-background/30 flex items-center justify-between">
-              <span className="text-[9px] text-muted-foreground/50 uppercase tracking-wider font-semibold">Today's best moneylines</span>
-              <span className="text-[9px] text-muted-foreground/40">Max 3 picks · ranked by strength</span>
-            </footer>
-          </section>
+        {/* ── No top picks today (only when BOTH sections are empty) ── */}
+        {!loading && !error && topOUPicks.length === 0 && topWinPicks.length === 0 && data?.predictions && data.predictions.length > 0 && (
+          <Card className="bg-card/40 border-border/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-xs text-muted-foreground">No top picks today.</p>
+              <p className="text-[10px] text-muted-foreground/50 mt-0.5">Browse all predictions below ↓</p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Search + Filters */}
