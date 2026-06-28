@@ -219,7 +219,6 @@ export function ResultsTab() {
   const [batchMsg, setBatchMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
-  const [liveAutoRefresh, setLiveAutoRefresh] = useState(false);
   const [lastLiveRefresh, setLastLiveRefresh] = useState<Date | null>(null);
   const tzAbbr = getTimezoneAbbr();
 
@@ -637,29 +636,34 @@ export function ResultsTab() {
     }
   };
 
-  // ── LIVE AUTO-REFRESH ────────────────────────────────────────────────
-  // When enabled, polls LIVE matches every 30 seconds and re-scrapes them
-  // so users see real-time livescore updates (e.g. "4TH QUARTER 1', 94-78"
-  // updating to "4TH QUARTER 3', 96-80" as the match progresses).
+  // ── SMART AUTO-REFRESH (always on, no toggle) ───────────────────────
+  // Automatically scrapes matches based on their state:
   //
-  // Priority system:
-  //   - FINAL matches: NEVER re-scraped (already have final scores)
-  //   - LIVE matches: re-scraped every 30s (real-time livescore)
-  //   - PENDING/AWAITING: NOT re-scraped by auto-refresh (use manual Scrape Results)
+  //   - LIVE matches: scrape every 30s (real-time livescore updates)
+  //   - JUST-STARTED matches (kickoff detected): scrape immediately, then every 30s
+  //   - AWAITING RESULT (finished but no score): scrape every 2 min (slower, less urgent)
+  //   - FINAL/POSTPONED/CANCELLED: never scrape (done)
+  //   - UPCOMING (not started): never scrape (wait for kickoff)
   //
-  // Uses dataRef (not data) so the interval doesn't reset on every data update.
-  // Uses scrapeSingleRef so the effect doesn't re-run when scrapeSingle changes.
+  // This replaces the manual LIVE ON/OFF toggle. Auto-refresh is ALWAYS ON.
+  // Users never need to manually click "Scrape Results" — the system
+  // detects when matches start and scrapes them automatically.
+  //
+  // Dirty rows (user manual edits) are ALWAYS skipped — user edits take priority.
   const scrapeSingleRef = useRef(scrapeSingle);
   useEffect(() => {
     scrapeSingleRef.current = scrapeSingle;
   });
 
   useEffect(() => {
-    if (!liveAutoRefresh) return;
     let cancelled = false;
+    let liveIntervalId: ReturnType<typeof setInterval> | null = null;
+    let awaitingIntervalId: ReturnType<typeof setInterval> | null = null;
 
+    /** Scrape matches that need real-time updates (LIVE + just-started).
+     *  Runs every 30 seconds. */
     const refreshLiveMatches = async () => {
-      // Get all LIVE matches from current data (via ref to avoid re-subscribing)
+      if (cancelled) return;
       const liveMatchIds: string[] = [];
       const currentData = dataRef.current;
       const currentRows = rowsRef.current;
@@ -667,27 +671,24 @@ export function ResultsTab() {
         for (const p of currentData.predictions) {
           const rs = p.result_status;
           const isLive = rs === "LIVE";
-          // Also include matches that have started but still show PENDING
-          let isStartedPending = false;
+          // Also include matches that have just started but still show PENDING
+          // (kickoff detection — match time has arrived but status not updated yet)
+          let isJustStarted = false;
           if (rs === "PENDING" || rs === null) {
             const matchDate = parseMatchDateTime(p.date, p.time);
             if (matchDate) {
               const now = Date.now();
               const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
+              // Started but not yet marked as finished — scrape to get LIVE status
               if (now > matchDate.getTime() && now < likelyFinishedAt) {
-                isStartedPending = true;
+                isJustStarted = true;
               }
             }
           }
-          if (isLive || isStartedPending) {
-            // ── SKIP dirty rows ──────────────────────────────────────────
-            // If the user has manually edited this row (dirty=true), DON'T
-            // auto-scrape it — their manual edits take priority. They can
-            // click Save to persist, or Refresh to discard.
+          if (isLive || isJustStarted) {
+            // Skip dirty rows — user's manual edits take priority
             const row = currentRows[p.match_id];
-            if (row?.dirty) {
-              continue; // skip — preserve user's manual edits
-            }
+            if (row?.dirty) continue;
             liveMatchIds.push(p.match_id);
           }
         }
@@ -695,8 +696,6 @@ export function ResultsTab() {
 
       if (liveMatchIds.length === 0 || cancelled) return;
 
-      // Scrape each LIVE match sequentially (scrapeSingle saves to DB explicitly)
-      // Dirty rows were already filtered out above — only non-dirty rows are scraped.
       for (const matchId of liveMatchIds) {
         if (cancelled) break;
         try {
@@ -708,15 +707,60 @@ export function ResultsTab() {
       setLastLiveRefresh(new Date());
     };
 
-    // Run immediately, then every 30 seconds
+    /** Scrape matches that are awaiting results (finished but no score).
+     *  Runs every 2 minutes (less urgent — match is already over). */
+    const refreshAwaitingMatches = async () => {
+      if (cancelled) return;
+      const awaitingMatchIds: string[] = [];
+      const currentData = dataRef.current;
+      const currentRows = rowsRef.current;
+      if (currentData?.predictions) {
+        for (const p of currentData.predictions) {
+          const rs = p.result_status;
+          // Only PENDING matches that should have finished by now
+          if (rs === "PENDING" || rs === null) {
+            const matchDate = parseMatchDateTime(p.date, p.time);
+            if (matchDate) {
+              const now = Date.now();
+              const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
+              // Match should be finished but still has no result — scrape it
+              if (now > likelyFinishedAt) {
+                const row = currentRows[p.match_id];
+                if (row?.dirty) continue; // skip dirty rows
+                awaitingMatchIds.push(p.match_id);
+              }
+            }
+          }
+        }
+      }
+
+      if (awaitingMatchIds.length === 0 || cancelled) return;
+
+      for (const matchId of awaitingMatchIds) {
+        if (cancelled) break;
+        try {
+          await scrapeSingleRef.current(matchId);
+        } catch {
+          // Ignore individual failures — keep going
+        }
+      }
+      setLastLiveRefresh(new Date());
+    };
+
+    // Run immediately on mount, then on intervals
     refreshLiveMatches();
-    const intervalId = setInterval(refreshLiveMatches, 30_000);
+    refreshAwaitingMatches();
+    // LIVE matches: every 30s (real-time livescore)
+    liveIntervalId = setInterval(refreshLiveMatches, 30_000);
+    // AWAITING matches: every 2 min (less urgent, match is over)
+    awaitingIntervalId = setInterval(refreshAwaitingMatches, 2 * 60 * 1000);
 
     return () => {
       cancelled = true;
-      clearInterval(intervalId);
+      if (liveIntervalId) clearInterval(liveIntervalId);
+      if (awaitingIntervalId) clearInterval(awaitingIntervalId);
     };
-  }, [liveAutoRefresh]); // Only re-subscribes when toggle changes
+  }, []); // Empty deps — runs once on mount, always on
 
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
@@ -795,23 +839,6 @@ export function ResultsTab() {
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
                 <span className="hidden sm:inline">Refresh</span>
               </Button>
-              {/* LIVE AUTO-REFRESH TOGGLE — when ON, re-scrapes LIVE matches every 30s */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLiveAutoRefresh(!liveAutoRefresh)}
-                className={`gap-1.5 h-8 transition-all ${
-                  liveAutoRefresh
-                    ? "border-neon-red/50 text-neon-red bg-neon-red/10 hover:bg-neon-red/20"
-                    : "border-border/40 text-muted-foreground hover:text-neon-red"
-                }`}
-                title={liveAutoRefresh
-                  ? `Live auto-refresh ON — re-scraping LIVE matches every 30s. Last refresh: ${lastLiveRefresh ? lastLiveRefresh.toLocaleTimeString() : "never"}`
-                  : "Turn on live auto-refresh — re-scrapes LIVE matches every 30s for real-time livescore updates"}
-              >
-                {liveAutoRefresh ? <Radio className="w-3.5 h-3.5 animate-pulse" /> : <Radio className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{liveAutoRefresh ? "LIVE ON" : "LIVE OFF"}</span>
-              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -846,16 +873,14 @@ export function ResultsTab() {
             </div>
           )}
 
-          {/* Live auto-refresh status indicator */}
-          {liveAutoRefresh && (
-            <div className="text-xs flex items-center gap-1.5 text-neon-red">
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-              <span>Live auto-refresh ON — re-scraping LIVE matches every 30s</span>
-              {lastLiveRefresh && (
-                <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
-              )}
-            </div>
-          )}
+          {/* Auto-refresh status indicator — always visible (always on) */}
+          <div className="text-xs flex items-center gap-1.5 text-neon-red">
+            <Radio className="w-3.5 h-3.5 animate-pulse" />
+            <span>Auto-refresh ON — LIVE every 30s · Awaiting every 2 min</span>
+            {lastLiveRefresh && (
+              <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
+            )}
+          </div>
 
           {/* Stats badges */}
           <div className="flex items-center gap-2 flex-wrap text-[10px]">
