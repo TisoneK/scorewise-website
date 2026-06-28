@@ -76,10 +76,35 @@ function getRowState(p: Prediction, prev?: RowState): RowState {
   const savedHome = p.home_score ?? null;
   const savedAway = p.away_score ?? null;
   const savedStatus = (p.result_status as ResultStatus | null) || "PENDING";
-  // If user has in-flight input, preserve it. Otherwise initialize from server state.
-  const homeInput = prev?.homeInput ?? (savedHome !== null ? String(savedHome) : "");
-  const awayInput = prev?.awayInput ?? (savedAway !== null ? String(savedAway) : "");
-  const statusInput = prev?.statusInput ?? savedStatus;
+
+  // ── Auto-refresh inputs when the server state changes (e.g. scraper saved
+  // new scores via webhook). The previous logic used `prev?.homeInput ?? ...`
+  // which treated empty string "" as a valid value and refused to refresh —
+  // so scraped scores never appeared in the inputs until manual refresh.
+  //
+  // NEW logic: only preserve the user's in-flight input if it's non-empty AND
+  // differs from the saved value (i.e. the user is actively typing). If the
+  // input is empty OR matches the saved value, refresh from server state so
+  // scraped results flow through automatically.
+  const prevHome = prev?.homeInput ?? "";
+  const prevAway = prev?.awayInput ?? "";
+  const prevStatus = prev?.statusInput ?? savedStatus;
+
+  // If the server has a new score that the user hasn't manually edited to
+  // something different, sync the input to the server's value.
+  const homeInput = (prevHome !== "" && prevHome !== String(savedHome ?? ""))
+    ? prevHome  // user has manually typed something different — preserve it
+    : (savedHome !== null ? String(savedHome) : "");  // sync from server
+  const awayInput = (prevAway !== "" && prevAway !== String(savedAway ?? ""))
+    ? prevAway
+    : (savedAway !== null ? String(savedAway) : "");
+
+  // Status: if the server's status changed (e.g. PENDING → FINAL via scraper),
+  // adopt the server's status unless the user is mid-edit on a different status.
+  const statusInput = (prevStatus !== savedStatus && prevStatus !== "PENDING" && prev?.dirty)
+    ? prevStatus  // user is actively changing the status — preserve
+    : savedStatus;
+
   return {
     homeInput,
     awayInput,
@@ -90,7 +115,7 @@ function getRowState(p: Prediction, prev?: RowState): RowState {
     dirty: prev?.dirty ?? false,
     saving: false,
     msg: prev?.msg ?? null,
-    scrapingSingle: prev?.scrapingSingle ?? false,
+    scrapingSingle: false,
     scrapeMsg: prev?.scrapeMsg ?? null,
   };
 }
@@ -223,9 +248,15 @@ export function ResultsTab() {
   };
 
   const saveAll = async () => {
+    // First, sync local row state with server state so we can detect
+    // any new scraped results that haven't been reflected in the UI yet.
+    // This handles the case where the scraper webhook saved to DB but
+    // our local inputs are stale (showing empty while DB has scores).
+    await fetchPredictions();
+
     const dirtyIds = Object.keys(rows).filter((id) => rows[id].dirty);
     if (dirtyIds.length === 0) {
-      setBatchMsg({ kind: "ok", text: "Nothing to save — no unsaved changes." });
+      setBatchMsg({ kind: "ok", text: "Nothing to save — all results are already synced from the scraper." });
       setTimeout(() => setBatchMsg(null), 3000);
       return;
     }
@@ -338,14 +369,16 @@ export function ResultsTab() {
 
       setScrapeMsg({
         kind: "ok",
-        text: `Bulk scrape triggered for ${matchesToScrape.length} matches. Results will update automatically as the scraper processes each match.`,
+        text: `Bulk scrape triggered for ${matchesToScrape.length} matches. Results will auto-save and appear here as the scraper processes each match.`,
       });
 
-      // Poll for updates — the scraper pushes results via webhook,
-      // so we just need to refresh our data periodically to see them
+      // Poll for updates — the scraper pushes results via webhook (which saves
+      // to DB automatically), so we just refresh our data periodically to
+      // reflect the saved state in the UI. With the fixed getRowState(),
+      // scraped scores will flow into the input fields automatically.
       const pollInterval = setInterval(() => {
         fetchPredictions();
-      }, 10000); // refresh every 10s
+      }, 5000); // refresh every 5s (faster so users see results sooner)
 
       // Stop polling after 5 minutes
       setTimeout(() => {
@@ -484,7 +517,7 @@ export function ResultsTab() {
             if (s.includes("POSTPONED") || s.includes("DELAYED")) return "POSTPONED" as ResultStatus;
             if (s.includes("CANCEL") || s.includes("ABANDONED")) return "CANCELLED" as ResultStatus;
             if (home != null && away != null) return "LIVE" as ResultStatus;
-            return prev?.[matchId]?.statusInput || "PENDING" as ResultStatus;
+            return "PENDING" as ResultStatus;
           })();
 
           setRows((prev) => ({
