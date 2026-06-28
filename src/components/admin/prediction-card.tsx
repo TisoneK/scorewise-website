@@ -284,7 +284,7 @@ export function PredictionCard({
                 const winLabel = winOutcome === "WIN" ? "WON ✓" : winOutcome === "LOSS" ? "LOST ✗" : "PUSH";
                 return (
                   <span className={`px-1.5 py-0 rounded text-[9px] border font-bold ${winTone}`}>
-                    WIN {winLabel}
+                    1X2 {winLabel}
                   </span>
                 );
               })()}

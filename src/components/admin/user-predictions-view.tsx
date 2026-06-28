@@ -405,7 +405,7 @@ export function UserPredictionsView() {
               <div>
                 <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-cyan/5">
                   <div className="w-1 h-3 rounded-full bg-neon-cyan shrink-0" />
-                  <span className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider">Win</span>
+                  <span className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider">1X2</span>
                   <span className="text-[9px] text-muted-foreground/50 ml-auto">{topWinPicks.length} pick{topWinPicks.length !== 1 ? "s" : ""}</span>
                 </div>
                 <div className="p-3 space-y-2">

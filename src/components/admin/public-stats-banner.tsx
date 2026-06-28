@@ -52,8 +52,8 @@ const ALG_META: Record<AlgorithmKey, {
     accent: "neon-green",
   },
   winner: {
-    title: "Win Track Record",
-    shortTitle: "Win Record",
+    title: "1X2 Track Record",
+    shortTitle: "1X2 Record",
     subtitle: "Moneyline / 1X2 — picks on HOME_TEAM or AWAY_TEAM winner",
     tone: "border-neon-cyan/20",
     iconBg: "bg-neon-cyan/10 border border-neon-cyan/20",
@@ -136,7 +136,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
         </h3>
         <Badge variant="outline" className={`text-[9px] ${meta.tone} ${meta.iconColor} bg-${meta.accent}/5 shrink-0`}>LIVE</Badge>
         <span className="text-[10px] text-muted-foreground/60 ml-auto hidden sm:inline shrink-0">
-          {d.resolved} resolved · {d.pending} pending
+          {d.resolved} resolved
         </span>
         <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </div>
