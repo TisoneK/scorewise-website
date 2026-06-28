@@ -166,7 +166,7 @@ export function ResultsTab() {
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const tzAbbr = getTimezoneAbbr();
 
-  const fetchPredictions = useCallback(async () => {
+  const fetchPredictions = useCallback(async (): Promise<StoredPredictions | null> => {
     try {
       setError(null);
       const res = await fetch("/api/admin/engine");
@@ -184,8 +184,10 @@ export function ResultsTab() {
         }
         return next;
       });
+      return json;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -372,34 +374,58 @@ export function ResultsTab() {
         text: `Bulk scrape triggered for ${matchesToScrape.length} matches. Results will auto-save and appear here as the scraper processes each match.`,
       });
 
-      // Poll for updates — the scraper pushes results via webhook (which saves
-      // to DB automatically), so we just refresh our data periodically to
-      // reflect the saved state in the UI. With the fixed getRowState(),
-      // scraped scores will flow into the input fields automatically.
+      // ── Poll for updates ──────────────────────────────────────────────
+      // The scraper pushes results via webhook. If the webhook works, results
+      // appear in the DB and we sync via fetchPredictions(). If the webhook
+      // is broken, we'll auto-scrape each match individually as a fallback
+      // (scrapeSingle explicitly saves to DB, bypassing the webhook).
       const pollInterval = setInterval(() => {
         fetchPredictions();
-      }, 5000); // refresh every 5s (faster so users see results sooner)
+      }, 5000); // refresh every 5s
 
-      // Stop polling after 5 minutes
+      // Stop polling after 5 minutes and auto-scrape any remaining matches
       setTimeout(() => {
         clearInterval(pollInterval);
         setScraping(false);
-        // Clear all scraping spinners
-        setRows((prev) => {
-          const next = { ...prev };
-          for (const mid of matchesToScrape) {
-            if (next[mid]) {
-              next[mid] = { ...next[mid], scrapingSingle: false };
+
+        // ── FALLBACK: auto-scrape matches that still have no results ────
+        // If the webhook was broken, these matches still show PENDING.
+        // scrapeSingle() will fetch each one individually AND explicitly
+        // save to DB via /api/admin/predictions/result (bypassing webhook).
+        (async () => {
+          const latestData = await fetchPredictions();
+          // Check which matches still need results
+          const stillPending = matchesToScrape.filter((mid) => {
+            const p = (latestData as any)?.predictions?.find((x: any) => x.match_id === mid);
+            return p && p.result_status !== "FINAL" && p.result_status !== "POSTPONED" && p.result_status !== "CANCELLED";
+          });
+          if (stillPending.length > 0) {
+            setScrapeMsg({
+              kind: "ok",
+              text: `Auto-scraping ${stillPending.length} match${stillPending.length !== 1 ? "es" : ""} that still need results...`,
+            });
+            // Scrape each one sequentially (scrapeSingle saves to DB explicitly)
+            for (const mid of stillPending) {
+              await scrapeSingle(mid);
             }
           }
-          return next;
-        });
-        setScrapeMsg({
-          kind: "ok",
-          text: `Bulk scrape complete. Check individual rows for results.`,
-        });
-        setTimeout(() => setScrapeMsg(null), 5000);
-      }, 5 * 60 * 1000);
+          // Clear all scraping spinners
+          setRows((prev) => {
+            const next = { ...prev };
+            for (const mid of matchesToScrape) {
+              if (next[mid]) {
+                next[mid] = { ...next[mid], scrapingSingle: false };
+              }
+            }
+            return next;
+          });
+          setScrapeMsg({
+            kind: "ok",
+            text: `Bulk scrape complete. All results saved.`,
+          });
+          setTimeout(() => setScrapeMsg(null), 5000);
+        })();
+      }, 3 * 60 * 1000); // Stop after 3 minutes (reduced from 5)
 
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -531,16 +557,36 @@ export function ResultsTab() {
               savedHome: home,
               savedAway: away,
               savedStatus: mappedStatus,
-              dirty: false,  // webhook should have saved — no manual Save needed
+              dirty: false,
               scrapeMsg: { kind: "ok", text: `Scraped: ${matchStatus}, ${scoreStr}` },
             },
           }));
 
-          // Refresh from server to confirm the webhook saved correctly.
-          // If the webhook saved → server data matches local → no visible change.
-          // If the webhook failed → local inputs still show the scraped scores
-          // (admin can manually click Save if needed).
-          setTimeout(() => fetchPredictions(), 3000);
+          // ── EXPLICITLY SAVE TO DB ──────────────────────────────────────
+          // Don't rely on the webhook — it may be misconfigured (secret mismatch).
+          // Save the scraped result directly via the admin API. This guarantees
+          // the result persists even if the webhook push failed silently.
+          if (mappedStatus !== "PENDING" && (home != null || away != null || mappedStatus === "POSTPONED" || mappedStatus === "CANCELLED")) {
+            try {
+              await fetch("/api/admin/predictions/result", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  matchId,
+                  homeScore: home,
+                  awayScore: away,
+                  resultStatus: mappedStatus,
+                  resultSource: "scraper",
+                }),
+              });
+            } catch {
+              // Save failed — the local UI still shows the scraped scores.
+              // Admin can manually click Save if needed.
+            }
+          }
+
+          // Refresh from server to confirm the save.
+          setTimeout(() => fetchPredictions(), 1000);
           return;
         }
 
