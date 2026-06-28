@@ -168,7 +168,7 @@ function ScrapeMessageText({ text }: { text: string }) {
     <>
       {before}
       <span className="text-neon-red font-bold">{minutes}</span>
-      <span className="text-neon-red font-bold animate-hard-blink"> {apostrophe}</span>
+      <span className="text-neon-red font-bold animate-hard-blink">{apostrophe}</span>
       {after}
     </>
   );
