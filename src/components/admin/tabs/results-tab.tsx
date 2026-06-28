@@ -50,7 +50,7 @@ import {
 import { computeOverUnderOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 
 type ResultStatus = "PENDING" | "LIVE" | "FINAL" | "POSTPONED" | "CANCELLED";
-type FilterMode = "needs_result" | "live" | "final" | "all";
+type FilterMode = "needs_result" | "awaiting" | "live" | "final" | "all";
 
 const VALID_STATUSES: ResultStatus[] = ["PENDING", "LIVE", "FINAL", "POSTPONED", "CANCELLED"];
 
@@ -726,6 +726,7 @@ export function ResultsTab() {
       const category = categorizeMatch(p, row);
       // Apply filter
       if (filter === "needs_result" && category !== "awaiting" && category !== "live") return false;
+      if (filter === "awaiting" && category !== "awaiting") return false;
       if (filter === "live" && category !== "live") return false;
       if (filter === "final" && category !== "final") return false;
       // Search
@@ -860,17 +861,44 @@ export function ResultsTab() {
           <div className="flex items-center gap-2 flex-wrap text-[10px]">
             <Badge variant="outline" className="text-[10px] border-border/40 bg-background/30">{stats.total} total</Badge>
             {stats.live > 0 && (
-              <Badge variant="outline" className="text-[10px] border-neon-red/30 text-neon-red bg-neon-red/5 gap-1">
+              <Badge
+                variant="outline"
+                className={`text-[10px] gap-1 cursor-pointer transition-colors ${
+                  filter === "live"
+                    ? "border-neon-red/60 text-neon-red bg-neon-red/15"
+                    : "border-neon-red/30 text-neon-red bg-neon-red/5 hover:bg-neon-red/10"
+                }`}
+                onClick={() => setFilter("live")}
+                title="Click to filter: Live now only"
+              >
                 <Radio className="w-2.5 h-2.5 animate-pulse" /> {stats.live} live
               </Badge>
             )}
             {stats.awaiting > 0 && (
-              <Badge variant="outline" className="text-[10px] border-neon-yellow/30 text-neon-yellow bg-neon-yellow/5">
-                {stats.awaiting} awaiting
+              <Badge
+                variant="outline"
+                className={`text-[10px] gap-1 cursor-pointer transition-colors ${
+                  filter === "awaiting"
+                    ? "border-neon-yellow/60 text-neon-yellow bg-neon-yellow/15"
+                    : "border-neon-yellow/30 text-neon-yellow bg-neon-yellow/5 hover:bg-neon-yellow/10"
+                }`}
+                onClick={() => setFilter("awaiting")}
+                title="Click to filter: Awaiting result only (unresolved matches)"
+              >
+                <Clock className="w-2.5 h-2.5" /> {stats.awaiting} awaiting
               </Badge>
             )}
-            <Badge variant="outline" className="text-[10px] border-neon-green/30 text-neon-green bg-neon-green/5">
-              {stats.final} final
+            <Badge
+              variant="outline"
+              className={`text-[10px] gap-1 cursor-pointer transition-colors ${
+                filter === "final"
+                  ? "border-neon-green/60 text-neon-green bg-neon-green/15"
+                  : "border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10"
+              }`}
+              onClick={() => setFilter("final")}
+              title="Click to filter: Final results only"
+            >
+              <CheckCircle2 className="w-2.5 h-2.5" /> {stats.final} final
             </Badge>
             {dirtyCount > 0 && (
               <Badge variant="outline" className="text-[10px] border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">
@@ -906,6 +934,7 @@ export function ResultsTab() {
                 className="bg-card border border-border/50 rounded h-8 px-2 text-xs"
               >
                 <option value="needs_result">Needs result (live + awaiting)</option>
+                <option value="awaiting">Awaiting only (unresolved)</option>
                 <option value="live">Live now</option>
                 <option value="final">Final results</option>
                 <option value="all">All matches</option>
@@ -931,7 +960,11 @@ export function ResultsTab() {
       ) : grouped.length === 0 ? (
         <Card className="bg-card/60 border-border/40">
           <CardContent className="p-8 text-center text-muted-foreground text-sm">
-            {filter === "needs_result" ? "🎉 No matches need results right now." : "No matches match your filters."}
+            {filter === "needs_result" && "🎉 No matches need results right now."}
+            {filter === "awaiting" && "🎉 No unresolved matches — all finished games have results."}
+            {filter === "live" && "No live matches right now."}
+            {filter === "final" && "No final results yet."}
+            {filter === "all" && "No matches found."}
           </CardContent>
         </Card>
       ) : (
