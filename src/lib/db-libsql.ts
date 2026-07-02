@@ -349,5 +349,25 @@ export const db = {
       const rs = await getClient().execute(sql, args)
       return Number((rs.rows[0] as any).count)
     },
+    async delete({ where }: { where: { matchId?: string; id?: string } }) {
+      if (where.matchId) {
+        await getClient().execute("DELETE FROM Prediction WHERE matchId = ?", [where.matchId])
+      } else if (where.id) {
+        await getClient().execute("DELETE FROM Prediction WHERE id = ?", [where.id])
+      }
+    },
+    async deleteMany({ where }: { where: Record<string, unknown> }) {
+      let sql = "DELETE FROM Prediction"
+      const w: string[] = []
+      const args: any[] = []
+      for (const [key, value] of Object.entries(where)) {
+        if (value !== undefined && value !== null && value !== "") {
+          w.push(`${key} = ?`)
+          args.push(value)
+        }
+      }
+      if (w.length) sql += " WHERE " + w.join(" AND ")
+      await getClient().execute(sql, args)
+    },
   },
 }

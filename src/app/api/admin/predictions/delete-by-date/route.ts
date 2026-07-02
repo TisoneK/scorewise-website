@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db-libsql";
+import { getClient } from "@/lib/db-libsql";
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/admin/predictions/delete-by-date
  *
- * Deletes all predictions for a specific date.
+ * Deletes all predictions for a specific date using raw SQL.
  *
  * Body: { date: string } — date in YYYY-MM-DD format (e.g., "2026-07-03")
  *
@@ -36,32 +36,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "date must be in YYYY-MM-DD format" }, { status: 400 });
     }
 
-    // Fetch all predictions to find ones matching this date
-    const allPreds = await db.prediction.findMany({});
-    const toDelete = allPreds.filter((p: any) => p.date === date);
+    // Use raw SQL directly — the db-libsql wrapper's prediction.delete
+    // only supports deleting by matchId/id, not by date.
+    const client = getClient();
 
-    let deleted = 0;
-    for (const p of toDelete) {
-      try {
-        await db.prediction.delete({ where: { matchId: p.matchId } });
-        deleted++;
-      } catch (err) {
-        console.error(`[delete-by-date] Failed to delete ${p.matchId}:`, err);
-      }
+    // First count how many will be deleted
+    const countResult = await client.execute(
+      "SELECT COUNT(*) as count FROM Prediction WHERE date = ?",
+      [date]
+    );
+    const count = Number((countResult.rows[0] as any).count);
+
+    if (count === 0) {
+      return NextResponse.json({
+        ok: true,
+        deleted: 0,
+        date,
+        message: `No predictions found for ${date}`,
+      });
     }
 
-    // Log to activity log
+    // Delete all predictions for this date
+    await client.execute(
+      "DELETE FROM Prediction WHERE date = ?",
+      [date]
+    );
+
+    // Log to activity log using raw SQL (bypass wrapper)
     try {
       const userId = (session.user as { id?: string })?.id;
       if (userId) {
-        await db.activityLog.create({
-          data: {
+        await client.execute(
+          "INSERT INTO ActivityLog (id, userId, action, service, details, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+          [
+            crypto.randomUUID(),
             userId,
-            action: "PREDICTIONS_DELETE",
-            service: "website",
-            details: JSON.stringify({ date, deleted }),
-          },
-        });
+            "PREDICTIONS_DELETE",
+            "website",
+            JSON.stringify({ date, deleted: count }),
+            new Date().toISOString(),
+          ]
+        );
       }
     } catch (logErr) {
       console.warn("[delete-by-date] ActivityLog write failed:", logErr);
@@ -69,7 +84,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      deleted,
+      deleted: count,
       date,
     });
   } catch (error) {

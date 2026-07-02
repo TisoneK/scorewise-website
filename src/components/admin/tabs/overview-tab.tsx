@@ -151,11 +151,22 @@ export function OverviewTab({
       else break;
     }
 
+    // Recent form — last 15 settled bets (oldest → newest), each as W/L
+    const recentForm: ("W" | "L")[] = [];
+    for (const p of settled) {
+      const ou = computeReducedRiskOutcome(p);
+      const win = computeWinnerOutcome(p);
+      // Use the "best" outcome if both exist (W takes priority)
+      if (ou === "WIN" || win === "WIN") recentForm.push("W");
+      else if (ou === "LOSS" || win === "LOSS") recentForm.push("L");
+    }
+    const last15 = recentForm.slice(-15);
+
     return {
       ouWins, ouLosses, ouPushes, ouPending, ouProfit, ouStaked,
       winWins, winLosses, winPending, winProfit, winStaked,
       totalWins, totalLosses, totalResolved, totalStaked, totalProfit,
-      hitRate, roi, streakType, streakLen,
+      hitRate, roi, streakType, streakLen, last15,
     };
   })();
 
@@ -244,6 +255,30 @@ export function OverviewTab({
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent form dots — last 15 settled bets (oldest → newest) */}
+      {stats.last15.length > 0 && (
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold shrink-0">Form</span>
+              <span className="text-[9px] text-muted-foreground/50 shrink-0">L15</span>
+              <div className="flex items-center gap-1 flex-wrap">
+                {stats.last15.map((r, i) => (
+                  <span
+                    key={i}
+                    className={`w-3 h-3 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`}
+                    title={`Bet ${i + 1}: ${r === "W" ? "Win" : "Loss"}`}
+                  />
+                ))}
+              </div>
+              <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">
+                {stats.last15.filter((r) => r === "W").length}W / {stats.last15.filter((r) => r === "L").length}L
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Row 2: Split performance — O/U vs 1X2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
