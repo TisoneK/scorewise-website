@@ -338,6 +338,8 @@ function AdminDashboard() {
     fetchUsers();
     fetchConfigs();
     fetchFeedEvents();
+    // Auto-migrate: add reduced-risk columns if missing (runs silently)
+    fetch("/api/admin/migrate-schema", { method: "POST" }).catch(() => {});
   }, [fetchAllPredictions, fetchServiceStatus, fetchUsers, fetchConfigs, fetchFeedEvents]);
 
   // Live event feed: auto-poll every 15s
