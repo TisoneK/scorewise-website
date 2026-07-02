@@ -7,6 +7,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +25,9 @@ import {
   Loader2,
   ChevronRight,
   Database,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import { ConfidenceBadge, RecommendationBadge } from "../badges";
 
@@ -52,6 +55,36 @@ export function PredictionsTab({
   setDrawerPrediction,
 }: PredictionsTabProps) {
   const cols = 19; // total columns for colSpan
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteBox, setShowDeleteBox] = useState(false);
+  const [deleteDate, setDeleteDate] = useState("");
+
+  const handleDeleteByDate = async () => {
+    if (!deleteDate) {
+      toast.error("Enter a date to delete");
+      return;
+    }
+    if (!confirm(`Delete ALL predictions for ${deleteDate}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/predictions/delete-by-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: deleteDate }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast.success(`Deleted ${data.deleted} prediction(s) for ${deleteDate}`);
+      setShowDeleteBox(false);
+      setDeleteDate("");
+      fetchAllPredictions();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <>
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -61,7 +94,7 @@ export function PredictionsTab({
             Complete prediction data — {totalPreds} total, {successCount} processed, {failCount} errors
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -82,8 +115,58 @@ export function PredictionsTab({
             <Download className="w-3.5 h-3.5" />
             Export
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowDeleteBox(!showDeleteBox)}
+            className="gap-1.5 border-neon-red/30 text-neon-red hover:bg-neon-red/10"
+            title="Delete all predictions for a specific date"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete by Date
+          </Button>
         </div>
       </div>
+
+      {/* Delete by date box */}
+      {showDeleteBox && (
+        <Card className="bg-card/60 border-neon-red/30">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-neon-red" />
+              <p className="text-sm font-bold text-neon-red">Delete Predictions by Date</p>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Enter a date in YYYY-MM-DD format (e.g., 2026-07-03 for tomorrow). All predictions for that date will be permanently deleted from the database. You can then re-scrape to get fresh predictions.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={deleteDate}
+                onChange={(e) => setDeleteDate(e.target.value)}
+                className="bg-background border border-border/50 rounded-md h-9 px-3 text-sm"
+              />
+              <Button
+                size="sm"
+                onClick={handleDeleteByDate}
+                disabled={deleting || !deleteDate}
+                className="gap-1.5 bg-neon-red text-background hover:bg-neon-red/85"
+              >
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Delete
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowDeleteBox(false); setDeleteDate(""); }}
+                className="text-muted-foreground"
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="bg-card/60 border-border/40">
         <CardContent className="p-0">
