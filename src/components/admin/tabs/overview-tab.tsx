@@ -1,13 +1,12 @@
 /**
- * OverviewTab — the command center Overview tab content.
+ * OverviewTab — betting tracker dashboard.
  *
- * Extracted from src/app/page.tsx during Phase C modularization.
+ * Shows betting performance metrics:
+ *   Row 1: KPI cards (Wins, Losses, Hit Rate, ROI, Current Streak, Total Bets)
+ *   Row 2: Split track records (O/U + 1X2) + Today's Top Picks summary
+ *   Row 3: Recent settled bets table (WON/LOST outcomes)
  *
- * Layout:
- *   Row 1: 6 KPI cards
- *   Row 2: LiveEventFeed (left) + 3 ServiceHealthCards (right)
- *   Row 3: PipelineFlow
- *   Row 4: Compact recent predictions table (clickable → drawer)
+ * Infrastructure (scraper/engine/pipeline) moved to Services tab.
  */
 
 "use client";
@@ -26,31 +25,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Database,
-  Target,
-  Shield,
   TrendingUp,
   TrendingDown,
-  Wifi,
-  Search,
-  Cpu,
-  Globe,
-  Clock,
+  Target,
+  Coins,
+  Flame,
+  Snowflake,
+  Activity,
   RefreshCw,
   CheckCircle2,
   XCircle,
+  Trophy,
   ChevronRight,
 } from "lucide-react";
-import type { Prediction, ServiceStatus } from "@/lib/types";
-import type { FeedEvent } from "@/lib/admin/types";
-import { StatCard } from "../primitives";
+import type { Prediction } from "@/lib/types";
+import { computeOverUnderOutcome, computeReducedRiskOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
+import { parseMatchDateTime, formatLocalDateLong } from "@/lib/timezone";
 import { ConfidenceBadge, RecommendationBadge } from "../badges";
-import { LiveEventFeed } from "../live-event-feed";
-import { ServiceHealthCard } from "../service-health-card";
-import { PipelineFlow } from "../pipeline-flow";
 
 export interface OverviewTabProps {
-  // Predictions data
   preds: Prediction[];
   totalPreds: number;
   successCount: number;
@@ -61,131 +54,279 @@ export interface OverviewTabProps {
   underRecs: number;
   loadingPred: boolean;
   fetchAllPredictions: () => void;
-  // Service status
-  serviceStatus: {
-    scraper: ServiceStatus;
-    engine: ServiceStatus;
-    scraperUrl: string;
-    engineUrl: string;
-  } | null;
-  // Live event feed
-  feedEvents: FeedEvent[];
+  // Kept for backwards compat but not used in the betting tracker view
+  serviceStatus: unknown;
+  feedEvents: unknown[];
   feedLoading: boolean;
-  // Prediction drawer trigger
   setDrawerPrediction: (p: Prediction | null) => void;
 }
 
 export function OverviewTab({
   preds,
   totalPreds,
-  successCount,
-  failCount,
-  successRate,
-  highConf,
-  overRecs,
-  underRecs,
   loadingPred,
   fetchAllPredictions,
-  serviceStatus,
-  feedEvents,
-  feedLoading,
   setDrawerPrediction,
 }: OverviewTabProps) {
+  // ── Compute betting stats from predictions ──────────────────────────
+  const stats = (() => {
+    let ouWins = 0, ouLosses = 0, ouPushes = 0, ouPending = 0;
+    let winWins = 0, winLosses = 0, winPending = 0;
+    let ouProfit = 0, ouStaked = 0;
+    let winProfit = 0, winStaked = 0;
+
+    for (const p of preds) {
+      // O/U stats (using reduced-risk outcome)
+      const ouOutcome = computeReducedRiskOutcome(p);
+      if (ouOutcome === "WIN") {
+        ouWins++;
+        ouStaked++;
+        const r = p.recommendation?.toUpperCase();
+        const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+        ouProfit += od ? Number(od) - 1 : 0;
+      } else if (ouOutcome === "LOSS") {
+        ouLosses++;
+        ouStaked++;
+        ouProfit -= 1;
+      } else if (ouOutcome === "PUSH") {
+        ouPushes++;
+      } else {
+        ouPending++;
+      }
+
+      // 1X2 stats
+      const winOutcome = computeWinnerOutcome(p);
+      if (winOutcome === "WIN") {
+        winWins++;
+        winStaked++;
+        const w = p.team_winner?.toUpperCase();
+        const od = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
+        winProfit += od ? Number(od) - 1 : 0;
+      } else if (winOutcome === "LOSS") {
+        winLosses++;
+        winStaked++;
+        winProfit -= 1;
+      } else {
+        winPending++;
+      }
+    }
+
+    const totalWins = ouWins + winWins;
+    const totalLosses = ouLosses + winLosses;
+    const totalResolved = totalWins + totalLosses + ouPushes;
+    const totalStaked = ouStaked + winStaked;
+    const totalProfit = ouProfit + winProfit;
+    const hitRate = totalWins + totalLosses > 0 ? (totalWins / (totalWins + totalLosses)) * 100 : 0;
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+
+    // Current streak (across all resolved bets, chronological)
+    const settled = preds
+      .filter((p) => {
+        const ou = computeReducedRiskOutcome(p);
+        const win = computeWinnerOutcome(p);
+        return ou !== "MISSING" || win !== "MISSING";
+      })
+      .sort((a, b) => {
+        const da = parseMatchDateTime(a.date, a.time);
+        const db = parseMatchDateTime(b.date, b.time);
+        if (da && db) return da.getTime() - db.getTime();
+        return 0;
+      });
+
+    let streakType: "W" | "L" | null = null;
+    let streakLen = 0;
+    for (let i = settled.length - 1; i >= 0; i--) {
+      const p = settled[i];
+      const ou = computeReducedRiskOutcome(p);
+      const win = computeWinnerOutcome(p);
+      const outcomes: ("W" | "L")[] = [];
+      if (ou === "WIN") outcomes.push("W");
+      else if (ou === "LOSS") outcomes.push("L");
+      if (win === "WIN") outcomes.push("W");
+      else if (win === "LOSS") outcomes.push("L");
+      if (outcomes.length === 0) continue;
+      const last = outcomes[outcomes.length - 1];
+      if (streakType === null) { streakType = last; streakLen = 1; }
+      else if (last === streakType) streakLen++;
+      else break;
+    }
+
+    return {
+      ouWins, ouLosses, ouPushes, ouPending, ouProfit, ouStaked,
+      winWins, winLosses, winPending, winProfit, winStaked,
+      totalWins, totalLosses, totalResolved, totalStaked, totalProfit,
+      hitRate, roi, streakType, streakLen,
+    };
+  })();
+
+  // Recent settled bets (last 20)
+  const recentSettled = preds
+    .filter((p) => {
+      const ou = computeReducedRiskOutcome(p);
+      const win = computeWinnerOutcome(p);
+      return ou !== "MISSING" || win !== "MISSING";
+    })
+    .sort((a, b) => {
+      const da = parseMatchDateTime(a.date, a.time);
+      const db = parseMatchDateTime(b.date, b.time);
+      if (da && db) return db.getTime() - da.getTime();
+      return 0;
+    })
+    .slice(0, 20);
+
+  const hitTone = stats.hitRate >= 55 ? "text-neon-green" : stats.hitRate >= 45 ? "text-neon-yellow" : "text-neon-red";
+  const roiTone = stats.roi >= 0 ? "text-neon-green" : "text-neon-red";
+
   return (
     <>
-      {/* Row 1: 6 KPI cards */}
+      {/* Row 1: Betting KPI cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <StatCard
-          title="Total Predictions"
-          value={totalPreds}
-          icon={<Database className="w-4 h-4 text-neon-green" />}
-          color="text-neon-green"
-          sub={`${successCount}✓ ${failCount}✗`}
-        />
-        <StatCard
-          title="Success Rate"
-          value={`${successRate}%`}
-          icon={<Target className="w-4 h-4 text-neon-green" />}
-          color="text-neon-green"
-          sub={`${successCount} of ${totalPreds}`}
-        />
-        <StatCard
-          title="High Confidence"
-          value={highConf}
-          icon={<Shield className="w-4 h-4 text-neon-yellow" />}
-          color="text-neon-yellow"
-          sub={totalPreds > 0 ? `${Math.round((highConf / totalPreds) * 100)}%` : "—"}
-        />
-        <StatCard
-          title="OVER Recs"
-          value={overRecs}
-          icon={<TrendingUp className="w-4 h-4 text-neon-green" />}
-          color="text-neon-green"
-          sub={totalPreds > 0 ? `${Math.round((overRecs / totalPreds) * 100)}%` : "—"}
-        />
-        <StatCard
-          title="UNDER Recs"
-          value={underRecs}
-          icon={<TrendingDown className="w-4 h-4 text-neon-red" />}
-          color="text-neon-red"
-          sub={totalPreds > 0 ? `${Math.round((underRecs / totalPreds) * 100)}%` : "—"}
-        />
-        <StatCard
-          title="Services Online"
-          value={
-            [
-              serviceStatus?.scraper?.status === "online" ? 1 : 0,
-              serviceStatus?.engine?.status === "online" ? 1 : 0,
-              1,
-            ].reduce((a, b) => a + b, 0)
-          }
-          icon={<Wifi className="w-4 h-4 text-neon-cyan" />}
-          color="text-neon-cyan"
-          sub="of 3 services"
-        />
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-neon-green" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Wins</span>
+            </div>
+            <p className="text-xl font-black font-mono text-neon-green">{stats.totalWins}</p>
+            <p className="text-[9px] text-muted-foreground/60">O/U: {stats.ouWins} · 1X2: {stats.winWins}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <XCircle className="w-3.5 h-3.5 text-neon-red" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Losses</span>
+            </div>
+            <p className="text-xl font-black font-mono text-neon-red">{stats.totalLosses}</p>
+            <p className="text-[9px] text-muted-foreground/60">O/U: {stats.ouLosses} · 1X2: {stats.winLosses}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Target className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Hit Rate</span>
+            </div>
+            <p className={`text-xl font-black font-mono ${hitTone}`}>{stats.hitRate.toFixed(1)}%</p>
+            <p className="text-[9px] text-muted-foreground/60">{stats.totalWins}W / {stats.totalLosses}L</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Coins className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">ROI</span>
+            </div>
+            <p className={`text-xl font-black font-mono ${roiTone}`}>{stats.roi >= 0 ? "+" : ""}{stats.roi.toFixed(1)}%</p>
+            <p className="text-[9px] text-muted-foreground/60">{stats.totalProfit >= 0 ? "+" : ""}{stats.totalProfit.toFixed(2)}u on {stats.totalStaked}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              {stats.streakType === "W" ? <Flame className="w-3.5 h-3.5 text-neon-green" /> : stats.streakType === "L" ? <Snowflake className="w-3.5 h-3.5 text-neon-red" /> : <Activity className="w-3.5 h-3.5 text-muted-foreground" />}
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Streak</span>
+            </div>
+            <p className={`text-xl font-black font-mono ${stats.streakType === "W" ? "text-neon-green" : stats.streakType === "L" ? "text-neon-red" : "text-muted-foreground"}`}>
+              {stats.streakType ?? "—"}{stats.streakLen || ""}
+            </p>
+            <p className="text-[9px] text-muted-foreground/60">{stats.streakType === "W" ? "Hot" : stats.streakType === "L" ? "Cold" : "No bets"}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card/60 border-border/40">
+          <CardContent className="p-3">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Activity className="w-3.5 h-3.5 text-neon-cyan" />
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Settled</span>
+            </div>
+            <p className="text-xl font-black font-mono text-foreground">{stats.totalResolved}</p>
+            <p className="text-[9px] text-muted-foreground/60">of {totalPreds} total</p>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Row 2: Live Event Feed + Service Health cards */}
+      {/* Row 2: Split performance — O/U vs 1X2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <LiveEventFeed events={feedEvents} loading={feedLoading} />
-        <div className="space-y-3">
-          <ServiceHealthCard
-            label="FlashScore Scraper"
-            icon={<Search className="w-4 h-4 text-neon-cyan" />}
-            status={serviceStatus?.scraper?.status || "offline"}
-            lastRun={serviceStatus?.scraper?.lastRun || null}
-          />
-          <ServiceHealthCard
-            label="ScoreWise Engine"
-            icon={<Cpu className="w-4 h-4 text-neon-green" />}
-            status={serviceStatus?.engine?.status || "offline"}
-            predictions={serviceStatus?.engine?.predictions ?? 0}
-          />
-          <ServiceHealthCard
-            label="Website (Vercel)"
-            icon={<Globe className="w-4 h-4 text-neon-yellow" />}
-            status="online"
-          />
-        </div>
+        {/* O/U Performance */}
+        <Card className="bg-card/60 border-neon-green/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-neon-green" />
+              Over / Under
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="grid grid-cols-4 gap-2 text-center">
+              <div>
+                <p className="text-lg font-black font-mono text-neon-green">{stats.ouWins}</p>
+                <p className="text-[9px] text-muted-foreground">Wins</p>
+              </div>
+              <div>
+                <p className="text-lg font-black font-mono text-neon-red">{stats.ouLosses}</p>
+                <p className="text-[9px] text-muted-foreground">Losses</p>
+              </div>
+              <div>
+                <p className="text-lg font-black font-mono text-neon-yellow">{stats.ouPushes}</p>
+                <p className="text-[9px] text-muted-foreground">Pushes</p>
+              </div>
+              <div>
+                <p className={`text-lg font-black font-mono ${stats.ouStaked > 0 ? (stats.ouProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>
+                  {stats.ouStaked > 0 ? `${stats.ouProfit >= 0 ? "+" : ""}${stats.ouProfit.toFixed(2)}u` : "—"}
+                </p>
+                <p className="text-[9px] text-muted-foreground">Profit</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>Hit Rate: <span className="font-bold text-foreground">{stats.ouWins + stats.ouLosses > 0 ? ((stats.ouWins / (stats.ouWins + stats.ouLosses)) * 100).toFixed(1) : "0.0"}%</span></span>
+              <span>ROI: <span className={`font-bold ${stats.ouStaked > 0 ? (stats.ouProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.ouStaked > 0 ? `${((stats.ouProfit / stats.ouStaked) * 100).toFixed(1)}%` : "—"}</span></span>
+              <span>Pending: {stats.ouPending}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 1X2 Performance */}
+        <Card className="bg-card/60 border-neon-cyan/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-bold flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-neon-cyan" />
+              1X2 (Moneyline)
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <p className="text-lg font-black font-mono text-neon-green">{stats.winWins}</p>
+                <p className="text-[9px] text-muted-foreground">Wins</p>
+              </div>
+              <div>
+                <p className="text-lg font-black font-mono text-neon-red">{stats.winLosses}</p>
+                <p className="text-[9px] text-muted-foreground">Losses</p>
+              </div>
+              <div>
+                <p className={`text-lg font-black font-mono ${stats.winStaked > 0 ? (stats.winProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>
+                  {stats.winStaked > 0 ? `${stats.winProfit >= 0 ? "+" : ""}${stats.winProfit.toFixed(2)}u` : "—"}
+                </p>
+                <p className="text-[9px] text-muted-foreground">Profit</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span>Hit Rate: <span className="font-bold text-foreground">{stats.winWins + stats.winLosses > 0 ? ((stats.winWins / (stats.winWins + stats.winLosses)) * 100).toFixed(1) : "0.0"}%</span></span>
+              <span>ROI: <span className={`font-bold ${stats.winStaked > 0 ? (stats.winProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.winStaked > 0 ? `${((stats.winProfit / stats.winStaked) * 100).toFixed(1)}%` : "—"}</span></span>
+              <span>Pending: {stats.winPending}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Row 3: Pipeline flow */}
-      <PipelineFlow
-        scrapeCount={serviceStatus?.scraper?.lastRun?.complete_matches ?? 0}
-        ingestCount={serviceStatus?.engine?.predictions ?? 0}
-        predictCount={totalPreds}
-        pushCount={totalPreds}
-      />
-
-      {/* Row 4: Compact recent predictions table */}
+      {/* Row 3: Recent settled bets */}
       <Card className="bg-card/60 border-border/40">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Clock className="w-4 h-4 text-neon-cyan" />
-              Recent Predictions
+              <Activity className="w-4 h-4 text-neon-cyan" />
+              Recent Settled Bets
               <span className="text-[10px] text-muted-foreground font-normal">
-                click any row for full pipeline detail
+                last 20 · click for detail
               </span>
             </CardTitle>
             <Button
@@ -208,68 +349,79 @@ export function OverviewTab({
                   <Skeleton key={i} className="h-12 w-full bg-muted/30" />
                 ))}
               </div>
-            ) : preds.length === 0 ? (
-              <div className="empty-state py-12">
-                <Database className="empty-state-icon" />
-                <p className="empty-state-title">No predictions yet</p>
-                <p className="empty-state-subtitle">Run a scrape to populate the pipeline</p>
+            ) : recentSettled.length === 0 ? (
+              <div className="py-12 text-center">
+                <Activity className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No settled bets yet</p>
+                <p className="text-xs text-muted-foreground/50">Bets will appear here once matches finish</p>
               </div>
             ) : (
               <Table>
                 <TableHeader>
                   <TableRow className="border-border/40 hover:bg-transparent">
+                    <TableHead className="text-xs">Date</TableHead>
                     <TableHead className="text-xs">Match</TableHead>
-                    <TableHead className="text-xs">Teams</TableHead>
-                    <TableHead className="text-xs">Rec</TableHead>
-                    <TableHead className="text-xs">Conf</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">Line</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">Avg Rate</TableHead>
-                    <TableHead className="text-xs whitespace-nowrap">A/B</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
+                    <TableHead className="text-xs">Pick</TableHead>
+                    <TableHead className="text-xs">Line</TableHead>
+                    <TableHead className="text-xs">Score</TableHead>
+                    <TableHead className="text-xs">Result</TableHead>
                     <TableHead className="text-xs w-8"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {preds.map((p) => (
-                    <TableRow
-                      key={p.match_id}
-                      className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
-                      onClick={() => setDrawerPrediction(p)}
-                    >
-                      <TableCell className="font-mono text-xs">
-                        {p.match_id.slice(0, 12)}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <div className="font-medium">{p.home_team || "—"}</div>
-                        <div className="text-muted-foreground">vs {p.away_team || "—"}</div>
-                      </TableCell>
-                      <TableCell>
-                        <RecommendationBadge rec={p.recommendation} />
-                      </TableCell>
-                      <TableCell>
-                        <ConfidenceBadge level={p.confidence} />
-                      </TableCell>
-                      <TableCell className="text-neon-cyan font-mono text-xs whitespace-nowrap">
-                        {p.bookmaker_line ?? "—"}
-                      </TableCell>
-                      <TableCell className={`font-mono text-xs whitespace-nowrap ${p.average_rate >= 7 ? "text-neon-green" : p.average_rate <= -7 ? "text-neon-red" : "text-muted-foreground"}`}>
-                        {p.average_rate.toFixed(1)}
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        <span className="text-neon-green">{p.matches_above}</span>/<span className="text-neon-red">{p.matches_below}</span>
-                      </TableCell>
-                      <TableCell>
-                        {p.success ? (
-                          <Badge variant="outline" className="text-[9px] border-neon-green/30 text-neon-green">OK</Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {recentSettled.map((p) => {
+                    const ouOutcome = computeReducedRiskOutcome(p);
+                    const winOutcome = computeWinnerOutcome(p);
+                    const hasScores = p.home_score != null && p.away_score != null;
+                    const matchDate = parseMatchDateTime(p.date, p.time);
+                    return (
+                      <TableRow
+                        key={p.match_id}
+                        className="border-border/20 hover:bg-card/80 cursor-pointer transition-colors"
+                        onClick={() => setDrawerPrediction(p)}
+                      >
+                        <TableCell className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {matchDate ? formatLocalDateLong(matchDate).substring(0, 12) : "—"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          <div className="font-medium truncate max-w-[120px]">{p.home_team || "—"}</div>
+                          <div className="text-muted-foreground truncate max-w-[120px]">vs {p.away_team || "—"}</div>
+                        </TableCell>
+                        <TableCell>
+                          {p.recommendation && p.recommendation !== "NO_BET" ? (
+                            <RecommendationBadge rec={p.recommendation} />
+                          ) : p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION" ? (
+                            <Badge variant="outline" className="text-[9px] border-neon-cyan/30 text-neon-cyan">1X2</Badge>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-neon-cyan font-mono text-xs whitespace-nowrap">
+                          {p.reduced_under_total && p.recommendation === "UNDER" ? p.reduced_under_total
+                            : p.reduced_over_total && p.recommendation === "OVER" ? p.reduced_over_total
+                            : p.bookmaker_line ?? "—"}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs whitespace-nowrap">
+                          {hasScores ? `${p.home_score}-${p.away_score}` : "—"}
+                        </TableCell>
+                        <TableCell>
+                          {ouOutcome !== "MISSING" && (
+                            <Badge variant="outline" className={`text-[9px] mr-1 ${ouOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/30 text-neon-red" : "border-neon-yellow/30 text-neon-yellow"}`}>
+                              {p.recommendation} {ouOutcome === "WIN" ? "✓" : ouOutcome === "LOSS" ? "✗" : "P"}
+                            </Badge>
+                          )}
+                          {winOutcome !== "MISSING" && (
+                            <Badge variant="outline" className={`text-[9px] ${winOutcome === "WIN" ? "border-neon-green/30 text-neon-green" : "border-neon-red/30 text-neon-red"}`}>
+                              1X2 {winOutcome === "WIN" ? "✓" : "✗"}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
