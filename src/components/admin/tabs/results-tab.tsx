@@ -852,15 +852,16 @@ export function ResultsTab() {
 
   const stats = useMemo(() => {
     const total = data?.predictions?.length || 0;
-    let live = 0, awaiting = 0, final = 0, pending = 0;
+    let live = 0, awaiting = 0, final = 0, upcoming = 0, other = 0;
     for (const p of data?.predictions || []) {
       const cat = categorizeMatch(p, rows[p.match_id]);
       if (cat === "live") live++;
       else if (cat === "awaiting") awaiting++;
       else if (cat === "final") final++;
-      else pending++;
+      else if (cat === "upcoming") upcoming++;
+      else other++;
     }
-    return { total, live, awaiting, final, pending };
+    return { total, live, awaiting, final, upcoming, other };
   }, [data, rows]);
 
   const dirtyCount = Object.values(rows).filter((r) => r.dirty).length;
@@ -938,7 +939,8 @@ export function ResultsTab() {
             )}
           </div>
 
-          {/* Stats badges */}
+          {/* Stats badges — all categories shown so math adds up:
+              total = live + awaiting + final + upcoming + other */}
           <div className="flex items-center gap-2 flex-wrap text-[10px]">
             <Badge variant="outline" className="text-[10px] border-border/40 bg-background/30">{stats.total} total</Badge>
             {stats.live > 0 && (
@@ -981,6 +983,16 @@ export function ResultsTab() {
             >
               <CheckCircle2 className="w-2.5 h-2.5" /> {stats.final} final
             </Badge>
+            {stats.upcoming > 0 && (
+              <Badge variant="outline" className="text-[10px] gap-1 border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">
+                <Calendar className="w-2.5 h-2.5" /> {stats.upcoming} upcoming
+              </Badge>
+            )}
+            {stats.other > 0 && (
+              <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/30 text-muted-foreground bg-muted/5">
+                {stats.other} other
+              </Badge>
+            )}
             {dirtyCount > 0 && (
               <Badge variant="outline" className="text-[10px] border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">
                 {dirtyCount} unsaved
