@@ -661,11 +661,14 @@ export function ResultsTab() {
     let cancelled = false;
     let liveIntervalId: ReturnType<typeof setInterval> | null = null;
     let awaitingIntervalId: ReturnType<typeof setInterval> | null = null;
+    let liveRunning = false;  // guard against overlapping live runs
+    let awaitingRunning = false;  // guard against overlapping awaiting runs
 
     /** Scrape matches that need real-time updates (LIVE + just-started).
-     *  Runs every 30 seconds. */
+     *  Runs every 30 seconds. Skips if previous run is still in progress. */
     const refreshLiveMatches = async () => {
-      if (cancelled) return;
+      if (cancelled || liveRunning) return;
+      liveRunning = true;
       const liveMatchIds: string[] = [];
       const currentData = dataRef.current;
       const currentRows = rowsRef.current;
@@ -674,21 +677,18 @@ export function ResultsTab() {
           const rs = p.result_status;
           const isLive = rs === "LIVE";
           // Also include matches that have just started but still show PENDING
-          // (kickoff detection — match time has arrived but status not updated yet)
           let isJustStarted = false;
           if (rs === "PENDING" || rs === null) {
             const matchDate = parseMatchDateTime(p.date, p.time);
             if (matchDate) {
               const now = Date.now();
               const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
-              // Started but not yet marked as finished — scrape to get LIVE status
               if (now > matchDate.getTime() && now < likelyFinishedAt) {
                 isJustStarted = true;
               }
             }
           }
           if (isLive || isJustStarted) {
-            // Skip dirty rows — user's manual edits take priority
             const row = currentRows[p.match_id];
             if (row?.dirty) continue;
             liveMatchIds.push(p.match_id);
@@ -696,7 +696,10 @@ export function ResultsTab() {
         }
       }
 
-      if (liveMatchIds.length === 0 || cancelled) return;
+      if (liveMatchIds.length === 0 || cancelled) {
+        liveRunning = false;
+        return;
+      }
 
       for (const matchId of liveMatchIds) {
         if (cancelled) break;
@@ -707,28 +710,33 @@ export function ResultsTab() {
         }
       }
       setLastLiveRefresh(new Date());
+      liveRunning = false;
     };
 
     /** Scrape matches that are awaiting results (finished but no score).
-     *  Runs every 2 minutes (less urgent — match is already over). */
+     *  Runs every 2 minutes. Processes ALL old matches — not just today's.
+     *  Skips if previous run is still in progress (prevents queue buildup).
+     *  Processes in batches of 5 to avoid overwhelming the scraper. */
     const refreshAwaitingMatches = async () => {
-      if (cancelled) return;
+      if (cancelled || awaitingRunning) return;
+      awaitingRunning = true;
       const awaitingMatchIds: string[] = [];
       const currentData = dataRef.current;
       const currentRows = rowsRef.current;
       if (currentData?.predictions) {
         for (const p of currentData.predictions) {
           const rs = p.result_status;
-          // Only PENDING matches that should have finished by now
+          // Only PENDING/null matches that should have finished by now
+          // This catches BOTH today's finished matches AND old ones from
+          // previous days that were never scraped or had scraping failures
           if (rs === "PENDING" || rs === null) {
             const matchDate = parseMatchDateTime(p.date, p.time);
             if (matchDate) {
               const now = Date.now();
               const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
-              // Match should be finished but still has no result — scrape it
               if (now > likelyFinishedAt) {
                 const row = currentRows[p.match_id];
-                if (row?.dirty) continue; // skip dirty rows
+                if (row?.dirty) continue;
                 awaitingMatchIds.push(p.match_id);
               }
             }
@@ -736,9 +744,19 @@ export function ResultsTab() {
         }
       }
 
-      if (awaitingMatchIds.length === 0 || cancelled) return;
+      if (awaitingMatchIds.length === 0 || cancelled) {
+        awaitingRunning = false;
+        return;
+      }
 
-      for (const matchId of awaitingMatchIds) {
+      // Process in batches of 5 to avoid overwhelming the scraper queue.
+      // Each scrapeSingle takes ~10s, so 5 matches = ~50s per batch.
+      // With a 2-minute interval, this leaves time for the batch to finish
+      // before the next run starts (guarded by awaitingRunning flag).
+      const BATCH_SIZE = 5;
+      const batch = awaitingMatchIds.slice(0, BATCH_SIZE);
+
+      for (const matchId of batch) {
         if (cancelled) break;
         try {
           await scrapeSingleRef.current(matchId);
@@ -747,6 +765,7 @@ export function ResultsTab() {
         }
       }
       setLastLiveRefresh(new Date());
+      awaitingRunning = false;
     };
 
     // Run immediately on mount, then on intervals
