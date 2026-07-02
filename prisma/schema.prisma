@@ -61,6 +61,11 @@ model Prediction {
   bookmakerLine            Float?
   overOdds                 Float?
   underOdds                Float?
+  // Reduced-risk (alternative) lines — scraped from Flashscore, only for Totals
+  reducedOverTotal         Float?
+  reducedOverOdds          Float?
+  reducedUnderTotal        Float?
+  reducedUnderOdds         Float?
   homeOdds                 Float?
   awayOdds                 Float?
   averageRate              Float    @default(0)

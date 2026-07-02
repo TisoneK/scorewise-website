@@ -18,6 +18,11 @@ export interface Prediction {
   time?: string;
   over_odds?: number | null;
   under_odds?: number | null;
+  // Reduced-risk (alternative) lines — only for Totals (O/U)
+  reduced_over_total?: number | null;
+  reduced_over_odds?: number | null;
+  reduced_under_total?: number | null;
+  reduced_under_odds?: number | null;
   home_odds?: number | null;
   away_odds?: number | null;
   scope: string;

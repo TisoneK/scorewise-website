@@ -3,7 +3,7 @@
  * Filters NO_BET, uses Number() coercion, computes hit rate/ROI/streaks.
  */
 import type { Prediction } from "@/lib/types";
-import { computeOverUnderOutcome, computeWinnerOutcome } from "@/lib/result-utils";
+import { computeOverUnderOutcome, computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 import { parseMatchDateTime, localDateKey } from "@/lib/timezone";
 
 export type AlgorithmType = "TOTALS" | "WINNER";
@@ -31,8 +31,8 @@ function fdev(dev: number) { for (let i = 0; i < EDGES.length - 1; i++) { if (de
 
 export function computeAnalytics(preds: Prediction[], algorithm: AlgorithmType): AnalyticsSummary {
   const isQual = algorithm === "TOTALS" ? (p: Prediction) => { const r = p.recommendation?.toUpperCase(); return r === "OVER" || r === "UNDER"; } : (p: Prediction) => { const w = p.team_winner?.toUpperCase(); return w === "HOME_TEAM" || w === "AWAY_TEAM"; };
-  const oFn = algorithm === "TOTALS" ? (p: Prediction) => { const o = computeOverUnderOutcome(p); return o === "MISSING" ? "MISSING" : o; } : (p: Prediction) => { const o = computeWinnerOutcome(p); return o === "MISSING" ? "MISSING" : o; };
-  const pFn = algorithm === "TOTALS" ? (p: Prediction, o: string) => { if (o === "PUSH") return 0; if (o === "LOSS") return -1; if (o === "WIN") { const r = p.recommendation?.toUpperCase(); const od = r === "OVER" ? p.over_odds : r === "UNDER" ? p.under_odds : null; if (od == null) return 0; const n = Number(od); return n > 0 ? n - 1 : 0; } return 0; } : (p: Prediction, o: string) => { if (o === "PUSH") return 0; if (o === "LOSS") return -1; if (o === "WIN") { const w = p.team_winner?.toUpperCase(); const od = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null; if (od == null) return 0; const n = Number(od); return n > 0 ? n - 1 : 0; } return 0; };
+  const oFn = algorithm === "TOTALS" ? (p: Prediction) => { const o = computeReducedRiskOutcome(p); return o === "MISSING" ? computeOverUnderOutcome(p) : o; } : (p: Prediction) => { const o = computeWinnerOutcome(p); return o === "MISSING" ? "MISSING" : o; };
+  const pFn = algorithm === "TOTALS" ? (p: Prediction, o: string) => { if (o === "PUSH") return 0; if (o === "LOSS") return -1; if (o === "WIN") { const r = p.recommendation?.toUpperCase(); const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null; if (od == null) return 0; const n = Number(od); return n > 0 ? n - 1 : 0; } return 0; } : (p: Prediction, o: string) => { if (o === "PUSH") return 0; if (o === "LOSS") return -1; if (o === "WIN") { const w = p.team_winner?.toUpperCase(); const od = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null; if (od == null) return 0; const n = Number(od); return n > 0 ? n - 1 : 0; } return 0; };
   const qual = preds.filter(isQual);
   const bc: Record<"HIGH"|"MEDIUM"|"LOW", Bucket> = { HIGH: eb(), MEDIUM: eb(), LOW: eb() };
   const br: Record<"OVER"|"UNDER", Bucket> = { OVER: eb(), UNDER: eb() };

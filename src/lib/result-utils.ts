@@ -119,6 +119,37 @@ export function computeOverUnderOutcome(p: Prediction): OverUnderOutcome {
 }
 
 /**
+ * Compute the OVER/UNDER outcome using the REDUCED-RISK line (alternative line).
+ *
+ * The reduced-risk line is the alternative line scraped from Flashscore:
+ *   - For UNDER: the highest alternative (e.g., 178.5 instead of 176.5)
+ *   - For OVER: the lowest alternative (e.g., 174.5 instead of 176.5)
+ *
+ * This gives the prediction a buffer — turning narrow 1-2 point losses
+ * into wins. The odds are worse (~1.70 vs ~1.85) but the win rate
+ * improves significantly.
+ *
+ * Only applies to Totals (O/U) predictions — NOT 1X2/moneyline.
+ */
+export function computeReducedRiskOutcome(p: Prediction): OverUnderOutcome {
+  if (p.result_status !== "FINAL") return "MISSING";
+  if (p.home_score == null || p.away_score == null) return "MISSING";
+
+  const rec = p.recommendation?.toUpperCase();
+  if (rec !== "OVER" && rec !== "UNDER") return "MISSING";
+
+  // Pick the right reduced-risk line based on the recommendation
+  const reducedLine = rec === "OVER" ? p.reduced_over_total : p.reduced_under_total;
+  if (reducedLine == null) return "MISSING";
+
+  const total = p.home_score + p.away_score;
+  if (total === reducedLine) return "PUSH";
+  if (rec === "OVER" && total > reducedLine) return "WIN";
+  if (rec === "UNDER" && total < reducedLine) return "WIN";
+  return "LOSS";
+}
+
+/**
  * Compute the team-winner outcome for a prediction.
  *
  * - Returns MISSING if scores are null, result is not FINAL, or no team_winner

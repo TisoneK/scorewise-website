@@ -34,7 +34,7 @@ import {
   formatLocalDateTime,
   getTimezoneAbbr,
 } from "@/lib/timezone";
-import { computeOverUnderOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
+import { computeOverUnderOutcome, computeReducedRiskOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
 import { timeToKickoff } from "@/lib/countdown";
 
 /** Map a confidence label to a star count (0-5) for the visual rating. */
@@ -103,6 +103,7 @@ export function PredictionCard({
   const isFinal = effectiveStatus === "FINAL";
   const isAwaiting = effectiveStatus === "AWAITING_RESULT";
   const ouOutcome = computeOverUnderOutcome(p);
+  const ouReducedOutcome = computeReducedRiskOutcome(p);
   const winOutcome = computeWinnerOutcome(p);
   // Show result line for LIVE (with live score if available), FINAL (with
   // final score + outcome badges), or AWAITING_RESULT (subtle "awaiting" hint)

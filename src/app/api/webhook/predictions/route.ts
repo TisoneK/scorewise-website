@@ -34,6 +34,11 @@ interface PredictionData {
   bookmaker_line?: number | null;
   over_odds?: number | null;
   under_odds?: number | null;
+  // Reduced-risk (alternative) lines — scraped from Flashscore, only for Totals
+  reduced_over_total?: number | null;
+  reduced_over_odds?: number | null;
+  reduced_under_total?: number | null;
+  reduced_under_odds?: number | null;
   home_odds?: number | null;
   away_odds?: number | null;
   average_rate?: number;
@@ -106,6 +111,10 @@ export async function POST(request: Request) {
           bookmakerLine: p.bookmaker_line ?? null,
           overOdds: p.over_odds ?? null,
           underOdds: p.under_odds ?? null,
+          reducedOverTotal: p.reduced_over_total ?? null,
+          reducedOverOdds: p.reduced_over_odds ?? null,
+          reducedUnderTotal: p.reduced_under_total ?? null,
+          reducedUnderOdds: p.reduced_under_odds ?? null,
           homeOdds: p.home_odds ?? null,
           awayOdds: p.away_odds ?? null,
           averageRate: p.average_rate ?? 0,
