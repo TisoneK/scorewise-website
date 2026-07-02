@@ -10,6 +10,7 @@
 
 "use client";
 
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -108,6 +109,46 @@ export function UsersTab({
   handleChangeRole,
   handleDeleteUser,
 }: UsersTabProps) {
+  const [userStats, setUserStats] = useState<Record<string, { totalLogins: number; lastLogin: string | null; totalActions: number }>>({});
+  const [selectedUserActivity, setSelectedUserActivity] = useState<{ userId: string; activities: any[]; totalLogins: number; totalActions: number; lastLogin: string | null } | null>(null);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+
+  // Fetch user stats on mount
+  useEffect(() => {
+    if (isAdmin) {
+      fetch("/api/admin/users/stats")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.users) {
+            const stats: Record<string, any> = {};
+            for (const u of data.users) {
+              stats[u.id] = { totalLogins: u.totalLogins, lastLogin: u.lastLogin, totalActions: u.totalActions };
+            }
+            setUserStats(stats);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [isAdmin, users.length]);
+
+  // Fetch activity for a specific user
+  const fetchUserActivity = async (userId: string) => {
+    if (selectedUserActivity?.userId === userId) {
+      setSelectedUserActivity(null);
+      return;
+    }
+    setLoadingActivity(true);
+    try {
+      const res = await fetch(`/api/admin/users/activity?userId=${userId}&limit=20`);
+      const data = await res.json();
+      setSelectedUserActivity({ userId, ...data });
+    } catch {
+      setSelectedUserActivity(null);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
   return (
     <>
       <div className="flex items-center justify-between">
@@ -241,15 +282,18 @@ export function UsersTab({
                 <TableHead className="text-xs">Email</TableHead>
                 <TableHead className="text-xs">Name</TableHead>
                 <TableHead className="text-xs">Role</TableHead>
+                <TableHead className="text-xs whitespace-nowrap">Last Login</TableHead>
+                <TableHead className="text-xs text-center">Logins</TableHead>
+                <TableHead className="text-xs text-center">Actions</TableHead>
                 <TableHead className="text-xs">Created</TableHead>
-                {isAdmin && <TableHead className="text-xs text-right">Actions</TableHead>}
+                {isAdmin && <TableHead className="text-xs text-right">Manage</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {loadingUsers ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAdmin ? 5 : 4}
+                    colSpan={isAdmin ? 8 : 7}
                     className="text-center py-8 text-muted-foreground"
                   >
                     <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
@@ -259,7 +303,7 @@ export function UsersTab({
               ) : users.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={isAdmin ? 5 : 4}
+                    colSpan={isAdmin ? 8 : 7}
                     className="text-center py-8 text-muted-foreground"
                   >
                     No users found
@@ -267,7 +311,8 @@ export function UsersTab({
                 </TableRow>
               ) : (
                 users.map((u) => (
-                  <TableRow key={u.id} className="border-border/20 hover:bg-card/80">
+                  <React.Fragment key={u.id}>
+                  <TableRow className="border-border/20 hover:bg-card/80 cursor-pointer" onClick={() => fetchUserActivity(u.id)}>
                     <TableCell className="text-sm font-medium">{u.email}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {u.name || "—"}
@@ -293,10 +338,21 @@ export function UsersTab({
                         {u.role}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                      {userStats[u.id]?.lastLogin
+                        ? new Date(userStats[u.id].lastLogin).toLocaleString()
+                        : <span className="text-muted-foreground/40">Never</span>}
+                    </TableCell>
+                    <TableCell className="text-xs text-center font-mono">
+                      {userStats[u.id]?.totalLogins ?? 0}
+                    </TableCell>
+                    <TableCell className="text-xs text-center font-mono">
+                      {userStats[u.id]?.totalActions ?? 0}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatTime(u.createdAt)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1">
                         {isAdmin && u.role !== "ADMIN" && (
                           <Tooltip>
@@ -365,6 +421,44 @@ export function UsersTab({
                       </div>
                     </TableCell>
                   </TableRow>
+                  {/* Activity timeline (expandable) */}
+                  {selectedUserActivity?.userId === u.id && (
+                    <TableRow className="bg-background/40">
+                      <TableCell colSpan={isAdmin ? 8 : 7} className="p-4">
+                        {loadingActivity ? (
+                          <div className="text-center py-4"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>
+                        ) : selectedUserActivity.activities?.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
+                              Activity Timeline — {selectedUserActivity.totalLogins} logins · {selectedUserActivity.totalActions} total actions
+                            </p>
+                            {selectedUserActivity.activities.map((a: any, i: number) => (
+                              <div key={i} className="flex items-center gap-2 text-xs">
+                                <span className="text-muted-foreground/50 font-mono whitespace-nowrap">
+                                  {new Date(a.createdAt).toLocaleString()}
+                                </span>
+                                <Badge variant="outline" className={`text-[9px] ${
+                                  a.action === "USER_LOGIN" ? "border-neon-cyan/30 text-neon-cyan" :
+                                  a.action?.includes("DELETE") ? "border-neon-red/30 text-neon-red" :
+                                  a.action?.includes("CONFIG") ? "border-neon-yellow/30 text-neon-yellow" :
+                                  a.action?.includes("RESULT") ? "border-neon-green/30 text-neon-green" :
+                                  "border-border/40 text-muted-foreground"
+                                }">
+                                  {a.action || "UNKNOWN"}
+                                </Badge>
+                                <span className="text-muted-foreground/60 truncate">
+                                  {a.details ? (() => { try { return JSON.stringify(JSON.parse(a.details)).substring(0, 80); } catch { return a.details?.substring(0, 80); } })() : ""}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground text-center py-4">No activity recorded yet</p>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </React.Fragment>
                 ))
               )}
             </TableBody>

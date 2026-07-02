@@ -88,6 +88,33 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
+    async signIn({ user, account }) {
+      // ── Record login event ─────────────────────────────────────────
+      // Track every successful sign-in for user activity analytics.
+      if (user.email) {
+        try {
+          const existing = await db.user.findUnique({ where: { email: user.email } });
+          if (existing) {
+            // Log the login event
+            await db.activityLog.create({
+              data: {
+                userId: existing.id,
+                action: "USER_LOGIN",
+                service: "website",
+                details: JSON.stringify({
+                  provider: account?.provider || "credentials",
+                  email: user.email,
+                  login_at: new Date().toISOString(),
+                }),
+              },
+            });
+          }
+        } catch {
+          // Don't block login if logging fails
+        }
+      }
+      return true;
+    },
     // ── jwt callback — attach role + id from DB ───────────────────────
     async jwt({ token, user, account }) {
       if (user) {
