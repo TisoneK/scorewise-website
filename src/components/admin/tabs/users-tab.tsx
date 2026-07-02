@@ -249,28 +249,69 @@ export function UsersTab({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
         <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
           <p className="text-xl font-black">{users.length}</p>
           <p className="text-[10px] text-muted-foreground">Total</p>
         </div>
         <div className="bg-card/60 border border-neon-green/20 rounded-lg px-3 py-2 text-center">
           <p className="text-xl font-black text-neon-green">
-            {users.filter((u) => u.role === "ADMIN").length}
+            {(() => {
+              const now = new Date();
+              return Object.values(userStats).filter((s) => {
+                if (!s.lastLogin) return false;
+                const d = new Date(s.lastLogin);
+                return d.toDateString() === now.toDateString();
+              }).length;
+            })()}
           </p>
-          <p className="text-[10px] text-muted-foreground">Admins</p>
-        </div>
-        <div className="bg-card/60 border border-neon-yellow/20 rounded-lg px-3 py-2 text-center">
-          <p className="text-xl font-black text-neon-yellow">
-            {users.filter((u) => u.role === "OPERATOR").length}
-          </p>
-          <p className="text-[10px] text-muted-foreground">Operators</p>
+          <p className="text-[10px] text-muted-foreground">Active Today</p>
         </div>
         <div className="bg-card/60 border border-neon-cyan/20 rounded-lg px-3 py-2 text-center">
           <p className="text-xl font-black text-neon-cyan">
-            {users.filter((u) => u.role === "USER").length}
+            {(() => {
+              const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+              return Object.values(userStats).filter((s) => {
+                if (!s.lastLogin) return false;
+                return new Date(s.lastLogin).getTime() > weekAgo;
+              }).length;
+            })()}
           </p>
-          <p className="text-[10px] text-muted-foreground">Users</p>
+          <p className="text-[10px] text-muted-foreground">Active 7d</p>
+        </div>
+        <div className="bg-card/60 border border-neon-yellow/20 rounded-lg px-3 py-2 text-center">
+          <p className="text-xl font-black text-neon-yellow">
+            {(() => {
+              const now = new Date();
+              return users.filter((u) => {
+                if (!u.createdAt) return false;
+                const d = new Date(u.createdAt);
+                return d.toDateString() === now.toDateString();
+              }).length;
+            })()}
+          </p>
+          <p className="text-[10px] text-muted-foreground">New Today</p>
+        </div>
+        <div className="bg-card/60 border border-neon-cyan/20 rounded-lg px-3 py-2 text-center">
+          <p className="text-xl font-black text-neon-cyan">
+            {(() => {
+              const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+              return users.filter((u) => {
+                if (!u.createdAt) return false;
+                return new Date(u.createdAt).getTime() > weekAgo;
+              }).length;
+            })()}
+          </p>
+          <p className="text-[10px] text-muted-foreground">New 7d</p>
+        </div>
+        <div className="bg-card/60 border border-border/40 rounded-lg px-3 py-2 text-center">
+          <p className="text-xl font-black text-muted-foreground">
+            {(() => {
+              const total = Object.values(userStats).reduce((sum, s) => sum + (s.totalLogins || 0), 0);
+              return total;
+            })()}
+          </p>
+          <p className="text-[10px] text-muted-foreground">Total Logins</p>
         </div>
       </div>
 
