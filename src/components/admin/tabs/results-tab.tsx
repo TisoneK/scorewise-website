@@ -185,9 +185,12 @@ function ScrapeMessageText({ text }: { text: string }) {
   return <>{before}<span className="text-neon-red font-bold">{minutes}</span><span className="text-neon-red font-bold animate-hard-blink">'</span>{after}</>;
 }
 
-/** Categorize a match into a status bucket for grouping. */
-function categorizeMatch(p: Prediction, row: RowState): "live" | "awaiting" | "upcoming" | "final" | "other" {
-  const status = row.statusInput || "PENDING";
+/** Categorize a match into a status bucket for grouping.
+ *  Handles missing row state gracefully by falling back to the prediction's
+ *  stored result_status. */
+function categorizeMatch(p: Prediction, row: RowState | undefined): "live" | "awaiting" | "upcoming" | "final" | "other" {
+  // Use row status if available, otherwise fall back to the prediction's stored status
+  const status = row?.statusInput || (p.result_status as string | null) || "PENDING";
   if (status === "LIVE") return "live";
   if (status === "FINAL") return "final";
   if (status === "POSTPONED" || status === "CANCELLED") return "other";
