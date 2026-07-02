@@ -119,15 +119,22 @@ export function computeOverUnderOutcome(p: Prediction): OverUnderOutcome {
 }
 
 /**
- * Compute the OVER/UNDER outcome using the REDUCED-RISK line (alternative line).
+ * Compute the OVER/UNDER outcome using the best available line.
  *
- * The reduced-risk line is the alternative line scraped from Flashscore:
- *   - For UNDER: the highest alternative (e.g., 178.5 instead of 176.5)
- *   - For OVER: the lowest alternative (e.g., 174.5 instead of 176.5)
+ * Risk hierarchy (PRIMARY → FALLBACK):
+ *   1. REDUCED-RISK line (scraped alternative line — e.g., UNDER 178.5)
+ *      This is the primary line for users. Gives a 2-point buffer that
+ *      turns narrow losses into wins. Odds ~1.70.
+ *   2. STANDARD line (bookmaker_line — e.g., 176.5)
+ *      Fallback when no reduced-risk line was scraped. This is the
+ *      "middle risk" — the default bookmaker line. Odds ~1.85.
+ *   3. HIGH-RISK line (never used currently — reserved for future)
+ *      Would be the opposite alternative (e.g., UNDER 174.5 for a
+ *      176.5 standard line). Better odds but harder to win.
  *
- * This gives the prediction a buffer — turning narrow 1-2 point losses
- * into wins. The odds are worse (~1.70 vs ~1.85) but the win rate
- * improves significantly.
+ * Old predictions (before reduced-risk scraping was added) have null
+ * reduced-risk fields, so they fall back to the standard line. This
+ * ensures the full history is included in stats without bias.
  *
  * Only applies to Totals (O/U) predictions — NOT 1X2/moneyline.
  */
@@ -140,12 +147,14 @@ export function computeReducedRiskOutcome(p: Prediction): OverUnderOutcome {
 
   // Pick the right reduced-risk line based on the recommendation
   const reducedLine = rec === "OVER" ? p.reduced_over_total : p.reduced_under_total;
-  if (reducedLine == null) return "MISSING";
+  // Fall back to standard (middle-risk) line if no reduced-risk line available
+  const effectiveLine = reducedLine ?? p.bookmaker_line;
+  if (effectiveLine == null) return "MISSING";
 
   const total = p.home_score + p.away_score;
-  if (total === reducedLine) return "PUSH";
-  if (rec === "OVER" && total > reducedLine) return "WIN";
-  if (rec === "UNDER" && total < reducedLine) return "WIN";
+  if (total === effectiveLine) return "PUSH";
+  if (rec === "OVER" && total > effectiveLine) return "WIN";
+  if (rec === "UNDER" && total < effectiveLine) return "WIN";
   return "LOSS";
 }
 
