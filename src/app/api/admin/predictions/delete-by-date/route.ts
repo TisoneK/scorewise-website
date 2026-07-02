@@ -9,6 +9,8 @@ export const dynamic = 'force-dynamic';
  * POST /api/admin/predictions/delete-by-date
  *
  * Deletes all predictions for a specific date using raw SQL.
+ * Tries multiple date format matches since the DB may store dates
+ * in different formats (YYYY-MM-DD, DD.MM.YYYY, etc.)
  *
  * Body: { date: string } — date in YYYY-MM-DD format (e.g., "2026-07-03")
  *
@@ -31,38 +33,78 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "date is required (YYYY-MM-DD format)" }, { status: 400 });
     }
 
-    // Validate date format
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: "date must be in YYYY-MM-DD format" }, { status: 400 });
     }
 
-    // Use raw SQL directly — the db-libsql wrapper's prediction.delete
-    // only supports deleting by matchId/id, not by date.
+    // Also build DD.MM.YYYY format ( scraper uses this for filenames)
+    const [year, month, day] = date.split("-");
+    const dotFormat = `${day}.${month}.${year}`;
+
     const client = getClient();
 
-    // First count how many will be deleted
-    const countResult = await client.execute(
+    // First, sample what date formats exist in the DB
+    const sampleResult = await client.execute("SELECT DISTINCT date FROM Prediction LIMIT 20");
+    const sampleDates = sampleResult.rows.map((r: any) => r.date);
+
+    // Try exact match first
+    let countResult = await client.execute(
       "SELECT COUNT(*) as count FROM Prediction WHERE date = ?",
       [date]
     );
-    const count = Number((countResult.rows[0] as any).count);
+    let count = Number((countResult.rows[0] as any).count);
+
+    // If 0, try DD.MM.YYYY format
+    if (count === 0) {
+      countResult = await client.execute(
+        "SELECT COUNT(*) as count FROM Prediction WHERE date = ?",
+        [dotFormat]
+      );
+      count = Number((countResult.rows[0] as any).count);
+    }
+
+    // If still 0, try LIKE match (date contains the YYYY-MM-DD string)
+    if (count === 0) {
+      countResult = await client.execute(
+        "SELECT COUNT(*) as count FROM Prediction WHERE date LIKE ?",
+        [`%${date}%`]
+      );
+      count = Number((countResult.rows[0] as any).count);
+    }
+
+    // If still 0, try LIKE with dot format
+    if (count === 0) {
+      countResult = await client.execute(
+        "SELECT COUNT(*) as count FROM Prediction WHERE date LIKE ?",
+        [`%${dotFormat}%`]
+      );
+      count = Number((countResult.rows[0] as any).count);
+    }
 
     if (count === 0) {
       return NextResponse.json({
         ok: true,
         deleted: 0,
         date,
-        message: `No predictions found for ${date}`,
+        message: `No predictions found for ${date}. Sample dates in DB: ${sampleDates.slice(0, 5).join(", ")}`,
+        sampleDates: sampleDates.slice(0, 10),
       });
     }
 
-    // Delete all predictions for this date
-    await client.execute(
-      "DELETE FROM Prediction WHERE date = ?",
-      [date]
-    );
+    // Delete using whichever format matched
+    // Try exact, then dot format, then LIKE patterns
+    let deleted = 0;
+    await client.execute("DELETE FROM Prediction WHERE date = ?", [date]);
+    deleted += count; // We already counted these
 
-    // Log to activity log using raw SQL (bypass wrapper)
+    // Also try dot format delete (in case some use that format)
+    await client.execute("DELETE FROM Prediction WHERE date = ?", [dotFormat]);
+
+    // Also try LIKE deletes for any remaining
+    await client.execute("DELETE FROM Prediction WHERE date LIKE ?", [`%${date}%`]);
+    await client.execute("DELETE FROM Prediction WHERE date LIKE ?", [`%${dotFormat}%`]);
+
+    // Log
     try {
       const userId = (session.user as { id?: string })?.id;
       if (userId) {
@@ -73,7 +115,7 @@ export async function POST(request: Request) {
             userId,
             "PREDICTIONS_DELETE",
             "website",
-            JSON.stringify({ date, deleted: count }),
+            JSON.stringify({ date, deleted: count, dotFormat }),
             new Date().toISOString(),
           ]
         );
@@ -86,6 +128,7 @@ export async function POST(request: Request) {
       ok: true,
       deleted: count,
       date,
+      dotFormat,
     });
   } catch (error) {
     console.error("[delete-by-date] POST error:", error);
