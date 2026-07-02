@@ -38,6 +38,7 @@ import {
   DownloadCloud,
   Play,
   ExternalLink,
+  Trash2,
 } from "lucide-react";
 import type { Prediction, StoredPredictions } from "@/lib/types";
 import {
@@ -909,6 +910,36 @@ export function ResultsTab() {
               >
                 {scraping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{scraping ? "Scraping..." : "Scrape Results"}</span>
+              </Button>
+              {/* Delete by Date — removes all predictions for a chosen date */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const date = prompt("Enter date to delete (YYYY-MM-DD, e.g. 2026-07-03):");
+                  if (!date) return;
+                  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert("Invalid format. Use YYYY-MM-DD"); return; }
+                  if (!confirm(`Delete ALL predictions for ${date}? This cannot be undone.`)) return;
+                  try {
+                    const res = await fetch("/api/admin/predictions/delete-by-date", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ date }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                    setScrapeMsg({ kind: "ok", text: `Deleted ${data.deleted} prediction(s) for ${date}` });
+                    setTimeout(() => setScrapeMsg(null), 5000);
+                    fetchPredictions();
+                  } catch (err) {
+                    setScrapeMsg({ kind: "err", text: err instanceof Error ? err.message : "Delete failed" });
+                  }
+                }}
+                className="gap-1.5 h-8 border-neon-red/30 text-neon-red hover:bg-neon-red/10"
+                title="Delete all predictions for a specific date"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Delete</span>
               </Button>
               {/* Save All — only visible when there are dirty rows (manual edits) */}
               {dirtyCount > 0 && (
