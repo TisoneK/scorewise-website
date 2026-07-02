@@ -21,11 +21,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
 import { PublicStatsBanner } from "./public-stats-banner";
+import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -366,6 +367,102 @@ export function UserPredictionsView() {
             market is performing independently. */}
         <PublicStatsBanner algorithm="totals" />
         <PublicStatsBanner algorithm="winner" />
+
+        {/* ════════ PERFORMANCE SUMMARY + RECENT FORM ════════ */}
+        {/* Compact stats bar with W/L/Hit Rate/ROI + form dots */}
+        {(() => {
+          if (!data?.predictions) return null;
+          let wins = 0, losses = 0, profit = 0, staked = 0;
+          const form: ("W" | "L")[] = [];
+          const settled = data.predictions
+            .filter((p) => {
+              const ou = computeReducedRiskOutcome(p);
+              const win = computeWinnerOutcome(p);
+              return ou !== "MISSING" || win !== "MISSING";
+            })
+            .sort((a, b) => {
+              const da = parseMatchDateTime(a.date, a.time);
+              const db = parseMatchDateTime(b.date, b.time);
+              if (da && db) return da.getTime() - db.getTime();
+              return 0;
+            });
+          for (const p of settled) {
+            const ou = computeReducedRiskOutcome(p);
+            const win = computeWinnerOutcome(p);
+            if (ou === "WIN" || win === "WIN") {
+              wins++;
+              staked++;
+              const r = p.recommendation?.toUpperCase();
+              const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+              const w = p.team_winner?.toUpperCase();
+              const wod = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
+              profit += (od ? Number(od) - 1 : 0) + (wod && win === "WIN" && ou !== "WIN" ? Number(wod) - 1 : 0);
+              form.push("W");
+            } else if (ou === "LOSS" || win === "LOSS") {
+              losses++;
+              staked++;
+              profit -= 1;
+              form.push("L");
+            }
+          }
+          if (wins + losses === 0) return null;
+          const hitRate = ((wins / (wins + losses)) * 100).toFixed(1);
+          const roi = staked > 0 ? ((profit / staked) * 100).toFixed(1) : "0.0";
+          const last15 = form.slice(-15);
+          const hitTone = Number(hitRate) >= 55 ? "text-neon-green" : Number(hitRate) >= 45 ? "text-neon-yellow" : "text-neon-red";
+          const roiTone = Number(roi) >= 0 ? "text-neon-green" : "text-neon-red";
+
+          return (
+            <div className="rounded-xl border-2 border-border bg-card/90 overflow-hidden">
+              {/* Stats row */}
+              <div className="grid grid-cols-4 divide-x divide-border/30">
+                <div className="p-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <CheckCircle2 className="w-3 h-3 text-neon-green" />
+                  </div>
+                  <p className="text-base font-black font-mono text-neon-green">{wins}</p>
+                  <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Wins</p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <XCircle className="w-3 h-3 text-neon-red" />
+                  </div>
+                  <p className="text-base font-black font-mono text-neon-red">{losses}</p>
+                  <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Losses</p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <Target className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                  <p className={`text-base font-black font-mono ${hitTone}`}>{hitRate}%</p>
+                  <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Hit Rate</p>
+                </div>
+                <div className="p-2.5 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-0.5">
+                    <Coins className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                  <p className={`text-base font-black font-mono ${roiTone}`}>{Number(roi) >= 0 ? "+" : ""}{roi}%</p>
+                  <p className="text-[8px] text-muted-foreground uppercase tracking-wider">ROI</p>
+                </div>
+              </div>
+              {/* Form dots */}
+              {last15.length > 0 && (
+                <div className="border-t border-border/30 px-3 py-2 flex items-center gap-2 bg-background/30">
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider font-semibold shrink-0">Form</span>
+                  <span className="text-[8px] text-muted-foreground/50 shrink-0">L15</span>
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {last15.map((r, i) => (
+                      <span key={i} className={`w-2.5 h-2.5 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`} />
+                    ))}
+                  </div>
+                  <span className="text-[9px] text-muted-foreground/60 ml-auto shrink-0">
+                    {last15.filter((r) => r === "W").length}W / {last15.filter((r) => r === "L").length}L
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Search + Filters */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
