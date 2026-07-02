@@ -393,6 +393,31 @@ export function ResultsTab() {
     setScraping(true);
     setScrapeMsg(null);
 
+    // ── Kill any active/stuck scraper threads first ────────────────────
+    // If there are stuck threads from a previous run (zombie Chrome,
+    // hung scrapeSingle, etc.), new scrapes would just pile on top.
+    // Kill everything first, then resume the queue, then start fresh.
+    setScrapeMsg({ kind: "ok", text: "Killing any active scraper threads..." });
+    try {
+      await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "kill_all" }),
+      });
+    } catch {
+      // Kill failed — continue anyway (maybe nothing was running)
+    }
+    // Resume the queue (kill_all pauses it)
+    try {
+      await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "resume_queue" }),
+      });
+    } catch {
+      // Resume failed — not critical
+    }
+
     // Collect matches that need result updates
     const matchesToScrape: string[] = [];
     if (data?.predictions) {

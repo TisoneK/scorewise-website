@@ -84,6 +84,45 @@ export async function POST(request: Request) {
       }
     }
 
+    // ── Branch 1b: kill all active scraper threads ──────────────────────
+    // Proxies to the scraper's POST /api/scrape/kill endpoint.
+    // Kills all queued + running jobs and zombie Chrome processes.
+    if (body.operation === "kill_all") {
+      try {
+        const res = await fetch(`${scraperUrl}/api/scrape/kill`, {
+          method: "POST",
+          headers,
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await res.json().catch(() => ({}));
+        return NextResponse.json(data, { status: res.status });
+      } catch (fetchError) {
+        return NextResponse.json({
+          status: "error",
+          message: `Could not reach scraper to kill threads: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`,
+        });
+      }
+    }
+
+    // ── Branch 1c: resume the single-scrape queue ──────────────────────
+    // Proxies to the scraper's POST /api/scrape/results/single/resume.
+    if (body.operation === "resume_queue") {
+      try {
+        const res = await fetch(`${scraperUrl}/api/scrape/results/single/resume`, {
+          method: "POST",
+          headers,
+          signal: AbortSignal.timeout(10000),
+        });
+        const data = await res.json().catch(() => ({}));
+        return NextResponse.json(data, { status: res.status });
+      } catch (fetchError) {
+        return NextResponse.json({
+          status: "error",
+          message: `Could not reach scraper to resume queue: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`,
+        });
+      }
+    }
+
     // ── Branch 2: scheduled-match scrape (default) ──────────────────────
     const day = body.day || "Today";
     if (!["Today", "Tomorrow"].includes(day)) {
