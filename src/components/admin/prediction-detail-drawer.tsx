@@ -366,21 +366,23 @@ export function PredictionDetailDrawer({
               </div>
             )}
 
-            {/* H2H Totals — match-by-match breakdown */}
+            {/* H2H Matches — Flashscore-style breakdown */}
             {prediction.h2h_totals.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Layers className="w-3 h-3" /> H2H Totals — {prediction.h2h_totals.length} matches
+                  <Layers className="w-3 h-3" /> Previous Meetings — {prediction.h2h_totals.length} H2H matches
                 </h3>
                 <div className="bg-background/50 rounded border border-border/40 overflow-hidden">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border/30 text-[10px] text-muted-foreground">
                         <th className="text-left p-2">#</th>
+                        <th className="text-left p-2">Matchup</th>
                         <th className="text-right p-2">Total</th>
                         <th className="text-right p-2">Line</th>
                         <th className="text-right p-2">Diff</th>
-                        <th className="text-right p-2">Result</th>
+                        <th className="text-right p-2">O/U</th>
+                        <th className="text-right p-2">Rate</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -388,10 +390,22 @@ export function PredictionDetailDrawer({
                         const line = prediction.bookmaker_line ?? 0;
                         const diff = total - line;
                         const isOver = total > line;
+                        const rateValue = prediction.rate_values[i];
+                        const isMostRecent = i === prediction.h2h_totals.length - 1;
                         return (
-                          <tr key={i} className="border-b border-border/10 hover:bg-card/40">
-                            <td className="p-2 text-muted-foreground font-mono">{i + 1}</td>
-                            <td className="p-2 text-right font-mono font-bold">{total}</td>
+                          <tr key={i} className={`border-b border-border/10 hover:bg-card/40 ${isMostRecent ? "bg-neon-cyan/5" : ""}`}>
+                            <td className="p-2 text-muted-foreground font-mono text-[10px]">
+                              {i + 1}{isMostRecent && <span className="text-neon-cyan ml-1">←</span>}
+                            </td>
+                            <td className="p-2">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] truncate max-w-[100px]">{prediction.home_team || "Home"}</span>
+                                <span className="text-muted-foreground/40 text-[9px]">vs</span>
+                                <span className="text-[10px] truncate max-w-[100px]">{prediction.away_team || "Away"}</span>
+                              </div>
+                              <p className="text-[8px] text-muted-foreground/50 truncate">{prediction.league || ""} · {prediction.country || ""}</p>
+                            </td>
+                            <td className="p-2 text-right font-mono font-bold text-sm">{total}</td>
                             <td className="p-2 text-right font-mono text-muted-foreground">{line}</td>
                             <td className={`p-2 text-right font-mono ${diff > 0 ? "text-neon-green" : diff < 0 ? "text-neon-red" : "text-muted-foreground"}`}>
                               {diff > 0 ? "+" : ""}{diff.toFixed(1)}
@@ -401,12 +415,35 @@ export function PredictionDetailDrawer({
                                 {isOver ? "OVER" : "UNDER"}
                               </span>
                             </td>
+                            <td className={`p-2 text-right font-mono text-[10px] ${rateValue > 0 ? "text-neon-green" : rateValue < 0 ? "text-neon-red" : "text-muted-foreground"}`}>
+                              {rateValue > 0 ? "+" : ""}{rateValue.toFixed(1)}
+                            </td>
                           </tr>
                         );
                       })}
                     </tbody>
+                    <tfoot>
+                      {(() => {
+                        const avgLine = prediction.bookmaker_line ?? 0;
+                        const avgTotal = prediction.h2h_totals.reduce((a, b) => a + b, 0) / prediction.h2h_totals.length;
+                        const avgRate = prediction.rate_values.length > 0 ? prediction.rate_values.reduce((a, b) => a + b, 0) / prediction.rate_values.length : 0;
+                        return (
+                          <tr className="border-t-2 border-border/30 bg-background/30">
+                            <td colSpan={2} className="p-2 text-[10px] text-muted-foreground font-bold uppercase tracking-wider">Summary</td>
+                            <td className="p-2 text-right font-mono font-bold text-sm">{avgTotal.toFixed(1)}</td>
+                            <td className="p-2 text-right font-mono text-muted-foreground">{avgLine}</td>
+                            <td className="p-2 text-right font-mono text-muted-foreground">{(avgTotal - avgLine).toFixed(1)}</td>
+                            <td className="p-2 text-right"><span className="text-[9px] text-muted-foreground">{prediction.matches_above}O/{prediction.matches_below}U</span></td>
+                            <td className="p-2 text-right font-mono text-[10px] text-muted-foreground">avg: {avgRate.toFixed(1)}</td>
+                          </tr>
+                        );
+                      })()}
+                    </tfoot>
                   </table>
                 </div>
+                <p className="text-[9px] text-muted-foreground/50 mt-1.5">
+                  Most recent match highlighted · Ordered oldest → newest · Summary row shows averages
+                </p>
               </div>
             )}
 
