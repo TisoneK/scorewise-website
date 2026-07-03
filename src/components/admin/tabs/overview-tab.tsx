@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -71,59 +71,9 @@ export function OverviewTab({
 }: OverviewTabProps) {
   const [formCount, setFormCount] = useState(15);
 
-  // ── Compute betting stats from predictions ──────────────────────────
-  const stats = (() => {
-    let ouWins = 0, ouLosses = 0, ouPushes = 0, ouPending = 0;
-    let winWins = 0, winLosses = 0, winPending = 0;
-    let ouProfit = 0, ouStaked = 0;
-    let winProfit = 0, winStaked = 0;
-
-    for (const p of preds) {
-      // O/U stats (using reduced-risk outcome)
-      const ouOutcome = computeReducedRiskOutcome(p);
-      if (ouOutcome === "WIN") {
-        ouWins++;
-        ouStaked++;
-        const r = p.recommendation?.toUpperCase();
-        const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
-        ouProfit += od ? Number(od) - 1 : 0;
-      } else if (ouOutcome === "LOSS") {
-        ouLosses++;
-        ouStaked++;
-        ouProfit -= 1;
-      } else if (ouOutcome === "PUSH") {
-        ouPushes++;
-      } else {
-        ouPending++;
-      }
-
-      // 1X2 stats
-      const winOutcome = computeWinnerOutcome(p);
-      if (winOutcome === "WIN") {
-        winWins++;
-        winStaked++;
-        const w = p.team_winner?.toUpperCase();
-        const od = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
-        winProfit += od ? Number(od) - 1 : 0;
-      } else if (winOutcome === "LOSS") {
-        winLosses++;
-        winStaked++;
-        winProfit -= 1;
-      } else {
-        winPending++;
-      }
-    }
-
-    const totalWins = ouWins + winWins;
-    const totalLosses = ouLosses + winLosses;
-    const totalResolved = totalWins + totalLosses + ouPushes;
-    const totalStaked = ouStaked + winStaked;
-    const totalProfit = ouProfit + winProfit;
-    const hitRate = totalWins + totalLosses > 0 ? (totalWins / (totalWins + totalLosses)) * 100 : 0;
-    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-
-    // Current streak (across all resolved bets, chronological)
-    const settled = preds
+  // ── Build settled bets array with outcomes (sorted chronologically) ──
+  const settledBets = useMemo(() => {
+    return preds
       .filter((p) => {
         const ou = computeReducedRiskOutcome(p);
         const win = computeWinnerOutcome(p);
@@ -134,19 +84,86 @@ export function OverviewTab({
         const db = parseMatchDateTime(b.date, b.time);
         if (da && db) return da.getTime() - db.getTime();
         return 0;
+      })
+      .map((p) => {
+        const ou = computeReducedRiskOutcome(p);
+        const win = computeWinnerOutcome(p);
+        // O/U outcome
+        const ouResult = ou === "WIN" ? "W" as const : ou === "LOSS" ? "L" as const : null;
+        const winResult = win === "WIN" ? "W" as const : win === "LOSS" ? "L" as const : null;
+        // O/U profit
+        let ouProfit = 0;
+        if (ou === "WIN") {
+          const r = p.recommendation?.toUpperCase();
+          const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+          ouProfit = od ? Number(od) - 1 : 0;
+        } else if (ou === "LOSS") {
+          ouProfit = -1;
+        }
+        // 1X2 profit
+        let winProfit = 0;
+        if (win === "WIN") {
+          const w = p.team_winner?.toUpperCase();
+          const od = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
+          winProfit = od ? Number(od) - 1 : 0;
+        } else if (win === "LOSS") {
+          winProfit = -1;
+        }
+        return {
+          match: p,
+          ou: ouResult,
+          win: winResult,
+          ouProfit,
+          winProfit,
+          ouPush: ou === "PUSH",
+        };
       });
+  }, [preds]);
 
+  // ── Stats computed from the LAST N settled bets (based on formCount) ──
+  const stats = useMemo(() => {
+    // Get last N bets that have an O/U outcome for O/U stats
+    const ouSettled = settledBets.filter((b) => b.ou !== null);
+    const ouRecent = ouSettled.slice(-formCount);
+    const ouWins = ouRecent.filter((b) => b.ou === "W").length;
+    const ouLosses = ouRecent.filter((b) => b.ou === "L").length;
+    const ouPushes = ouRecent.filter((b) => b.ouPush).length;
+    const ouStaked = ouWins + ouLosses;
+    const ouProfit = ouRecent.reduce((sum, b) => sum + b.ouProfit, 0);
+    const ouPending = preds.filter((p) => {
+      const r = p.recommendation?.toUpperCase();
+      return (r === "OVER" || r === "UNDER") && computeReducedRiskOutcome(p) === "MISSING";
+    }).length;
+
+    // 1X2 stats from last N bets
+    const winSettled = settledBets.filter((b) => b.win !== null);
+    const winRecent = winSettled.slice(-formCount);
+    const winWins = winRecent.filter((b) => b.win === "W").length;
+    const winLosses = winRecent.filter((b) => b.win === "L").length;
+    const winStaked = winWins + winLosses;
+    const winProfit = winRecent.reduce((sum, b) => sum + b.winProfit, 0);
+    const winPending = preds.filter((p) => {
+      const w = p.team_winner?.toUpperCase();
+      return (w === "HOME_TEAM" || w === "AWAY_TEAM") && computeWinnerOutcome(p) === "MISSING";
+    }).length;
+
+    // Totals (across ALL settled, not just last N)
+    const totalWins = ouSettled.filter((b) => b.ou === "W").length + winSettled.filter((b) => b.win === "W").length;
+    const totalLosses = ouSettled.filter((b) => b.ou === "L").length + winSettled.filter((b) => b.win === "L").length;
+    const totalResolved = totalWins + totalLosses + ouSettled.filter((b) => b.ouPush).length;
+    const totalStaked = ouSettled.length + winSettled.length;
+    const totalProfit = ouSettled.reduce((s, b) => s + b.ouProfit, 0) + winSettled.reduce((s, b) => s + b.winProfit, 0);
+    const hitRate = totalWins + totalLosses > 0 ? (totalWins / (totalWins + totalLosses)) * 100 : 0;
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+
+    // Streak (across all settled, not just last N)
     let streakType: "W" | "L" | null = null;
     let streakLen = 0;
-    for (let i = settled.length - 1; i >= 0; i--) {
-      const p = settled[i];
-      const ou = computeReducedRiskOutcome(p);
-      const win = computeWinnerOutcome(p);
+    for (let i = settledBets.length - 1; i >= 0; i--) {
+      const b = settledBets[i];
       const outcomes: ("W" | "L")[] = [];
-      if (ou === "WIN") outcomes.push("W");
-      else if (ou === "LOSS") outcomes.push("L");
-      if (win === "WIN") outcomes.push("W");
-      else if (win === "LOSS") outcomes.push("L");
+      if (b.ou) outcomes.push(b.ou);
+      if (b.win) outcomes.push(b.win);
       if (outcomes.length === 0) continue;
       const last = outcomes[outcomes.length - 1];
       if (streakType === null) { streakType = last; streakLen = 1; }
@@ -154,25 +171,22 @@ export function OverviewTab({
       else break;
     }
 
-    // Recent form — separate for O/U and 1X2 (oldest → newest, full arrays)
-    const ouForm: ("W" | "L")[] = [];
-    const winForm: ("W" | "L")[] = [];
-    for (const p of settled) {
-      const ou = computeReducedRiskOutcome(p);
-      const win = computeWinnerOutcome(p);
-      if (ou === "WIN") ouForm.push("W");
-      else if (ou === "LOSS") ouForm.push("L");
-      if (win === "WIN") winForm.push("W");
-      else if (win === "LOSS") winForm.push("L");
-    }
+    // Form arrays (full, sliced at render)
+    const ouForm = ouSettled.map((b) => b.ou!);
+    const winForm = winSettled.map((b) => b.win!);
+
+    // Recent N arrays with match info for tooltips
+    const ouRecentWithMatches = ouRecent;
+    const winRecentWithMatches = winRecent;
 
     return {
       ouWins, ouLosses, ouPushes, ouPending, ouProfit, ouStaked,
       winWins, winLosses, winPending, winProfit, winStaked,
       totalWins, totalLosses, totalResolved, totalStaked, totalProfit,
       hitRate, roi, streakType, streakLen, ouForm, winForm,
+      ouRecentWithMatches, winRecentWithMatches,
     };
-  })();
+  }, [settledBets, formCount, preds]);
 
   // Recent settled bets (last 20)
   const recentSettled = preds
@@ -296,8 +310,8 @@ export function OverviewTab({
               <span>ROI: <span className={`font-bold ${stats.ouStaked > 0 ? (stats.ouProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.ouStaked > 0 ? `${((stats.ouProfit / stats.ouStaked) * 100).toFixed(1)}%` : "—"}</span></span>
               <span>Pending: {stats.ouPending}</span>
             </div>
-            {/* O/U Recent form dots — customizable count */}
-            {stats.ouForm.length > 0 && (
+            {/* O/U Recent form dots — customizable count + hover tooltips */}
+            {stats.ouRecentWithMatches.length > 0 && (
               <div className="flex items-center gap-1.5 pt-1 border-t border-border/20">
                 <select
                   value={formCount}
@@ -311,12 +325,21 @@ export function OverviewTab({
                   <option value={30}>L30</option>
                 </select>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {stats.ouForm.slice(-formCount).map((r, i) => (
-                    <span key={i} className={`w-2.5 h-2.5 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`} />
-                  ))}
+                  {stats.ouRecentWithMatches.map((b, i) => {
+                    const p = b.match;
+                    const total = (p.home_score != null && p.away_score != null) ? Number(p.home_score) + Number(p.away_score) : null;
+                    const line = p.recommendation === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line) : (p.reduced_under_total ?? p.bookmaker_line);
+                    return (
+                      <span
+                        key={i}
+                        className={`w-2.5 h-2.5 rounded-sm cursor-help ${b.ou === "W" ? "bg-neon-green" : "bg-neon-red"}`}
+                        title={`${p.home_team || "Home"} vs ${p.away_team || "Away"}\n${p.recommendation} ${line ?? "?"} @ ${(p.recommendation === "OVER" ? p.reduced_over_odds ?? p.over_odds : p.reduced_under_odds ?? p.under_odds) ?? "?"}\nScore: ${p.home_score ?? "?"}-${p.away_score ?? "?"} (Total: ${total ?? "?"})\nResult: ${b.ou === "W" ? "WON" : "LOST"} (${b.ouProfit >= 0 ? "+" : ""}${b.ouProfit.toFixed(2)}u)\nDate: ${p.date || "?"}`}
+                      />
+                    );
+                  })}
                 </div>
                 <span className="text-[9px] text-muted-foreground/60 ml-auto shrink-0">
-                  {stats.ouForm.slice(-formCount).filter((r) => r === "W").length}W / {stats.ouForm.slice(-formCount).filter((r) => r === "L").length}L
+                  {stats.ouWins}W / {stats.ouLosses}L
                 </span>
               </div>
             )}
@@ -353,17 +376,26 @@ export function OverviewTab({
               <span>ROI: <span className={`font-bold ${stats.winStaked > 0 ? (stats.winProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.winStaked > 0 ? `${((stats.winProfit / stats.winStaked) * 100).toFixed(1)}%` : "—"}</span></span>
               <span>Pending: {stats.winPending}</span>
             </div>
-            {/* 1X2 Recent form dots — uses same formCount */}
-            {stats.winForm.length > 0 && (
+            {/* 1X2 Recent form dots — same formCount + hover tooltips */}
+            {stats.winRecentWithMatches.length > 0 && (
               <div className="flex items-center gap-1.5 pt-1 border-t border-border/20">
                 <span className="text-[9px] text-muted-foreground/50 shrink-0">L{formCount}</span>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {stats.winForm.slice(-formCount).map((r, i) => (
-                    <span key={i} className={`w-2.5 h-2.5 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`} />
-                  ))}
+                  {stats.winRecentWithMatches.map((b, i) => {
+                    const p = b.match;
+                    const winnerName = p.team_winner === "HOME_TEAM" ? p.home_team : p.team_winner === "AWAY_TEAM" ? p.away_team : "?";
+                    const winnerOdds = p.team_winner === "HOME_TEAM" ? p.home_odds : p.team_winner === "AWAY_TEAM" ? p.away_odds : null;
+                    return (
+                      <span
+                        key={i}
+                        className={`w-2.5 h-2.5 rounded-sm cursor-help ${b.win === "W" ? "bg-neon-green" : "bg-neon-red"}`}
+                        title={`${p.home_team || "Home"} vs ${p.away_team || "Away"}\n1X2: ${winnerName} @ ${winnerOdds ?? "?"}\nScore: ${p.home_score ?? "?"}-${p.away_score ?? "?"}\nResult: ${b.win === "W" ? "WON" : "LOST"} (${b.winProfit >= 0 ? "+" : ""}${b.winProfit.toFixed(2)}u)\nDate: ${p.date || "?"}`}
+                      />
+                    );
+                  })}
                 </div>
                 <span className="text-[9px] text-muted-foreground/60 ml-auto shrink-0">
-                  {stats.winForm.slice(-formCount).filter((r) => r === "W").length}W / {stats.winForm.slice(-formCount).filter((r) => r === "L").length}L
+                  {stats.winWins}W / {stats.winLosses}L
                 </span>
               </div>
             )}
