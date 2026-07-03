@@ -40,6 +40,7 @@ import {
   Save,
   ExternalLink,
   Coins,
+  Clock,
 } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
@@ -58,11 +59,13 @@ export function PredictionDetailDrawer({
   const [betCodeInput, setBetCodeInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "h2h" | "odds" | "result" | "pipeline">("overview");
 
-  // Reset input when the drawer opens to a different prediction.
+  // Reset input + tab when the drawer opens to a different prediction.
   useEffect(() => {
     setBetCodeInput(prediction?.bet_code || "");
     setSaveMsg(null);
+    setActiveTab("overview");
   }, [prediction?.match_id, prediction?.bet_code]);
 
   if (!prediction) return null;
@@ -212,15 +215,42 @@ export function PredictionDetailDrawer({
           </Button>
         </div>
 
-        {/* Body */}
+        {/* Tab bar */}
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-border/40 bg-background/30 overflow-x-auto">
+          {([
+            { key: "overview", label: "Overview", icon: <ActivityIcon className="w-3 h-3" /> },
+            { key: "h2h", label: "H2H Matches", icon: <Layers className="w-3 h-3" /> },
+            { key: "odds", label: "Odds", icon: <Coins className="w-3 h-3" /> },
+            { key: "result", label: "Result", icon: <Trophy className="w-3 h-3" /> },
+            { key: "pipeline", label: "Pipeline", icon: <GitBranch className="w-3 h-3" /> },
+          ] as const).map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-md transition-colors whitespace-nowrap ${
+                activeTab === tab.key
+                  ? "bg-neon-green/10 text-neon-green border border-neon-green/30"
+                  : "text-muted-foreground hover:text-foreground border border-transparent"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Body — tabbed content */}
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-4">
+
+          {/* ════════ OVERVIEW TAB ════════ */}
+          {activeTab === "overview" && (
+            <>
             {/* Top summary cards */}
             <div className="grid grid-cols-4 gap-2">
               <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
-                <p className="text-[10px] text-muted-foreground">
-                  Recommendation
-                </p>
+                <p className="text-[10px] text-muted-foreground">Recommendation</p>
                 <RecommendationBadge rec={prediction.recommendation} />
               </div>
               <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
@@ -229,9 +259,7 @@ export function PredictionDetailDrawer({
               </div>
               <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
                 <p className="text-[10px] text-muted-foreground">Line</p>
-                <p className="text-xs font-mono text-neon-cyan">
-                  {prediction.bookmaker_line ?? "—"}
-                </p>
+                <p className="text-xs font-mono text-neon-cyan">{prediction.bookmaker_line ?? "—"}</p>
               </div>
               <div className="bg-background/50 rounded-md p-2 text-center border border-border/40">
                 <p className="text-[10px] text-muted-foreground">Status</p>
@@ -246,8 +274,7 @@ export function PredictionDetailDrawer({
             {/* Match info */}
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <ActivityIcon className="w-3 h-3" />
-                Match Info
+                <ActivityIcon className="w-3 h-3" /> Match Info
               </h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-background/50 rounded p-2 border border-border/40">
@@ -269,139 +296,198 @@ export function PredictionDetailDrawer({
               </div>
             </div>
 
-            {/* Match Result */}
-            {prediction.result_status && prediction.result_status !== "PENDING" && (
+            {/* Quick stats */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <BarChart2 className="w-3 h-3" /> Quick Stats
+              </h3>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="bg-background/50 rounded p-2 border border-border/40 text-center">
+                  <p className="text-[9px] text-muted-foreground">Avg Rate</p>
+                  <p className={`font-mono font-bold ${prediction.average_rate >= 7 ? "text-neon-green" : prediction.average_rate <= -7 ? "text-neon-red" : "text-foreground"}`}>{prediction.average_rate.toFixed(2)}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40 text-center">
+                  <p className="text-[9px] text-muted-foreground">Above/Below</p>
+                  <p className="font-mono"><span className="text-neon-green">{prediction.matches_above}</span>/<span className="text-neon-red">{prediction.matches_below}</span></p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40 text-center">
+                  <p className="text-[9px] text-muted-foreground">Tests ±/∓</p>
+                  <p className="font-mono">{prediction.increment_test}/{prediction.decrement_test}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Betslip Code editor */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Ticket className="w-3 h-3" /> Betslip Code
+              </h3>
+              <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2">
+                <div className="flex gap-2">
+                  <Input value={betCodeInput} onChange={(e) => setBetCodeInput(e.target.value)} placeholder="e.g. SD:OP-12345" className="font-mono text-xs h-8 bg-background" disabled={saving} />
+                  <Button size="sm" variant="default" onClick={saveBetCode} disabled={saving} className="h-8 gap-1 shrink-0">
+                    <Save className="w-3 h-3" />{saving ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                {saveMsg && <p className={`text-[10px] ${saveMsg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>{saveMsg.text}</p>}
+              </div>
+            </div>
+            </>
+          )}
+
+          {/* ════════ H2H MATCHES TAB ════════ */}
+          {activeTab === "h2h" && (
+            <>
+            {/* H2H Winning Patterns */}
+            {prediction.winning_streak_data && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Trophy className="w-3 h-3" />
-                  Match Result
+                  <TrendingUp className="w-3 h-3" /> H2H Winning Patterns
                 </h3>
-                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Status:</span>
-                    <Badge variant="outline" className={`text-[9px] ${prediction.result_status === "FINAL" ? "border-neon-green/30 text-neon-green" : prediction.result_status === "LIVE" ? "border-neon-red/30 text-neon-red" : "border-border/40"}`}>
-                      {prediction.result_status}
-                    </Badge>
+                <div className="bg-background/50 rounded p-3 border border-border/40 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground truncate mb-1">{prediction.home_team || "Home"}</p>
+                      <p className="text-2xl font-black font-mono text-neon-green">{prediction.winning_streak_data.home_team_h2h_wins}W</p>
+                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.home_team_winning_streak}</p>
+                      <p className="text-[9px] text-muted-foreground/60">recent: {prediction.winning_streak_data.home_team_recent_wins}/3</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[10px] text-muted-foreground truncate mb-1">{prediction.away_team || "Away"}</p>
+                      <p className="text-2xl font-black font-mono text-neon-red">{prediction.winning_streak_data.away_team_h2h_wins}W</p>
+                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.away_team_winning_streak}</p>
+                      <p className="text-[9px] text-muted-foreground/60">recent: {prediction.winning_streak_data.away_team_recent_wins}/3</p>
+                    </div>
                   </div>
-                  {prediction.home_score != null && prediction.away_score != null && (
-                    <>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground truncate max-w-[45%]">{prediction.home_team || "Home"}</span>
-                        <span className="font-mono font-bold text-lg">{prediction.home_score}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground truncate max-w-[45%]">{prediction.away_team || "Away"}</span>
-                        <span className="font-mono font-bold text-lg">{prediction.away_score}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs pt-1 border-t border-border/20">
-                        <span className="text-muted-foreground">Total:</span>
-                        <span className="font-mono font-bold">{Number(prediction.home_score) + Number(prediction.away_score)}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Line:</span>
-                        <span className="font-mono">{prediction.bookmaker_line}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Diff:</span>
-                        <span className="font-mono">{(Number(prediction.home_score) + Number(prediction.away_score) - (prediction.bookmaker_line || 0)).toFixed(1)}</span>
-                      </div>
-                      {prediction.result_updated_at && (
-                        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
-                          <span>Updated:</span>
-                          <span>{relativeTime(prediction.result_updated_at)}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  <div className="text-center text-[10px] text-muted-foreground/60 pt-2 border-t border-border/20">
+                    {prediction.winning_streak_data.total_h2h_matches} total H2H matches
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* All Odds & Alternative Lines */}
+            {/* H2H Totals — match-by-match breakdown */}
+            {prediction.h2h_totals.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Layers className="w-3 h-3" /> H2H Totals — {prediction.h2h_totals.length} matches
+                </h3>
+                <div className="bg-background/50 rounded border border-border/40 overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border/30 text-[10px] text-muted-foreground">
+                        <th className="text-left p-2">#</th>
+                        <th className="text-right p-2">Total</th>
+                        <th className="text-right p-2">Line</th>
+                        <th className="text-right p-2">Diff</th>
+                        <th className="text-right p-2">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {prediction.h2h_totals.map((total, i) => {
+                        const line = prediction.bookmaker_line ?? 0;
+                        const diff = total - line;
+                        const isOver = total > line;
+                        return (
+                          <tr key={i} className="border-b border-border/10 hover:bg-card/40">
+                            <td className="p-2 text-muted-foreground font-mono">{i + 1}</td>
+                            <td className="p-2 text-right font-mono font-bold">{total}</td>
+                            <td className="p-2 text-right font-mono text-muted-foreground">{line}</td>
+                            <td className={`p-2 text-right font-mono ${diff > 0 ? "text-neon-green" : diff < 0 ? "text-neon-red" : "text-muted-foreground"}`}>
+                              {diff > 0 ? "+" : ""}{diff.toFixed(1)}
+                            </td>
+                            <td className="p-2 text-right">
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isOver ? "text-neon-green bg-neon-green/10" : "text-neon-red bg-neon-red/10"}`}>
+                                {isOver ? "OVER" : "UNDER"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Rate values array */}
+            {prediction.rate_values.length > 0 && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Percent className="w-3 h-3" /> Rate Values
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <div className="flex flex-wrap gap-1">
+                    {prediction.rate_values.map((rv, i) => (
+                      <span key={i} className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${rv > 0 ? "text-neon-green bg-neon-green/5" : rv < 0 ? "text-neon-red bg-neon-red/5" : "text-muted-foreground"}`}>
+                        {rv > 0 ? "+" : ""}{rv.toFixed(1)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+            </>
+          )}
+
+          {/* ════════ ODDS TAB ════════ */}
+          {activeTab === "odds" && (
+            <>
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Coins className="w-3 h-3" />
-                Odds & Alternative Lines
+                <Coins className="w-3 h-3" /> All Odds & Alternative Lines
               </h3>
-              <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2">
+              <div className="bg-background/50 rounded p-3 border border-border/40 space-y-3">
                 {/* Standard O/U */}
-                <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
-                  <span className="text-muted-foreground col-span-1">Standard</span>
-                  <div className="text-center">
-                    <p className="text-[9px] text-muted-foreground">OVER</p>
-                    <p className="font-mono text-neon-green">{prediction.over_odds ?? "—"}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[9px] text-muted-foreground">LINE</p>
-                    <p className="font-mono text-neon-cyan font-bold">{prediction.bookmaker_line ?? "—"}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[9px] text-muted-foreground">UNDER</p>
-                    <p className="font-mono text-neon-red">{prediction.under_odds ?? "—"}</p>
-                  </div>
+                <div className="grid grid-cols-4 gap-2 text-xs items-center pb-2 border-b border-border/20">
+                  <span className="text-muted-foreground">Standard</span>
+                  <div className="text-center"><p className="text-[9px] text-muted-foreground">OVER</p><p className="font-mono text-neon-green font-bold">{prediction.over_odds ?? "—"}</p></div>
+                  <div className="text-center"><p className="text-[9px] text-muted-foreground">LINE</p><p className="font-mono text-neon-cyan font-bold text-sm">{prediction.bookmaker_line ?? "—"}</p></div>
+                  <div className="text-center"><p className="text-[9px] text-muted-foreground">UNDER</p><p className="font-mono text-neon-red font-bold">{prediction.under_odds ?? "—"}</p></div>
                 </div>
                 {/* Reduced-risk OVER */}
                 {prediction.reduced_over_total != null && (
-                  <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
-                    <span className="text-neon-green col-span-1 font-bold">Reduced OVER</span>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">OVER</p>
-                      <p className="font-mono text-neon-green">{prediction.reduced_over_odds ?? "—"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">LINE</p>
-                      <p className="font-mono text-neon-green font-bold">{prediction.reduced_over_total}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">SHIFT</p>
-                      <p className="font-mono text-muted-foreground">{prediction.reduced_over_total && prediction.bookmaker_line ? (prediction.reduced_over_total - prediction.bookmaker_line).toFixed(1) : "—"}</p>
-                    </div>
+                  <div className="grid grid-cols-4 gap-2 text-xs items-center pb-2 border-b border-border/20">
+                    <span className="text-neon-green font-bold">Reduced OVER</span>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">ODDS</p><p className="font-mono text-neon-green">{prediction.reduced_over_odds ?? "—"}</p></div>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">LINE</p><p className="font-mono text-neon-green font-bold text-sm">{prediction.reduced_over_total}</p></div>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">SHIFT</p><p className="font-mono text-muted-foreground">{(prediction.reduced_over_total - (prediction.bookmaker_line || 0)).toFixed(1)}</p></div>
                   </div>
                 )}
                 {/* Reduced-risk UNDER */}
                 {prediction.reduced_under_total != null && (
-                  <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
-                    <span className="text-neon-red col-span-1 font-bold">Reduced UNDER</span>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">SHIFT</p>
-                      <p className="font-mono text-muted-foreground">{prediction.reduced_under_total && prediction.bookmaker_line ? (prediction.reduced_under_total - prediction.bookmaker_line).toFixed(1) : "—"}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">LINE</p>
-                      <p className="font-mono text-neon-red font-bold">{prediction.reduced_under_total}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground">UNDER</p>
-                      <p className="font-mono text-neon-red">{prediction.reduced_under_odds ?? "—"}</p>
-                    </div>
+                  <div className="grid grid-cols-4 gap-2 text-xs items-center pb-2 border-b border-border/20">
+                    <span className="text-neon-red font-bold">Reduced UNDER</span>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">SHIFT</p><p className="font-mono text-muted-foreground">{(prediction.reduced_under_total - (prediction.bookmaker_line || 0)).toFixed(1)}</p></div>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">LINE</p><p className="font-mono text-neon-red font-bold text-sm">{prediction.reduced_under_total}</p></div>
+                    <div className="text-center"><p className="text-[9px] text-muted-foreground">ODDS</p><p className="font-mono text-neon-red">{prediction.reduced_under_odds ?? "—"}</p></div>
                   </div>
                 )}
-                {/* 1X2 / Moneyline */}
-                <div className="grid grid-cols-3 gap-2 text-[11px] items-center">
-                  <div className="text-center">
+                {/* 1X2 */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="text-center bg-background/40 rounded p-2">
                     <p className="text-[9px] text-muted-foreground">HOME (1)</p>
-                    <p className="font-mono">{prediction.home_odds ?? "—"}</p>
+                    <p className="font-mono font-bold text-lg">{prediction.home_odds ?? "—"}</p>
                     <p className="text-[9px] text-muted-foreground/60 truncate">{prediction.home_team || ""}</p>
                   </div>
-                  <div className="text-center">
+                  <div className="text-center bg-background/40 rounded p-2">
                     <p className="text-[9px] text-muted-foreground">AWAY (2)</p>
-                    <p className="font-mono">{prediction.away_odds ?? "—"}</p>
+                    <p className="font-mono font-bold text-lg">{prediction.away_odds ?? "—"}</p>
                     <p className="text-[9px] text-muted-foreground/60 truncate">{prediction.away_team || ""}</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Team Winner Prediction */}
+            {/* 1X2 Prediction */}
             {prediction.team_winner && prediction.team_winner !== "NO_WINNER_PREDICTION" && (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Trophy className="w-3 h-3" />
-                  1X2 Prediction
+                  <Trophy className="w-3 h-3" /> 1X2 Prediction
                 </h3>
-                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-1 text-xs">
+                <div className="bg-background/50 rounded p-3 border border-border/40 space-y-1 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Winner:</span>
+                    <span className="text-muted-foreground">Predicted Winner:</span>
                     <span className="font-bold text-neon-cyan">
                       {prediction.team_winner === "HOME_TEAM" ? prediction.home_team : prediction.team_winner === "AWAY_TEAM" ? prediction.away_team : prediction.team_winner}
                     </span>
@@ -413,100 +499,92 @@ export function PredictionDetailDrawer({
                 </div>
               </div>
             )}
+            </>
+          )}
 
-            {/* Winning Streak Data (H2H) */}
-            {prediction.winning_streak_data && (
+          {/* ════════ RESULT TAB ════════ */}
+          {activeTab === "result" && (
+            <>
+            {prediction.result_status && prediction.result_status !== "PENDING" ? (
               <div>
                 <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3" />
-                  H2H Winning Patterns
+                  <Trophy className="w-3 h-3" /> Match Result
                 </h3>
-                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2 text-xs">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground truncate">{prediction.home_team || "Home"}</p>
-                      <p className="font-mono font-bold text-neon-green">{prediction.winning_streak_data.home_team_h2h_wins}W</p>
-                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.home_team_winning_streak}</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-[9px] text-muted-foreground truncate">{prediction.away_team || "Away"}</p>
-                      <p className="font-mono font-bold text-neon-red">{prediction.winning_streak_data.away_team_h2h_wins}W</p>
-                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.away_team_winning_streak}</p>
-                    </div>
+                <div className="bg-background/50 rounded p-3 border border-border/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Status:</span>
+                    <Badge variant="outline" className={`text-[9px] ${prediction.result_status === "FINAL" ? "border-neon-green/30 text-neon-green" : prediction.result_status === "LIVE" ? "border-neon-red/30 text-neon-red" : "border-border/40"}`}>
+                      {prediction.result_status}
+                    </Badge>
                   </div>
-                  <div className="text-center text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
-                    {prediction.winning_streak_data.total_h2h_matches} H2H matches · Recent: {prediction.winning_streak_data.home_team_recent_wins}H / {prediction.winning_streak_data.away_team_recent_wins}A
-                  </div>
+                  {prediction.home_score != null && prediction.away_score != null && (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <p className="text-[10px] text-muted-foreground truncate">{prediction.home_team || "Home"}</p>
+                          <p className="text-3xl font-black font-mono">{prediction.home_score}</p>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <span className="text-muted-foreground/40 text-lg">-</span>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-muted-foreground truncate">{prediction.away_team || "Away"}</p>
+                          <p className="text-3xl font-black font-mono">{prediction.away_score}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 text-center pt-2 border-t border-border/20">
+                        <div>
+                          <p className="text-[9px] text-muted-foreground">Total</p>
+                          <p className="font-mono font-bold">{Number(prediction.home_score) + Number(prediction.away_score)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-muted-foreground">Line</p>
+                          <p className="font-mono">{prediction.bookmaker_line}</p>
+                        </div>
+                        <div>
+                          <p className="text-[9px] text-muted-foreground">Diff</p>
+                          <p className={`font-mono ${(Number(prediction.home_score) + Number(prediction.away_score) - (prediction.bookmaker_line || 0)) >= 0 ? "text-neon-green" : "text-neon-red"}`}>
+                            {(Number(prediction.home_score) + Number(prediction.away_score) - (prediction.bookmaker_line || 0)).toFixed(1)}
+                          </p>
+                        </div>
+                      </div>
+                      {prediction.result_updated_at && (
+                        <p className="text-[10px] text-muted-foreground/60 text-center">Updated: {relativeTime(prediction.result_updated_at)}</p>
+                      )}
+                    </>
+                  )}
                 </div>
+              </div>
+            ) : (
+              <div className="py-12 text-center">
+                <Clock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">No result yet</p>
+                <p className="text-xs text-muted-foreground/50">Match hasn't been played or result not scraped</p>
               </div>
             )}
+            </>
+          )}
 
-            {/* Betslip Code editor (admin sets the Linebet/Paripesa/1xbet booking code) */}
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Ticket className="w-3 h-3" />
-                Betslip Code
-              </h3>
-              <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Paste a booking code from <span className="text-foreground">Linebet</span>, <span className="text-foreground">Paripesa</span>, <span className="text-foreground">1xbet</span>, etc. Users will see it in the footer of the prediction card with a copy button.
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={betCodeInput}
-                    onChange={(e) => setBetCodeInput(e.target.value)}
-                    placeholder="e.g. SD:OP-12345"
-                    className="font-mono text-xs h-8 bg-background"
-                    disabled={saving}
-                  />
-                  <Button
-                    size="sm"
-                    variant="default"
-                    onClick={saveBetCode}
-                    disabled={saving}
-                    className="h-8 gap-1 shrink-0"
-                  >
-                    <Save className="w-3 h-3" />
-                    {saving ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-                {saveMsg && (
-                  <p className={`text-[10px] ${saveMsg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>
-                    {saveMsg.text}
-                  </p>
-                )}
-              </div>
-            </div>
-
+          {/* ════════ PIPELINE TAB ════════ */}
+          {activeTab === "pipeline" && (
+            <>
             {/* 10-step pipeline timeline */}
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <GitBranch className="w-3 h-3" />
-                10-Step Pipeline
+                <GitBranch className="w-3 h-3" /> 10-Step Pipeline
               </h3>
               <div className="space-y-1.5">
                 {steps.map((s, i) => (
                   <div key={s.num} className="flex items-center gap-2">
                     <div className="relative flex flex-col items-center">
-                      <div
-                        className={`w-7 h-7 rounded-full border-2 ${stepColor(
-                          s.status,
-                        )} flex items-center justify-center text-[10px] font-bold`}
-                      >
+                      <div className={`w-7 h-7 rounded-full border-2 ${stepColor(s.status)} flex items-center justify-center text-[10px] font-bold`}>
                         {s.num}
                       </div>
-                      {i < steps.length - 1 && (
-                        <div className="absolute top-7 w-0.5 h-3 bg-border/40" />
-                      )}
+                      {i < steps.length - 1 && <div className="absolute top-7 w-0.5 h-3 bg-border/40" />}
                     </div>
                     <div className="flex-1 flex items-center justify-between gap-2 pb-3">
-                      <div className="flex items-center gap-2">
-                        {s.icon}
-                        <span className="text-xs font-medium">{s.name}</span>
-                      </div>
-                      <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[60%] text-right">
-                        {s.detail}
-                      </span>
+                      <div className="flex items-center gap-2">{s.icon}<span className="text-xs font-medium">{s.name}</span></div>
+                      <span className="text-[10px] text-muted-foreground font-mono truncate max-w-[60%] text-right">{s.detail}</span>
                     </div>
                   </div>
                 ))}
@@ -516,84 +594,26 @@ export function PredictionDetailDrawer({
             {/* Numerical inputs */}
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Database className="w-3 h-3" />
-                Numerical Inputs
+                <Database className="w-3 h-3" /> Numerical Inputs
               </h3>
               <div className="grid grid-cols-2 gap-2 text-xs">
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Average rate</span>
-                  <p className="font-mono text-neon-green">
-                    {prediction.average_rate.toFixed(3)}
-                  </p>
-                </div>
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Bookmaker line</span>
-                  <p className="font-mono text-neon-cyan">
-                    {prediction.bookmaker_line ?? "—"}
-                  </p>
-                </div>
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Above line</span>
-                  <p className="font-mono">{prediction.matches_above}</p>
-                </div>
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Below line</span>
-                  <p className="font-mono">{prediction.matches_below}</p>
-                </div>
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Increment test</span>
-                  <p className="font-mono">{prediction.increment_test}</p>
-                </div>
-                <div className="bg-background/50 rounded p-2 border border-border/40">
-                  <span className="text-muted-foreground">Decrement test</span>
-                  <p className="font-mono">{prediction.decrement_test}</p>
-                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Average rate</span><p className="font-mono text-neon-green">{prediction.average_rate.toFixed(3)}</p></div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Bookmaker line</span><p className="font-mono text-neon-cyan">{prediction.bookmaker_line ?? "—"}</p></div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Above line</span><p className="font-mono">{prediction.matches_above}</p></div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Below line</span><p className="font-mono">{prediction.matches_below}</p></div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Increment test</span><p className="font-mono">{prediction.increment_test}</p></div>
+                <div className="bg-background/50 rounded p-2 border border-border/40"><span className="text-muted-foreground">Decrement test</span><p className="font-mono">{prediction.decrement_test}</p></div>
               </div>
             </div>
-
-            {/* H2H totals array */}
-            {prediction.h2h_totals.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Layers className="w-3 h-3" />
-                  H2H Totals ({prediction.h2h_totals.length} values)
-                </h3>
-                <div className="bg-background/50 rounded p-2 border border-border/40 max-h-32 overflow-y-auto">
-                  <p className="text-[11px] font-mono text-muted-foreground break-all">
-                    [{prediction.h2h_totals.join(", ")}]
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Rate values array */}
-            {prediction.rate_values.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <Percent className="w-3 h-3" />
-                  Rate Values ({prediction.rate_values.length} values)
-                </h3>
-                <div className="bg-background/50 rounded p-2 border border-border/40 max-h-32 overflow-y-auto">
-                  <p className="text-[11px] font-mono text-muted-foreground break-all">
-                    [{prediction.rate_values.join(", ")}]
-                  </p>
-                </div>
-              </div>
-            )}
 
             {/* Validation errors */}
             {prediction.validation_errors.length > 0 && (
               <div>
                 <h3 className="text-xs font-semibold text-destructive uppercase tracking-wider mb-2 flex items-center gap-1">
-                  <AlertTriangle className="w-3 h-3" />
-                  Validation Errors
+                  <AlertTriangle className="w-3 h-3" /> Validation Errors
                 </h3>
                 <div className="bg-destructive/5 border border-destructive/30 rounded p-2 space-y-1">
-                  {prediction.validation_errors.map((e, i) => (
-                    <p key={i} className="text-[11px] font-mono text-destructive">
-                      {e}
-                    </p>
-                  ))}
+                  {prediction.validation_errors.map((e, i) => <p key={i} className="text-[11px] font-mono text-destructive">{e}</p>)}
                 </div>
               </div>
             )}
@@ -601,16 +621,17 @@ export function PredictionDetailDrawer({
             {/* Raw JSON */}
             <div>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                <FileText className="w-3 h-3" />
-                Raw JSON
+                <FileText className="w-3 h-3" /> Raw JSON
               </h3>
               <pre className="bg-background/50 rounded p-2 border border-border/40 text-[10px] font-mono overflow-auto max-h-96 text-muted-foreground whitespace-pre-wrap break-all">
                 {JSON.stringify(prediction, null, 2)}
               </pre>
             </div>
+            </>
+          )}
+
           </div>
         </ScrollArea>
-
         {/* Footer */}
         <div className="p-3 border-t border-border/40 flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="font-mono">
