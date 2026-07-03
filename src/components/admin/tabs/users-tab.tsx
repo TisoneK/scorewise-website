@@ -381,7 +381,7 @@ export function UsersTab({
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {userStats[u.id]?.lastLogin
-                        ? new Date(userStats[u.id].lastLogin).toLocaleString()
+                        ? new Date(userStats[u.id].lastLogin as string).toLocaleString()
                         : <span className="text-muted-foreground/40">Never</span>}
                     </TableCell>
                     <TableCell className="text-xs text-center font-mono">
@@ -466,9 +466,12 @@ export function UsersTab({
                   {selectedUserActivity?.userId === u.id && (
                     <TableRow className="bg-background/40">
                       <TableCell colSpan={isAdmin ? 8 : 7} className="p-4">
-                        {loadingActivity ? (
-                          <div className="text-center py-4"><Loader2 className="w-5 h-5 animate-spin mx-auto" /></div>
-                        ) : selectedUserActivity.activities?.length > 0 ? (
+                        {loadingActivity && (
+                          <div className="text-center py-4">
+                            <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+                          </div>
+                        )}
+                        {!loadingActivity && (selectedUserActivity.activities?.length ?? 0) > 0 && (
                           <div className="space-y-1.5">
                             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
                               Activity Timeline — {selectedUserActivity.totalLogins} logins · {selectedUserActivity.totalActions} total actions
@@ -480,20 +483,21 @@ export function UsersTab({
                                 </span>
                                 <Badge variant="outline" className={`text-[9px] ${
                                   a.action === "USER_LOGIN" ? "border-neon-cyan/30 text-neon-cyan" :
-                                  a.action?.includes("DELETE") ? "border-neon-red/30 text-neon-red" :
-                                  a.action?.includes("CONFIG") ? "border-neon-yellow/30 text-neon-yellow" :
-                                  a.action?.includes("RESULT") ? "border-neon-green/30 text-neon-green" :
+                                  (a.action || "").includes("DELETE") ? "border-neon-red/30 text-neon-red" :
+                                  (a.action || "").includes("CONFIG") ? "border-neon-yellow/30 text-neon-yellow" :
+                                  (a.action || "").includes("RESULT") ? "border-neon-green/30 text-neon-green" :
                                   "border-border/40 text-muted-foreground"
-                                }">
+                                }`}>
                                   {a.action || "UNKNOWN"}
                                 </Badge>
                                 <span className="text-muted-foreground/60 truncate">
-                                  {a.details ? (() => { try { return JSON.stringify(JSON.parse(a.details)).substring(0, 80); } catch { return a.details?.substring(0, 80); } })() : ""}
+                                  {a.details ? (() => { try { return JSON.stringify(JSON.parse(a.details)).substring(0, 80); } catch { return (a.details || "").substring(0, 80); } })() : ""}
                                 </span>
                               </div>
                             ))}
                           </div>
-                        ) : (
+                        )}
+                        {!loadingActivity && (selectedUserActivity.activities?.length ?? 0) === 0 && (
                           <p className="text-xs text-muted-foreground text-center py-4">No activity recorded yet</p>
                         )}
                       </TableCell>

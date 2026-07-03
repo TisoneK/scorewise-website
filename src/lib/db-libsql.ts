@@ -2,7 +2,7 @@ import { createClient, Client, ResultSet } from "@libsql/client"
 
 let _libsql: Client | null = null
 
-function getClient(): Client {
+export function getClient(): Client {
   if (!_libsql) {
     _libsql = createClient({
       url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL!,
