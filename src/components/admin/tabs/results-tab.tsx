@@ -224,6 +224,12 @@ export function ResultsTab() {
   const [scraping, setScraping] = useState(false);
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [lastLiveRefresh, setLastLiveRefresh] = useState<Date | null>(null);
+  // Delete panel state
+  const [showDeletePanel, setShowDeletePanel] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"single" | "range">("single");
+  const [deleteFromDate, setDeleteFromDate] = useState("");
+  const [deleteToDate, setDeleteToDate] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const tzAbbr = getTimezoneAbbr();
 
   // Ref to hold the latest data so the live auto-refresh effect can read
@@ -870,6 +876,61 @@ export function ResultsTab() {
 
   const dirtyCount = Object.values(rows).filter((r) => r.dirty).length;
 
+  // ── Delete handler — converts DD/MM/YYYY to YYYY-MM-DD for the API ──
+  const handleDelete = async () => {
+    // Convert from DD/MM/YYYY (user-friendly) to YYYY-MM-DD (API format)
+    const convertDate = (input: string): string => {
+      const trimmed = input.trim();
+      // Already YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+      // DD/MM/YYYY → YYYY-MM-DD
+      const m = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+      // DD-MM-YYYY → YYYY-MM-DD
+      const m2 = trimmed.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (m2) return `${m2[3]}-${m2[2].padStart(2, "0")}-${m2[1].padStart(2, "0")}`;
+      return "";
+    };
+
+    let payload: Record<string, string> = {};
+    let label = "";
+
+    if (deleteMode === "single") {
+      const converted = convertDate(deleteFromDate);
+      if (!converted) { setScrapeMsg({ kind: "err", text: "Invalid date format. Use DD/MM/YYYY" }); return; }
+      payload = { date: converted };
+      label = converted;
+    } else {
+      const from = convertDate(deleteFromDate);
+      const to = convertDate(deleteToDate);
+      if (!from || !to) { setScrapeMsg({ kind: "err", text: "Invalid date format. Use DD/MM/YYYY" }); return; }
+      payload = { fromDate: from, toDate: to };
+      label = `${from} to ${to}`;
+    }
+
+    if (!confirm(`Delete ALL predictions for ${label}? This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/admin/predictions/delete-by-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setScrapeMsg({ kind: "ok", text: `Deleted ${data.deleted} prediction(s) for ${label}` });
+      setTimeout(() => setScrapeMsg(null), 5000);
+      setShowDeletePanel(false);
+      setDeleteFromDate("");
+      setDeleteToDate("");
+      fetchPredictions();
+    } catch (err) {
+      setScrapeMsg({ kind: "err", text: err instanceof Error ? err.message : "Delete failed" });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       {/* Header + actions */}
@@ -911,44 +972,13 @@ export function ResultsTab() {
                 {scraping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{scraping ? "Scraping..." : "Scrape Results"}</span>
               </Button>
-              {/* Delete — single date or range */}
+              {/* Delete — opens a date picker panel */}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={async () => {
-                  const input = prompt("Delete by date or range:\n• Single: 2026-07-03\n• Range: 2026-06-01 to 2026-06-30");
-                  if (!input) return;
-                  let payload: Record<string, string> = {};
-                  let label = "";
-                  const rangeMatch = input.match(/^(\d{4}-\d{2}-\d{2})\s*(?:to|-|→)\s*(\d{4}-\d{2}-\d{2})$/);
-                  if (rangeMatch) {
-                    payload = { fromDate: rangeMatch[1], toDate: rangeMatch[2] };
-                    label = `${rangeMatch[1]} to ${rangeMatch[2]}`;
-                  } else if (/^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
-                    payload = { date: input.trim() };
-                    label = input.trim();
-                  } else {
-                    alert("Invalid format.\nUse: 2026-07-03 (single)\nor: 2026-06-01 to 2026-06-30 (range)");
-                    return;
-                  }
-                  if (!confirm(`Delete ALL predictions for ${label}? This cannot be undone.`)) return;
-                  try {
-                    const res = await fetch("/api/admin/predictions/delete-by-date", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(payload),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-                    setScrapeMsg({ kind: "ok", text: `Deleted ${data.deleted} prediction(s) for ${label}` });
-                    setTimeout(() => setScrapeMsg(null), 5000);
-                    fetchPredictions();
-                  } catch (err) {
-                    setScrapeMsg({ kind: "err", text: err instanceof Error ? err.message : "Delete failed" });
-                  }
-                }}
+                onClick={() => setShowDeletePanel(!showDeletePanel)}
                 className="gap-1.5 h-8 border-neon-red/30 text-neon-red hover:bg-neon-red/10"
-                title="Delete predictions by single date or date range"
+                title="Delete predictions by date or date range"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Delete</span>
@@ -984,6 +1014,96 @@ export function ResultsTab() {
               <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
             )}
           </div>
+
+          {/* Delete panel — date picker for single date or range */}
+          {showDeletePanel && (
+            <Card className="bg-card/60 border-neon-red/30">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Trash2 className="w-4 h-4 text-neon-red" />
+                  <p className="text-sm font-bold text-neon-red">Delete Predictions</p>
+                </div>
+                {/* Mode toggle */}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeleteMode("single")}
+                    className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                      deleteMode === "single"
+                        ? "border-neon-red/50 bg-neon-red/10 text-neon-red font-bold"
+                        : "border-border/40 text-muted-foreground"
+                    }`}
+                  >
+                    Single Date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteMode("range")}
+                    className={`text-xs px-3 py-1.5 rounded-md border transition-colors ${
+                      deleteMode === "range"
+                        ? "border-neon-red/50 bg-neon-red/10 text-neon-red font-bold"
+                        : "border-border/40 text-muted-foreground"
+                    }`}
+                  >
+                    Date Range
+                  </button>
+                </div>
+                {/* Date pickers */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {deleteMode === "single" ? (
+                    <>
+                      <label className="text-xs text-muted-foreground">Date:</label>
+                      <input
+                        type="date"
+                        value={deleteFromDate}
+                        onChange={(e) => setDeleteFromDate(e.target.value)}
+                        className="bg-background border border-border/50 rounded-md h-9 px-3 text-sm"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label className="text-xs text-muted-foreground">From:</label>
+                      <input
+                        type="date"
+                        value={deleteFromDate}
+                        onChange={(e) => setDeleteFromDate(e.target.value)}
+                        className="bg-background border border-border/50 rounded-md h-9 px-3 text-sm"
+                      />
+                      <label className="text-xs text-muted-foreground">To:</label>
+                      <input
+                        type="date"
+                        value={deleteToDate}
+                        onChange={(e) => setDeleteToDate(e.target.value)}
+                        className="bg-background border border-border/50 rounded-md h-9 px-3 text-sm"
+                      />
+                    </>
+                  )}
+                  <Button
+                    size="sm"
+                    onClick={handleDelete}
+                    disabled={deleting || !deleteFromDate || (deleteMode === "range" && !deleteToDate)}
+                    className="gap-1.5 bg-neon-red text-background hover:bg-neon-red/85"
+                  >
+                    {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                    Delete
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => { setShowDeletePanel(false); setDeleteFromDate(""); setDeleteToDate(""); }}
+                    className="text-muted-foreground"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground/60">
+                  {deleteMode === "single"
+                    ? "Deletes all predictions for the selected date. Date is converted automatically — no need to worry about format."
+                    : "Deletes all predictions from the start date to the end date (inclusive). Useful for clearing old data."}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Stats badges — all categories shown so math adds up:
               total = live + awaiting + final + upcoming + other */}
