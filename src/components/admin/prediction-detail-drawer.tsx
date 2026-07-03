@@ -39,6 +39,7 @@ import {
   Ticket,
   Save,
   ExternalLink,
+  Coins,
 } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
@@ -241,6 +242,204 @@ export function PredictionDetailDrawer({
                 )}
               </div>
             </div>
+
+            {/* Match info */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <ActivityIcon className="w-3 h-3" />
+                Match Info
+              </h3>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">League</span>
+                  <p className="font-medium truncate">{prediction.league || "—"}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Country</span>
+                  <p className="font-medium truncate">{prediction.country || "—"}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Date</span>
+                  <p className="font-mono">{prediction.date || "—"}</p>
+                </div>
+                <div className="bg-background/50 rounded p-2 border border-border/40">
+                  <span className="text-muted-foreground">Time</span>
+                  <p className="font-mono">{prediction.time || "—"}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Match Result */}
+            {prediction.result_status && prediction.result_status !== "PENDING" && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Trophy className="w-3 h-3" />
+                  Match Result
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Status:</span>
+                    <Badge variant="outline" className={`text-[9px] ${prediction.result_status === "FINAL" ? "border-neon-green/30 text-neon-green" : prediction.result_status === "LIVE" ? "border-neon-red/30 text-neon-red" : "border-border/40"}`}>
+                      {prediction.result_status}
+                    </Badge>
+                  </div>
+                  {prediction.home_score != null && prediction.away_score != null && (
+                    <>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground truncate max-w-[45%]">{prediction.home_team || "Home"}</span>
+                        <span className="font-mono font-bold text-lg">{prediction.home_score}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground truncate max-w-[45%]">{prediction.away_team || "Away"}</span>
+                        <span className="font-mono font-bold text-lg">{prediction.away_score}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-border/20">
+                        <span className="text-muted-foreground">Total:</span>
+                        <span className="font-mono font-bold">{Number(prediction.home_score) + Number(prediction.away_score)}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Line:</span>
+                        <span className="font-mono">{prediction.bookmaker_line}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">Diff:</span>
+                        <span className="font-mono">{(Number(prediction.home_score) + Number(prediction.away_score) - (prediction.bookmaker_line || 0)).toFixed(1)}</span>
+                      </div>
+                      {prediction.result_updated_at && (
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground/60">
+                          <span>Updated:</span>
+                          <span>{relativeTime(prediction.result_updated_at)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* All Odds & Alternative Lines */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Coins className="w-3 h-3" />
+                Odds & Alternative Lines
+              </h3>
+              <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2">
+                {/* Standard O/U */}
+                <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
+                  <span className="text-muted-foreground col-span-1">Standard</span>
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground">OVER</p>
+                    <p className="font-mono text-neon-green">{prediction.over_odds ?? "—"}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground">LINE</p>
+                    <p className="font-mono text-neon-cyan font-bold">{prediction.bookmaker_line ?? "—"}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground">UNDER</p>
+                    <p className="font-mono text-neon-red">{prediction.under_odds ?? "—"}</p>
+                  </div>
+                </div>
+                {/* Reduced-risk OVER */}
+                {prediction.reduced_over_total != null && (
+                  <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
+                    <span className="text-neon-green col-span-1 font-bold">Reduced OVER</span>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">OVER</p>
+                      <p className="font-mono text-neon-green">{prediction.reduced_over_odds ?? "—"}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">LINE</p>
+                      <p className="font-mono text-neon-green font-bold">{prediction.reduced_over_total}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">SHIFT</p>
+                      <p className="font-mono text-muted-foreground">{prediction.reduced_over_total && prediction.bookmaker_line ? (prediction.reduced_over_total - prediction.bookmaker_line).toFixed(1) : "—"}</p>
+                    </div>
+                  </div>
+                )}
+                {/* Reduced-risk UNDER */}
+                {prediction.reduced_under_total != null && (
+                  <div className="grid grid-cols-4 gap-2 text-[11px] items-center pb-2 border-b border-border/20">
+                    <span className="text-neon-red col-span-1 font-bold">Reduced UNDER</span>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">SHIFT</p>
+                      <p className="font-mono text-muted-foreground">{prediction.reduced_under_total && prediction.bookmaker_line ? (prediction.reduced_under_total - prediction.bookmaker_line).toFixed(1) : "—"}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">LINE</p>
+                      <p className="font-mono text-neon-red font-bold">{prediction.reduced_under_total}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground">UNDER</p>
+                      <p className="font-mono text-neon-red">{prediction.reduced_under_odds ?? "—"}</p>
+                    </div>
+                  </div>
+                )}
+                {/* 1X2 / Moneyline */}
+                <div className="grid grid-cols-3 gap-2 text-[11px] items-center">
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground">HOME (1)</p>
+                    <p className="font-mono">{prediction.home_odds ?? "—"}</p>
+                    <p className="text-[9px] text-muted-foreground/60 truncate">{prediction.home_team || ""}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[9px] text-muted-foreground">AWAY (2)</p>
+                    <p className="font-mono">{prediction.away_odds ?? "—"}</p>
+                    <p className="text-[9px] text-muted-foreground/60 truncate">{prediction.away_team || ""}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Team Winner Prediction */}
+            {prediction.team_winner && prediction.team_winner !== "NO_WINNER_PREDICTION" && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Trophy className="w-3 h-3" />
+                  1X2 Prediction
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Winner:</span>
+                    <span className="font-bold text-neon-cyan">
+                      {prediction.team_winner === "HOME_TEAM" ? prediction.home_team : prediction.team_winner === "AWAY_TEAM" ? prediction.away_team : prediction.team_winner}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Confidence:</span>
+                    <ConfidenceBadge level={prediction.team_winner_confidence} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Winning Streak Data (H2H) */}
+            {prediction.winning_streak_data && (
+              <div>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <TrendingUp className="w-3 h-3" />
+                  H2H Winning Patterns
+                </h3>
+                <div className="bg-background/50 rounded p-2 border border-border/40 space-y-2 text-xs">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground truncate">{prediction.home_team || "Home"}</p>
+                      <p className="font-mono font-bold text-neon-green">{prediction.winning_streak_data.home_team_h2h_wins}W</p>
+                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.home_team_winning_streak}</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-[9px] text-muted-foreground truncate">{prediction.away_team || "Away"}</p>
+                      <p className="font-mono font-bold text-neon-red">{prediction.winning_streak_data.away_team_h2h_wins}W</p>
+                      <p className="text-[9px] text-muted-foreground/60">streak: {prediction.winning_streak_data.away_team_winning_streak}</p>
+                    </div>
+                  </div>
+                  <div className="text-center text-[10px] text-muted-foreground/60 pt-1 border-t border-border/20">
+                    {prediction.winning_streak_data.total_h2h_matches} H2H matches · Recent: {prediction.winning_streak_data.home_team_recent_wins}H / {prediction.winning_streak_data.away_team_recent_wins}A
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Betslip Code editor (admin sets the Linebet/Paripesa/1xbet booking code) */}
             <div>
