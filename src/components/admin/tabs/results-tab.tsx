@@ -911,24 +911,36 @@ export function ResultsTab() {
                 {scraping ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <DownloadCloud className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{scraping ? "Scraping..." : "Scrape Results"}</span>
               </Button>
-              {/* Delete by Date — removes all predictions for a chosen date */}
+              {/* Delete — single date or range */}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={async () => {
-                  const date = prompt("Enter date to delete (YYYY-MM-DD, e.g. 2026-07-03):");
-                  if (!date) return;
-                  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { alert("Invalid format. Use YYYY-MM-DD"); return; }
-                  if (!confirm(`Delete ALL predictions for ${date}? This cannot be undone.`)) return;
+                  const input = prompt("Delete by date or range:\n• Single: 2026-07-03\n• Range: 2026-06-01 to 2026-06-30");
+                  if (!input) return;
+                  let payload: Record<string, string> = {};
+                  let label = "";
+                  const rangeMatch = input.match(/^(\d{4}-\d{2}-\d{2})\s*(?:to|-|→)\s*(\d{4}-\d{2}-\d{2})$/);
+                  if (rangeMatch) {
+                    payload = { fromDate: rangeMatch[1], toDate: rangeMatch[2] };
+                    label = `${rangeMatch[1]} to ${rangeMatch[2]}`;
+                  } else if (/^\d{4}-\d{2}-\d{2}$/.test(input.trim())) {
+                    payload = { date: input.trim() };
+                    label = input.trim();
+                  } else {
+                    alert("Invalid format.\nUse: 2026-07-03 (single)\nor: 2026-06-01 to 2026-06-30 (range)");
+                    return;
+                  }
+                  if (!confirm(`Delete ALL predictions for ${label}? This cannot be undone.`)) return;
                   try {
                     const res = await fetch("/api/admin/predictions/delete-by-date", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ date }),
+                      body: JSON.stringify(payload),
                     });
                     const data = await res.json();
                     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-                    setScrapeMsg({ kind: "ok", text: `Deleted ${data.deleted} prediction(s) for ${date}` });
+                    setScrapeMsg({ kind: "ok", text: `Deleted ${data.deleted} prediction(s) for ${label}` });
                     setTimeout(() => setScrapeMsg(null), 5000);
                     fetchPredictions();
                   } catch (err) {
@@ -936,7 +948,7 @@ export function ResultsTab() {
                   }
                 }}
                 className="gap-1.5 h-8 border-neon-red/30 text-neon-red hover:bg-neon-red/10"
-                title="Delete all predictions for a specific date"
+                title="Delete predictions by single date or date range"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Delete</span>

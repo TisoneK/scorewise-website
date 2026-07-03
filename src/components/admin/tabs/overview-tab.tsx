@@ -11,6 +11,7 @@
 
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +69,8 @@ export function OverviewTab({
   fetchAllPredictions,
   setDrawerPrediction,
 }: OverviewTabProps) {
+  const [formCount, setFormCount] = useState(15);
+
   // ── Compute betting stats from predictions ──────────────────────────
   const stats = (() => {
     let ouWins = 0, ouLosses = 0, ouPushes = 0, ouPending = 0;
@@ -151,7 +154,7 @@ export function OverviewTab({
       else break;
     }
 
-    // Recent form — separate for O/U and 1X2 (oldest → newest)
+    // Recent form — separate for O/U and 1X2 (oldest → newest, full arrays)
     const ouForm: ("W" | "L")[] = [];
     const winForm: ("W" | "L")[] = [];
     for (const p of settled) {
@@ -162,14 +165,12 @@ export function OverviewTab({
       if (win === "WIN") winForm.push("W");
       else if (win === "LOSS") winForm.push("L");
     }
-    const ouLast15 = ouForm.slice(-15);
-    const winLast15 = winForm.slice(-15);
 
     return {
       ouWins, ouLosses, ouPushes, ouPending, ouProfit, ouStaked,
       winWins, winLosses, winPending, winProfit, winStaked,
       totalWins, totalLosses, totalResolved, totalStaked, totalProfit,
-      hitRate, roi, streakType, streakLen, ouLast15, winLast15,
+      hitRate, roi, streakType, streakLen, ouForm, winForm,
     };
   })();
 
@@ -295,17 +296,27 @@ export function OverviewTab({
               <span>ROI: <span className={`font-bold ${stats.ouStaked > 0 ? (stats.ouProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.ouStaked > 0 ? `${((stats.ouProfit / stats.ouStaked) * 100).toFixed(1)}%` : "—"}</span></span>
               <span>Pending: {stats.ouPending}</span>
             </div>
-            {/* O/U Recent form dots */}
-            {stats.ouLast15.length > 0 && (
+            {/* O/U Recent form dots — customizable count */}
+            {stats.ouForm.length > 0 && (
               <div className="flex items-center gap-1.5 pt-1 border-t border-border/20">
-                <span className="text-[9px] text-muted-foreground/50 shrink-0">L15</span>
+                <select
+                  value={formCount}
+                  onChange={(e) => setFormCount(Number(e.target.value))}
+                  className="bg-background border border-border/30 rounded text-[9px] h-5 px-1 text-muted-foreground"
+                >
+                  <option value={5}>L5</option>
+                  <option value={10}>L10</option>
+                  <option value={15}>L15</option>
+                  <option value={20}>L20</option>
+                  <option value={30}>L30</option>
+                </select>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {stats.ouLast15.map((r, i) => (
+                  {stats.ouForm.slice(-formCount).map((r, i) => (
                     <span key={i} className={`w-2.5 h-2.5 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`} />
                   ))}
                 </div>
                 <span className="text-[9px] text-muted-foreground/60 ml-auto shrink-0">
-                  {stats.ouLast15.filter((r) => r === "W").length}W / {stats.ouLast15.filter((r) => r === "L").length}L
+                  {stats.ouForm.slice(-formCount).filter((r) => r === "W").length}W / {stats.ouForm.slice(-formCount).filter((r) => r === "L").length}L
                 </span>
               </div>
             )}
@@ -342,17 +353,17 @@ export function OverviewTab({
               <span>ROI: <span className={`font-bold ${stats.winStaked > 0 ? (stats.winProfit >= 0 ? "text-neon-green" : "text-neon-red") : "text-muted-foreground"}`}>{stats.winStaked > 0 ? `${((stats.winProfit / stats.winStaked) * 100).toFixed(1)}%` : "—"}</span></span>
               <span>Pending: {stats.winPending}</span>
             </div>
-            {/* 1X2 Recent form dots */}
-            {stats.winLast15.length > 0 && (
+            {/* 1X2 Recent form dots — uses same formCount */}
+            {stats.winForm.length > 0 && (
               <div className="flex items-center gap-1.5 pt-1 border-t border-border/20">
-                <span className="text-[9px] text-muted-foreground/50 shrink-0">L15</span>
+                <span className="text-[9px] text-muted-foreground/50 shrink-0">L{formCount}</span>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {stats.winLast15.map((r, i) => (
+                  {stats.winForm.slice(-formCount).map((r, i) => (
                     <span key={i} className={`w-2.5 h-2.5 rounded-sm ${r === "W" ? "bg-neon-green" : "bg-neon-red"}`} />
                   ))}
                 </div>
                 <span className="text-[9px] text-muted-foreground/60 ml-auto shrink-0">
-                  {stats.winLast15.filter((r) => r === "W").length}W / {stats.winLast15.filter((r) => r === "L").length}L
+                  {stats.winForm.slice(-formCount).filter((r) => r === "W").length}W / {stats.winForm.slice(-formCount).filter((r) => r === "L").length}L
                 </span>
               </div>
             )}

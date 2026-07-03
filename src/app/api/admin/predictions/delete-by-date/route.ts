@@ -8,13 +8,13 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/admin/predictions/delete-by-date
  *
- * Deletes all predictions for a specific date using raw SQL.
- * Tries multiple date format matches since the DB may store dates
- * in different formats (YYYY-MM-DD, DD.MM.YYYY, etc.)
+ * Deletes predictions by date or date range.
  *
- * Body: { date: string } — date in YYYY-MM-DD format (e.g., "2026-07-03")
+ * Body options:
+ *   { date: "2026-07-03" }                           — delete single date
+ *   { fromDate: "2026-06-01", toDate: "2026-06-30" } — delete range (inclusive)
  *
- * Returns: { deleted: number, date: string }
+ * Tries multiple date format matches (YYYY-MM-DD, DD.MM.YYYY, LIKE patterns).
  *
  * Admin + Operator only.
  */
@@ -27,82 +27,110 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { date } = body;
+    const { date, fromDate, toDate } = body;
 
-    if (!date || typeof date !== "string") {
-      return NextResponse.json({ error: "date is required (YYYY-MM-DD format)" }, { status: 400 });
+    // Validate: either single date or range
+    const isSingle = date && typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date);
+    const isRange = fromDate && toDate && /^\d{4}-\d{2}-\d{2}$/.test(fromDate) && /^\d{4}-\d{2}-\d{2}$/.test(toDate);
+
+    if (!isSingle && !isRange) {
+      return NextResponse.json({
+        error: "Provide either { date: 'YYYY-MM-DD' } or { fromDate: 'YYYY-MM-DD', toDate: 'YYYY-MM-DD' }"
+      }, { status: 400 });
     }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json({ error: "date must be in YYYY-MM-DD format" }, { status: 400 });
-    }
-
-    // Also build DD.MM.YYYY format ( scraper uses this for filenames)
-    const [year, month, day] = date.split("-");
-    const dotFormat = `${day}.${month}.${year}`;
 
     const client = getClient();
 
-    // First, sample what date formats exist in the DB
-    const sampleResult = await client.execute("SELECT DISTINCT date FROM Prediction LIMIT 20");
-    const sampleDates = sampleResult.rows.map((r: any) => r.date);
+    // Build date variants for matching
+    const makeVariants = (d: string) => {
+      const [y, m, day] = d.split("-");
+      return [d, `${day}.${m}.${y}`, `%${d}%`, `%${day}.${m}.${y}%`];
+    };
 
-    // Try exact match first
-    let countResult = await client.execute(
-      "SELECT COUNT(*) as count FROM Prediction WHERE date = ?",
-      [date]
-    );
-    let count = Number((countResult.rows[0] as any).count);
+    let count = 0;
+    let label = "";
 
-    // If 0, try DD.MM.YYYY format
-    if (count === 0) {
-      countResult = await client.execute(
-        "SELECT COUNT(*) as count FROM Prediction WHERE date = ?",
-        [dotFormat]
+    if (isSingle) {
+      label = date;
+      const variants = makeVariants(date);
+      // Count matches
+      for (const v of variants) {
+        const isLike = v.includes("%");
+        const r = await client.execute(
+          isLike ? "SELECT COUNT(*) as c FROM Prediction WHERE date LIKE ?" : "SELECT COUNT(*) as c FROM Prediction WHERE date = ?",
+          [v]
+        );
+        count += Number((r.rows[0] as any).c);
+      }
+      // Avoid double-counting — do a single query with OR
+      const countR = await client.execute(
+        "SELECT COUNT(*) as c FROM Prediction WHERE date = ? OR date = ? OR date LIKE ? OR date LIKE ?",
+        [variants[0], variants[1], `%${date}%`, `%${variants[1]}%`]
       );
-      count = Number((countResult.rows[0] as any).count);
-    }
+      count = Number((countR.rows[0] as any).c);
 
-    // If still 0, try LIKE match (date contains the YYYY-MM-DD string)
-    if (count === 0) {
-      countResult = await client.execute(
-        "SELECT COUNT(*) as count FROM Prediction WHERE date LIKE ?",
-        [`%${date}%`]
+      if (count === 0) {
+        const sample = await client.execute("SELECT DISTINCT date FROM Prediction LIMIT 10");
+        return NextResponse.json({
+          ok: true, deleted: 0, date,
+          message: `No predictions found for ${date}`,
+          sampleDates: sample.rows.map((r: any) => r.date),
+        });
+      }
+
+      // Delete
+      await client.execute(
+        "DELETE FROM Prediction WHERE date = ? OR date = ? OR date LIKE ? OR date LIKE ?",
+        [variants[0], variants[1], `%${date}%`, `%${variants[1]}%`]
       );
-      count = Number((countResult.rows[0] as any).count);
+    } else {
+      label = `${fromDate} to ${toDate}`;
+      // For range, we need to handle multiple date formats
+      // Get all predictions and filter in JS (safer than SQL date parsing with mixed formats)
+      const allPreds = await client.execute("SELECT matchId, date FROM Prediction");
+      const toDelete: string[] = [];
+      for (const row of allPreds.rows) {
+        const p = row as any;
+        const d = p.date as string;
+        if (!d) continue;
+        // Try to parse the date — it might be YYYY-MM-DD or DD.MM.YYYY
+        let parsed: Date | null = null;
+        if (/^\d{4}-\d{2}-\d{2}/.test(d)) {
+          parsed = new Date(d.substring(0, 10));
+        } else if (/^\d{2}\.\d{2}\.\d{4}/.test(d)) {
+          const parts = d.substring(0, 10).split(".");
+          parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        } else {
+          // Try Date parse as fallback
+          parsed = new Date(d);
+        }
+        if (parsed && !isNaN(parsed.getTime())) {
+          const from = new Date(fromDate);
+          const to = new Date(toDate);
+          to.setHours(23, 59, 59); // inclusive end
+          if (parsed >= from && parsed <= to) {
+            toDelete.push(p.matchId);
+          }
+        }
+      }
+      count = toDelete.length;
+
+      if (count === 0) {
+        const sample = await client.execute("SELECT DISTINCT date FROM Prediction LIMIT 10");
+        return NextResponse.json({
+          ok: true, deleted: 0, fromDate, toDate,
+          message: `No predictions found between ${fromDate} and ${toDate}`,
+          sampleDates: sample.rows.map((r: any) => r.date),
+        });
+      }
+
+      // Delete in batches
+      for (let i = 0; i < toDelete.length; i += 50) {
+        const batch = toDelete.slice(i, i + 50);
+        const placeholders = batch.map(() => "?").join(",");
+        await client.execute(`DELETE FROM Prediction WHERE matchId IN (${placeholders})`, batch);
+      }
     }
-
-    // If still 0, try LIKE with dot format
-    if (count === 0) {
-      countResult = await client.execute(
-        "SELECT COUNT(*) as count FROM Prediction WHERE date LIKE ?",
-        [`%${dotFormat}%`]
-      );
-      count = Number((countResult.rows[0] as any).count);
-    }
-
-    if (count === 0) {
-      return NextResponse.json({
-        ok: true,
-        deleted: 0,
-        date,
-        message: `No predictions found for ${date}. Sample dates in DB: ${sampleDates.slice(0, 5).join(", ")}`,
-        sampleDates: sampleDates.slice(0, 10),
-      });
-    }
-
-    // Delete using whichever format matched
-    // Try exact, then dot format, then LIKE patterns
-    let deleted = 0;
-    await client.execute("DELETE FROM Prediction WHERE date = ?", [date]);
-    deleted += count; // We already counted these
-
-    // Also try dot format delete (in case some use that format)
-    await client.execute("DELETE FROM Prediction WHERE date = ?", [dotFormat]);
-
-    // Also try LIKE deletes for any remaining
-    await client.execute("DELETE FROM Prediction WHERE date LIKE ?", [`%${date}%`]);
-    await client.execute("DELETE FROM Prediction WHERE date LIKE ?", [`%${dotFormat}%`]);
 
     // Log
     try {
@@ -110,31 +138,17 @@ export async function POST(request: Request) {
       if (userId) {
         await client.execute(
           "INSERT INTO ActivityLog (id, userId, action, service, details, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-          [
-            crypto.randomUUID(),
-            userId,
-            "PREDICTIONS_DELETE",
-            "website",
-            JSON.stringify({ date, deleted: count, dotFormat }),
-            new Date().toISOString(),
-          ]
+          [crypto.randomUUID(), userId, "PREDICTIONS_DELETE", "website", JSON.stringify({ label, deleted: count }), new Date().toISOString()]
         );
       }
-    } catch (logErr) {
-      console.warn("[delete-by-date] ActivityLog write failed:", logErr);
-    }
+    } catch {}
 
-    return NextResponse.json({
-      ok: true,
-      deleted: count,
-      date,
-      dotFormat,
-    });
+    return NextResponse.json({ ok: true, deleted: count, label });
   } catch (error) {
-    console.error("[delete-by-date] POST error:", error);
+    console.error("[delete-by-date] Error:", error);
     return NextResponse.json(
-      { error: "Failed to delete predictions: " + (error instanceof Error ? error.message : String(error)) },
-      { status: 500 },
+      { error: "Failed: " + (error instanceof Error ? error.message : String(error)) },
+      { status: 500 }
     );
   }
 }
