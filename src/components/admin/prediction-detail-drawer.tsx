@@ -30,6 +30,7 @@ import {
   Layers,
   TestTube,
   TrendingUp,
+  TrendingDown,
   Target,
   Trophy,
   Shield,
@@ -41,6 +42,8 @@ import {
   ExternalLink,
   Coins,
   Clock,
+  RotateCcw,
+  Pencil,
 } from "lucide-react";
 import type { Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
@@ -61,12 +64,111 @@ export function PredictionDetailDrawer({
   const [saveMsg, setSaveMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "h2h" | "odds" | "result" | "pipeline">("overview");
 
+  // Reduced-risk manual override editor state. Same pattern as betCodeInput:
+  // strings because <input> values are strings; converted to numbers on save.
+  const [rrOverTotal, setRrOverTotal] = useState("");
+  const [rrOverOdds, setRrOverOdds] = useState("");
+  const [rrUnderTotal, setRrUnderTotal] = useState("");
+  const [rrUnderOdds, setRrUnderOdds] = useState("");
+  const [rrSaving, setRrSaving] = useState(false);
+  const [rrMsg, setRrMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [rrClearConfirm, setRrClearConfirm] = useState(false);
+
   // Reset input + tab when the drawer opens to a different prediction.
   useEffect(() => {
     setBetCodeInput(prediction?.bet_code || "");
     setSaveMsg(null);
     setActiveTab("overview");
-  }, [prediction?.match_id, prediction?.bet_code]);
+    // Reset reduced-risk editor to current DB values
+    setRrOverTotal(prediction?.reduced_over_total != null ? String(prediction.reduced_over_total) : "");
+    setRrOverOdds(prediction?.reduced_over_odds != null ? String(prediction.reduced_over_odds) : "");
+    setRrUnderTotal(prediction?.reduced_under_total != null ? String(prediction.reduced_under_total) : "");
+    setRrUnderOdds(prediction?.reduced_under_odds != null ? String(prediction.reduced_under_odds) : "");
+    setRrMsg(null);
+    setRrClearConfirm(false);
+  }, [prediction?.match_id, prediction?.bet_code, prediction?.reduced_over_total, prediction?.reduced_over_odds, prediction?.reduced_under_total, prediction?.reduced_under_odds]);
+
+  // Save the 4 reduced-risk fields. Validates client-side first (the API
+  // re-validates, but client-side gives instant feedback). Empty strings → null.
+  const saveReducedRisk = async () => {
+    if (!prediction) return;
+    setRrSaving(true);
+    setRrMsg(null);
+    try {
+      const payload: Record<string, unknown> = { matchId: prediction.match_id };
+      if (rrOverTotal.trim() !== "") payload.reducedOverTotal = Number(rrOverTotal);
+      else payload.reducedOverTotal = null;
+      if (rrOverOdds.trim() !== "") payload.reducedOverOdds = Number(rrOverOdds);
+      else payload.reducedOverOdds = null;
+      if (rrUnderTotal.trim() !== "") payload.reducedUnderTotal = Number(rrUnderTotal);
+      else payload.reducedUnderTotal = null;
+      if (rrUnderOdds.trim() !== "") payload.reducedUnderOdds = Number(rrUnderOdds);
+      else payload.reducedUnderOdds = null;
+
+      // Client-side validation (matches API rules)
+      const validate = (total: string, odds: string, label: string): string | null => {
+        const t = total.trim() === "" ? null : Number(total);
+        const o = odds.trim() === "" ? null : Number(odds);
+        if (t != null && (!Number.isFinite(t) || t <= 0)) return `${label} total must be > 0`;
+        if (o != null && (!Number.isFinite(o) || o <= 1.0)) return `${label} odds must be > 1.0`;
+        return null;
+      };
+      const overErr = validate(rrOverTotal, rrOverOdds, "Reduced OVER");
+      const underErr = validate(rrUnderTotal, rrUnderOdds, "Reduced UNDER");
+      if (overErr || underErr) {
+        setRrMsg({ kind: "err", text: overErr || underErr || "Validation failed" });
+        setRrSaving(false);
+        return;
+      }
+
+      const res = await fetch("/api/admin/predictions/reduced-risk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setRrMsg({ kind: "ok", text: "Saved — scraper will not overwrite this manual override. Close and reopen the drawer to refresh the read-only display above." });
+      // Note: we deliberately do NOT mutate the `prediction` prop (React's
+      // immutability lint rule forbids it, and the parent owns the state).
+      // The input fields above already reflect the new values via local state.
+      // The read-only display + source badge will refresh on next drawer open.
+    } catch (e) {
+      setRrMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRrSaving(false);
+    }
+  };
+
+  // Clear all 4 fields + reset audit (back to "no override"). The next scrape
+  // will repopulate them with scraped values. Requires confirm to prevent accidents.
+  const clearReducedRisk = async () => {
+    if (!prediction) return;
+    setRrSaving(true);
+    setRrMsg(null);
+    try {
+      const res = await fetch("/api/admin/predictions/reduced-risk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ matchId: prediction.match_id, clear: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setRrMsg({ kind: "ok", text: "Cleared — the next scrape will repopulate these values." });
+      setRrOverTotal("");
+      setRrOverOdds("");
+      setRrUnderTotal("");
+      setRrUnderOdds("");
+      setRrClearConfirm(false);
+      // Note: we deliberately do NOT mutate the `prediction` prop (React's
+      // immutability lint rule forbids it, and the parent owns the state).
+      // The source badge + read-only display will refresh on next drawer open.
+    } catch (e) {
+      setRrMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRrSaving(false);
+    }
+  };
 
   if (!prediction) return null;
 
@@ -513,6 +615,140 @@ export function PredictionDetailDrawer({
                     <p className="text-[9px] text-muted-foreground/60 truncate">{prediction.away_team || ""}</p>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* ════════ REDUCED-RISK MANUAL EDITOR ════════
+                Admin/operator-only. Lets the admin override the 4 reduced-risk
+                fields when the scraped source (e.g., Flashscore up to ~1.6)
+                diverges from the betting site's actual odds (which can be ≤1.10).
+                The scraper respects source='manual' and skips these fields on
+                subsequent scrapes — see /api/webhook/predictions. */}
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
+                <Pencil className="w-3 h-3" /> Reduced-Risk Manual Override
+              </h3>
+              <div className="bg-background/50 rounded p-3 border border-border/40 space-y-3">
+                {/* Source badge — shows whether values came from scraper or manual override */}
+                <div className="flex items-center justify-between gap-2 text-[10px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">Source:</span>
+                    {prediction.reduced_risk_source === "manual" ? (
+                      <Badge variant="outline" className="text-[9px] border-neon-yellow/40 text-neon-yellow bg-neon-yellow/5">MANUAL OVERRIDE</Badge>
+                    ) : prediction.reduced_risk_source === "scraper" ? (
+                      <Badge variant="outline" className="text-[9px] border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">AUTO-SCRAPED</Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[9px] border-border/40 text-muted-foreground">NOT SET</Badge>
+                    )}
+                  </div>
+                  {prediction.reduced_risk_updated_at && (
+                    <span className="text-muted-foreground/60 font-mono">
+                      {relativeTime(prediction.reduced_risk_updated_at)}
+                    </span>
+                  )}
+                </div>
+
+                {prediction.reduced_risk_source === "manual" && (
+                  <p className="text-[10px] text-neon-yellow/80 bg-neon-yellow/5 border border-neon-yellow/20 rounded p-1.5">
+                    <Shield className="w-3 h-3 inline mr-1" />
+                    Manual override active — the scraper will <strong>not</strong> overwrite these values on its next run.
+                  </p>
+                )}
+
+                {/* 2x2 grid of inputs: OVER (total + odds) | UNDER (total + odds) */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Reduced OVER */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neon-green flex items-center gap-1">
+                      <TrendingUp className="w-2.5 h-2.5" /> Reduced OVER
+                    </p>
+                    <div>
+                      <label className="text-[9px] text-muted-foreground">Total</label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={rrOverTotal}
+                        onChange={(e) => setRrOverTotal(e.target.value)}
+                        placeholder="e.g. 178.5"
+                        className="font-mono text-xs h-8 bg-background"
+                        disabled={rrSaving}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-muted-foreground">Odds</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="1.01"
+                        value={rrOverOdds}
+                        onChange={(e) => setRrOverOdds(e.target.value)}
+                        placeholder="e.g. 1.10"
+                        className="font-mono text-xs h-8 bg-background"
+                        disabled={rrSaving}
+                      />
+                    </div>
+                  </div>
+                  {/* Reduced UNDER */}
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-bold text-neon-red flex items-center gap-1">
+                      <TrendingDown className="w-2.5 h-2.5" /> Reduced UNDER
+                    </p>
+                    <div>
+                      <label className="text-[9px] text-muted-foreground">Total</label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={rrUnderTotal}
+                        onChange={(e) => setRrUnderTotal(e.target.value)}
+                        placeholder="e.g. 178.5"
+                        className="font-mono text-xs h-8 bg-background"
+                        disabled={rrSaving}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-muted-foreground">Odds</label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="1.01"
+                        value={rrUnderOdds}
+                        onChange={(e) => setRrUnderOdds(e.target.value)}
+                        placeholder="e.g. 1.10"
+                        className="font-mono text-xs h-8 bg-background"
+                        disabled={rrSaving}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action buttons + message */}
+                <div className="flex items-center gap-2 pt-1">
+                  <Button size="sm" variant="default" onClick={saveReducedRisk} disabled={rrSaving} className="h-8 gap-1">
+                    <Save className="w-3 h-3" />{rrSaving ? "Saving..." : "Save override"}
+                  </Button>
+                  {rrClearConfirm ? (
+                    <>
+                      <Button size="sm" variant="destructive" onClick={clearReducedRisk} disabled={rrSaving} className="h-8 gap-1">
+                        <RotateCcw className="w-3 h-3" />Confirm clear
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setRrClearConfirm(false)} disabled={rrSaving} className="h-8">
+                        Cancel
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={() => setRrClearConfirm(true)} disabled={rrSaving} className="h-8 gap-1 text-muted-foreground">
+                      <RotateCcw className="w-3 h-3" />Clear & let scraper refill
+                    </Button>
+                  )}
+                </div>
+                {rrMsg && (
+                  <p className={`text-[10px] ${rrMsg.kind === "ok" ? "text-neon-green" : "text-neon-red"}`}>{rrMsg.text}</p>
+                )}
+                <p className="text-[9px] text-muted-foreground/50">
+                  Tip: leave a field blank to clear it. The scraper only fills these when no manual override is active.
+                </p>
               </div>
             </div>
 
