@@ -59,7 +59,7 @@ package ever adds one (e.g. a root `.context/AGENTS.md`), add its path here.
 ## How an agent syncs (protocol Step 3, Path B)
 
 When `.context/` already exists **and** the package skeleton is on disk
-(`../.context/context-skeleton/`, freshened by the kickoff):
+(`../context/context-skeleton/`, freshened by the kickoff):
 
 1. For each **structural** file, compare `.context/<path>` to
    `context-skeleton/<path>`. **Add** missing ones; **update** differing ones.
