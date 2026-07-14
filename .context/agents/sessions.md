@@ -35,3 +35,14 @@ past entries — append corrections instead.
 - **Current state (after this resume session):** ALL commits pushed. Remote is at `8491623` (drawer UI). Local matches remote. Only the report (`reviews/2026-07-14-review.md`) and PAT unset remain.
 - **Agent error:** I undercounted the pushed commits when writing the second correction. I said "only 1 of 4 pushed" when it was actually 3 of 4. I didn't re-verify against the earlier session's push output before writing the correction.
 - **Lesson:** when documenting a failure, verify the FACTS with git, not from memory. A correction that contains new errors is worse than the original error — it propagates wrong information into the append-only log. This is Pitfall #42 again ("Don't claim verification without the evidence") applied to documentation itself.
+
+---
+## 2026-07-14 — Session 2
+- **Agent:** Super Z | **Model:** unknown (GLM family) | **Platform:** Z.ai cloud sandbox (Debian 13 trixie, Node 24, Bun 1.3) | **Role:** engineer
+- **Task:** Sync `.context/` after the user updated the package repo (`TisoneK/.context`). Pull package, diff structural files, update what drifted.
+- **Commits:** 3 (`2edb410` sync structure, + 2 in this follow-up — regenerate kickoff.md + update workflows/active.md + log inefficiencies).
+- **Outcome:** done — structural sync clean (1 file changed: `SYNC.md` package-path reference); data-file template drift addressed (regenerated `kickoff.md` from current template, updated `workflows/active.md` Protocol field to "by agent type").
+- **Open items:** none from this session. Session 1 backlog still open (unwritten report, duplicate signIn bug, needingResults bug, dependabot vulns, PAT rotation).
+- **Report:** N/A (sync session — no project code reviewed or changed).
+- **Process note:** User pointed out that sync alone leaves stale data patterns (the buggy `kickoff.md` one-liner + single-edition `workflows/active.md`). Sync did its job correctly (never touched data files), but the follow-up regeneration was a separate action. Future sync-after-package-update sessions should proactively offer to regenerate `kickoff.md` when the package's kickoff template changed. Logged in `inefficiencies/log.md`.
+- **Self-assessment:** Sync discipline held — 6 structural files diffed, 1 updated, 5 left alone, 0 data files touched during sync. The data-file follow-up was clean too (regeneration from verified facts, not from memory). One small gap: the "Note for next session" about the clone-path rename initially landed only in chat — corrected by appending to `inefficiencies/log.md` this session.

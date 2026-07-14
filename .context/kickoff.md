@@ -10,8 +10,8 @@ Generation rules for the bootstrapping agent:
    kickoff's Pre-Flight + what you verified on disk (git remote, default
    branch). Facts you verified beat facts the user typed — record what's
    true. Record each repo's privacy mode SEPARATELY — project and
-   package each get their own field; never copy one repo's mode onto the
-   other. The ONLY placeholders that stay symbolic are the token forms
+   package each get their own field; never copy one repo's mode onto
+   the other. The ONLY placeholders that stay symbolic are the token forms
    (`<..._WITH_TOKEN_IF_PRIVATE>`, `${GIT_TOKEN}`, `${PKG_TOKEN}`) —
    never a real token. After filling, scan:
    `grep -n "<PROJECT\|<GIT_\|<LIVE_\|<REPO>" .context/kickoff.md` —
@@ -25,6 +25,13 @@ Generation rules for the bootstrapping agent:
 5. Keep facts current in later sessions: if a fact changes (repo renamed,
    new default branch, live URL added), update it in place and note the
    change in your session entry.
+
+REGENERATED 2026-07-14 — replaced the buggy `[ -d ../.context ] && pull || clone`
+one-liner (endless-loop bug, package commit 3742f2f) with the proper
+remote-URL detection loop, and updated Step 3 to "Pick the edition by
+YOUR agent type" (package commit f1c73e5 — edition is a per-agent-type
+fact, not a project fact). Project Facts re-verified against
+`git remote get-url origin` + `user/identity.md`.
 -->
 
 > **This is the project's own kickoff file.** It was generated during the
@@ -36,7 +43,7 @@ Generation rules for the bootstrapping agent:
 >   and follow it."* Add a target description in the same message if you
 >   have one.
 > - **Cloud/sandbox agent** (empty workspace): *"Clone
->   `<PROJECT_REPO_URL>`, read `.context/kickoff.md`, follow it."* Paste
+>   `https://github.com/TisoneK/scorewise-website.git`, read `.context/kickoff.md`, follow it."* Paste
 >   PAT access for every repo marked private in Project Facts below in
 >   that same chat message — recommended: **one fine-grained PAT scoped
 >   to all of this workflow's private repos** (say "covers both");
@@ -55,14 +62,14 @@ Generation rules for the bootstrapping agent:
 > suffices for the package). Ask for it up front, before any clone.
 > Local agents need none.
 
-- **Project name:** <PROJECT_NAME>
-- **Project repository URL:** <PROJECT_REPO_URL>
-- **Project repo privacy:** <Public / Private>
-- **Default branch:** <main>
-- **Live application:** <LIVE_URL or N/A>
-- **Git identity:** <GIT_NAME> `<GIT_EMAIL>`
-- **Package repo (the protocol):** <https://github.com/TisoneK/.context.git or fork/mirror URL>
-- **Package repo privacy:** <Public / Private> _[verify at generation — don't assume: the canonical `TisoneK/.context` is private as of 2026-07-13, and its visibility has changed before]_
+- **Project name:** ScoreWise Website
+- **Project repository URL:** https://github.com/TisoneK/scorewise-website.git
+- **Project repo privacy:** Public (reads work without PAT; pushes require a PAT for cloud/sandbox agents)
+- **Default branch:** main
+- **Live application:** https://scorewise-ke.vercel.app/
+- **Git identity:** Tisone Kironget `tisonkironget@gmail.com`
+- **Package repo (the protocol):** https://github.com/TisoneK/.context.git
+- **Package repo privacy:** Private (verified 2026-07-14 — public clone fails with auth prompt; PAT required even for read)
 - **Protocol edition:** local agents → `ai-engineering-protocol-local.md`; cloud/sandbox agents → `ai-engineering-protocol.md`
 
 ## Session Parameters
@@ -86,32 +93,48 @@ Every session is a **sync** session.
 ### Step 0 — Get both repos on disk
 
 **Local agent** — the project repo is your cwd (never re-clone it). Get
-the package as a sibling:
+the package as a sibling. **Identify the package by its REMOTE URL,
+never by directory name** — local clones exist under different names
+(`../context` is canonical; legacy `../.context` occurs):
 
 ```bash
 git remote get-url origin        # confirm it matches the Project repository URL
-# Package repo — clone as a sibling, or freshen if already there:
-[ -d ../.context ] && git -C ../.context pull --ff-only \
-  || git clone https://github.com/TisoneK/.context.git ../.context
+
+# Find an existing package clone among the siblings:
+PKG=""
+for d in ../context ../.context; do
+  git -C "$d" remote get-url origin 2>/dev/null | grep -q "TisoneK/.context" \
+    && PKG="$d" && break
+done
+
+if [ -n "$PKG" ]; then
+  # Found — freshen it. A FAILED PULL IS NOT A MISSING PACKAGE:
+  # use the on-disk copy as-is and note the stale pull in your session log.
+  git -C "$PKG" pull --ff-only || echo "pull failed — continuing with on-disk copy at $PKG"
+else
+  git clone https://github.com/TisoneK/.context.git ../context && PKG=../context
+fi
+echo "package clone: $PKG"
 ```
 
-No PAT, ever — clones and pushes both use the user's existing
-credentials, whatever either repo's privacy mode. If one fails with an
-auth error, stop and tell the user.
+**Never clone when a package clone already exists** — cloning into an
+existing directory fails, and retrying that failure loops forever. One
+find → one decision → move on. No PAT, ever — clones and pushes both
+use the user's existing credentials, whatever either repo's privacy
+mode. If one fails with an auth error, stop and tell the user.
 
 **Cloud/sandbox agent** — clone both into the workspace. Each repo's
 clone follows **its own** privacy field in Project Facts above:
 
 ```bash
-# Project repo (if private: PAT from chat — strip it from .git/config right after):
-git clone <PROJECT_REPO_URL_WITH_TOKEN_IF_PRIVATE> <REPO> && cd <REPO>
-git remote set-url origin <PROJECT_REPO_URL>
-git config user.name "<GIT_NAME>" && git config user.email "<GIT_EMAIL>"
+# Project repo (public reads work without PAT; pushes need one — strip it from .git/config right after the clone):
+git clone https://github.com/TisoneK/scorewise-website.git scorewise-website && cd scorewise-website
+git config user.name "Tisone Kironget" && git config user.email "tisonkironget@gmail.com"
+# For pushes: re-add token to remote URL, push, then strip — see protocol Step 12.
 
-# Package repo (if private: same dance with ITS OWN PAT, then drop that token —
-# the package is read-only reference, never pushed to):
-git clone <PACKAGE_REPO_URL_WITH_TOKEN_IF_PRIVATE> ../.context
-git -C ../.context remote set-url origin <PACKAGE_REPO_URL>
+# Package repo (private — needs PAT to clone; the package is read-only reference, never pushed to):
+git clone "https://x-access-token:${GIT_TOKEN}@github.com/TisoneK/.context.git" ../context
+git -C ../context remote set-url origin https://github.com/TisoneK/.context.git
 ```
 
 Ask for PATs **up front, before any clone** — you need one for every
@@ -144,10 +167,17 @@ In order: `README.md` → `workflows/active.md` → `agents/sessions.md`
 
 ### Step 3 — Load the protocol
 
-Read the edition named in `workflows/active.md` from the package clone
-on disk — `../.context/ai-engineering-protocol-local.md` (local) or
-`../.context/ai-engineering-protocol.md` (cloud/sandbox) — plus any role
-overlay from `../.context/roles/`. Read it in full; it is the instruction
+Pick the edition by **YOUR agent type** (identified in Step 0), from the
+package clone found there (`$PKG`, canonically `../context`):
+- **Local agent** → `$PKG/ai-engineering-protocol-local.md`
+- **Cloud/sandbox agent** → `$PKG/ai-engineering-protocol.md`
+
+`workflows/active.md` gives you the protocol *source/version* and any
+role overlay — it does **not** choose your edition. If it names a single
+edition, that's whichever agent type wrote it last; ignore that and
+follow your own type (a local agent must never run the cloud edition's
+PAT/clone steps, whatever the memory says). Also read any role overlay
+from `$PKG/roles/`. Read your edition in full; it is the instruction
 set for this session.
 
 ### Step 4 — Follow the protocol

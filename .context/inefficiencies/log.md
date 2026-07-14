@@ -67,3 +67,21 @@ if literally nothing slowed you down.
 - **Cause:** I saw mode changes in the user's `git pull` output and pattern-matched to Pitfall #38 (`git add -A` contamination), without checking whether MY commits actually changed any modes.
 - **Workaround / fix:** Verified with `git ls-tree -r 9c1a6bd --format='%(objectmode) %(path)' | grep '^100755' | wc -l` → 143 files were already `100755` BEFORE my session. The mode changes originated from commit `4ae2a7a` (authored 2026-06-27 by "Z User", pre-existing). My bootstrap added only 16 new `100755` entries, all under `.context/` (expected).
 - **Prevent next time:** When the user reports a problem, verify the root cause with `git ls-tree` / `git log --raw` BEFORE accepting or assigning blame. A confident false confession is worse than honest ignorance. This is the inverse of Pitfall #42 — don't claim FAULT without evidence either.
+
+---
+## 2026-07-14 — Super Z / unknown (Session 2 — context sync)
+
+- **Problem:** The package repo's canonical clone dir was renamed from `../.context` to `../context` (package commit 3742f2f, fixing an endless re-clone loop). I cloned it at `../.context` out of habit during this sync session — functionally fine (the legacy detection loop in the regenerated `kickoff.md` accepts both names), but inconsistent with the new convention.
+- **Cost:** None this session — the sync worked regardless. Future friction would only arise if a local agent followed the new `kickoff.md`'s `for d in ../context ../.context` loop and found the legacy path; it would still detect it correctly, just with a slightly noisier find.
+- **Cause:** Muscle memory from Session 1 (before the rename) + not re-reading the freshly-pulled package's QUICKSTART before cloning.
+- **Workaround / fix:** None needed — the regenerated `kickoff.md` Step 0 explicitly handles both paths. Future sessions should clone at `../context` to match the convention, but legacy `../.context` clones are tolerated.
+- **Prevent next time:** When the package repo is re-cloned in a fresh sandbox, use `../context` (the canonical path per the updated `SYNC.md` and `kickoff.md`). The legacy `../.context` path works but is no longer canonical.
+
+---
+## 2026-07-14 — Super Z / unknown (Session 2 — context sync)
+
+- **Problem:** Sync alone left two stale data patterns in place: the project's `kickoff.md` still had the buggy `[ -d ../.context ] && pull || clone` one-liner (endless-loop bug), and `workflows/active.md` named a single protocol edition (cross-agent-type contamination risk). Both are data files — sync correctly excluded them — but they carried pre-fix patterns that only regeneration/updating can address.
+- **Cost:** One extra turn (user pointed out the gap; I had to regenerate + update in a follow-up commit). A future local agent reading the stale `kickoff.md` would have hit the endless-loop bug; a future local agent reading the stale `workflows/active.md` would have loaded the cloud edition and run unnecessary PAT/clone steps.
+- **Cause:** "Sync the context" only syncs structural files per `SYNC.md` — that's the correct behavior (protects data files from clobbering). But the user's intent ("update the context's repo, sync changes") implied catching up to the package's fixes, which span both structural AND data files. Sync did its job; the follow-up (regenerate `kickoff.md`, update `workflows/active.md`) was a separate action the user had to explicitly request.
+- **Workaround / fix:** Regenerated `kickoff.md` from the current package template (commit in this session), filling Project Facts from verified `git remote get-url origin` + `user/identity.md`. Updated `workflows/active.md`'s Protocol field to "by agent type — local agents → ...; cloud/sandbox agents → ..." per the new template.
+- **Prevent next time:** When syncing after a package update that includes kickoff-template or workflow-template changes (visible in `git log --oneline` of the package repo), proactively regenerate `kickoff.md` and check `workflows/active.md` against the template — don't wait for the user to point out the gap. The sync step's job is structural files; the follow-up for data-file template drift is a natural extension that should be offered, not asked for.
