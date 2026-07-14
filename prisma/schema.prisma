@@ -61,11 +61,23 @@ model Prediction {
   bookmakerLine            Float?
   overOdds                 Float?
   underOdds                Float?
-  // Reduced-risk (alternative) lines — scraped from Flashscore, only for Totals
+  // Reduced-risk (alternative) lines — for Totals (O/U).
+  // Source: scraped from Flashscore by default; admins/operators can override
+  // manually when the scraped odds diverge from the betting site's actual odds
+  // (e.g., Flashscore shows ≤1.6 but the bookmaker has ≤1.10). When a manual
+  // override is set, the scraper will NOT clobber it on subsequent runs —
+  // see /api/webhook/predictions/route.ts.
   reducedOverTotal         Float?
   reducedOverOdds          Float?
   reducedUnderTotal        Float?
   reducedUnderOdds         Float?
+  // Audit trail for the reduced-risk values above.
+  //   reducedRiskSource:     "manual" (admin/operator override) | "scraper" (auto) | null (never set)
+  //   reducedRiskUpdatedAt:  last time these 4 fields were written
+  //   reducedRiskUpdatedBy:  userId of the admin/operator who set the manual override (null if scraper)
+  reducedRiskSource        String?  // "manual" | "scraper" | null
+  reducedRiskUpdatedAt     DateTime?
+  reducedRiskUpdatedBy     String?  // userId — resolver intentionally omitted to avoid coupling to User
   homeOdds                 Float?
   awayOdds                 Float?
   averageRate              Float    @default(0)

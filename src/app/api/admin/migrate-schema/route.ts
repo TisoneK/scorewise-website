@@ -37,6 +37,11 @@ export async function POST() {
       { name: "reducedOverOdds", type: "REAL" },
       { name: "reducedUnderTotal", type: "REAL" },
       { name: "reducedUnderOdds", type: "REAL" },
+      // Audit trail for the manual reduced-risk override feature.
+      // Added 2026-07-14 — see prisma/schema.prisma for full rationale.
+      { name: "reducedRiskSource", type: "TEXT" },     // "manual" | "scraper" | null
+      { name: "reducedRiskUpdatedAt", type: "DATETIME" },
+      { name: "reducedRiskUpdatedBy", type: "TEXT" },  // userId
     ];
 
     const added: string[] = [];
