@@ -23,6 +23,13 @@ export interface Prediction {
   reduced_over_odds?: number | null;
   reduced_under_total?: number | null;
   reduced_under_odds?: number | null;
+  // Audit trail for the reduced-risk values.
+  //   reduced_risk_source:     "manual" (admin/operator override) | "scraper" (auto) | null
+  //   reduced_risk_updated_at: ISO timestamp of the last write to the 4 fields above
+  //   reduced_risk_updated_by: userId of the admin/operator who set the manual override
+  reduced_risk_source?: "manual" | "scraper" | null;
+  reduced_risk_updated_at?: string | null;
+  reduced_risk_updated_by?: string | null;
   home_odds?: number | null;
   away_odds?: number | null;
   scope: string;

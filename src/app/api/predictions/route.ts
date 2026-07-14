@@ -53,6 +53,14 @@ export async function GET(request: Request) {
       reduced_over_odds: p.reducedOverOdds ?? null,
       reduced_under_total: p.reducedUnderTotal ?? null,
       reduced_under_odds: p.reducedUnderOdds ?? null,
+      // Audit fields — only visible to admins (the !all branch strips these
+      // for regular users via USER_FIELDS allowlist). Used by the admin
+      // drawer to show "Source: manual/scraper, updated by X at Y".
+      reduced_risk_source: p.reducedRiskSource ?? null,
+      reduced_risk_updated_at: p.reducedRiskUpdatedAt
+        ? (typeof p.reducedRiskUpdatedAt === 'string' ? p.reducedRiskUpdatedAt : new Date(p.reducedRiskUpdatedAt).toISOString())
+        : null,
+      reduced_risk_updated_by: p.reducedRiskUpdatedBy ?? null,
       home_odds: p.homeOdds,
       away_odds: p.awayOdds,
       average_rate: p.averageRate,

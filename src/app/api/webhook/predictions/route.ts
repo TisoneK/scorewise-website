@@ -92,7 +92,10 @@ export async function POST(request: Request) {
           where: { matchId: p.match_id },
         });
 
-        const payload = {
+        // Base payload — every field the scraper is authoritative for.
+        // Reduced-risk fields are conditional (see below) so a manual
+        // admin/operator override is NOT clobbered by the next scrape.
+        const payload: Record<string, unknown> = {
           matchId: p.match_id,
           homeTeam: p.home_team || "",
           awayTeam: p.away_team || "",
@@ -111,10 +114,6 @@ export async function POST(request: Request) {
           bookmakerLine: p.bookmaker_line ?? null,
           overOdds: p.over_odds ?? null,
           underOdds: p.under_odds ?? null,
-          reducedOverTotal: p.reduced_over_total ?? null,
-          reducedOverOdds: p.reduced_over_odds ?? null,
-          reducedUnderTotal: p.reduced_under_total ?? null,
-          reducedUnderOdds: p.reduced_under_odds ?? null,
           homeOdds: p.home_odds ?? null,
           awayOdds: p.away_odds ?? null,
           averageRate: p.average_rate ?? 0,
@@ -127,6 +126,39 @@ export async function POST(request: Request) {
           winningStreakData: p.winning_streak_data ? JSON.stringify(p.winning_streak_data) : null,
           source: data.source || "flashscore-scraper",
         };
+
+        // Reduced-risk fields: skip if a manual override is in place.
+        // The admin/operator explicitly entered these because the scraped
+        // source diverged from the betting site — letting the scraper
+        // overwrite them would defeat the entire feature.
+        // See /api/admin/predictions/reduced-risk for the manual writer.
+        const hasManualOverride = existing?.reducedRiskSource === "manual";
+        if (!hasManualOverride) {
+          payload.reducedOverTotal = p.reduced_over_total ?? null;
+          payload.reducedOverOdds = p.reduced_over_odds ?? null;
+          payload.reducedUnderTotal = p.reduced_under_total ?? null;
+          payload.reducedUnderOdds = p.reduced_under_odds ?? null;
+          // Only stamp "scraper" source if there's something to record.
+          // Empty arrays/null payloads from the scraper shouldn't pretend
+          // to have set anything.
+          const hasAnyReduced =
+            payload.reducedOverTotal != null ||
+            payload.reducedOverOdds != null ||
+            payload.reducedUnderTotal != null ||
+            payload.reducedUnderOdds != null;
+          if (hasAnyReduced) {
+            payload.reducedRiskSource = "scraper";
+            payload.reducedRiskUpdatedAt = new Date();
+            payload.reducedRiskUpdatedBy = null;
+          }
+        } else if (existing) {
+          // Preserve the existing manual values — DO NOT touch the 4
+          // reduced-risk fields or the audit columns. The payload above
+          // already omits them, so update() will leave them alone.
+          console.log(
+            `[webhook/predictions] ${p.match_id}: preserving manual reduced-risk override (skipped scraper values)`,
+          );
+        }
 
         if (existing) {
           await db.prediction.update({
