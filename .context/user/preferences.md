@@ -30,19 +30,24 @@ correction twice.
 
 - Push to main directly after each commit; one logical change per commit (pre-flight, 2026-07-14)
 - Findings handling: fix safe issues, flag architectural changes for approval (pre-flight, 2026-07-14)
+- **Commit and push AFTER EACH logical change, not in batches at end of phase.** A mid-session shell failure left 3 commits unpushed and the user was told the feature was "pushed to main" when it wasn't. Batched commits are fragile. (correction, 2026-07-14)
+- **When the user points out a failure, write it to the appropriate `.context/` log file BEFORE responding in chat.** Listing failures in chat without writing them to files is not documentation. (correction, 2026-07-14)
 
 ## Communication
 
 - Plain-language changelog entries; technical detail in `.context/reviews/` reports (pre-flight, 2026-07-14)
 - Chat summary delivered at session end (pre-flight, 2026-07-14)
+- **Verify claims before stating them.** Don't say "pushed to main" without checking `git log origin/main..HEAD`. Don't confess to a bug without verifying with `git ls-tree` / `git log --raw`. A confident false claim (in either direction) wastes the user's time and erodes trust. (correction, 2026-07-14)
 
 ## Code style
 
 - Follow existing project conventions; prefer minimal, surgical changes (inferred from project structure, 2026-07-14)
+- **When copying a pattern from existing code, lint-check the source pattern first.** If the source has lint errors, don't propagate them — fix or work around them in the new code. (correction, 2026-07-14)
 
 ## Review depth
 
 - Discovery + review + fix all safe issues; flag architectural changes (pre-flight, 2026-07-14)
+- **Backlog out-of-scope findings, don't silently skip them.** Pre-existing TS errors, the duplicate `signIn` bug, the `needingResults` ReferenceError, and the dependabot vulns were all noticed in Phase 1/2 and silently skipped. They belong in `tasks/backlog.md`. (correction, 2026-07-14)
 
 ## Risk & approvals
 
