@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readAndVerifyWebhookBodyAsync, type WebhookEnvelope } from "@/lib/webhook-verify";
+import { logWebhookRejected } from "@/lib/webhook-reject-log";
 import { ensureSystemUser } from "@/lib/system-user";
 import { db } from "@/lib/db-libsql";
 
@@ -42,6 +43,7 @@ interface ScrapeReportData {
 export async function POST(request: Request) {
   const envelope = await readAndVerifyWebhookBodyAsync<WebhookEnvelope<ScrapeReportData>>(request);
   if (!envelope) {
+    await logWebhookRejected("webhook/scrape-report", "scraper");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 

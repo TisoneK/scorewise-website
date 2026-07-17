@@ -11,6 +11,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -440,10 +441,14 @@ export function ServicesTab({
             </div>
 
             <Separator className="bg-border/30" />
-            <div className={`grid ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+            <div className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
               <Button variant="outline" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                 <RefreshCw className={`w-4 h-4 ${loadingPred ? "animate-spin" : ""}`} />Reload
               </Button>
+              {/* Pulls the engine store into the website DB — the recovery
+                  path when the engine→website webhook is down during an
+                  ingest. Does NOT scrape or re-ingest anything. */}
+              <SyncFromEngineButton onSynced={fetchAllPredictions} />
               <Button variant="outline" onClick={handleDownloadPredictions} disabled={!allPredictionsData} className="gap-2 border-border/50 text-muted-foreground hover:text-foreground text-xs">
                 <Download className="w-4 h-4" />Export
               </Button>
@@ -663,6 +668,29 @@ export function ServicesTab({
           place admins can see the whole run. */}
       <LastScrapeReport />
     </>
+  );
+}
+
+function SyncFromEngineButton({ onSynced }: { onSynced: () => void }) {
+  const [syncing, setSyncing] = useState(false);
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/engine/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast.success(`Engine sync: ${data.fetched} fetched — ${data.stored} new, ${data.updated} updated${data.errors ? `, ${data.errors} errors` : ""}`);
+      onSynced();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Engine sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+  return (
+    <Button variant="outline" onClick={handleSync} disabled={syncing} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
+      <RefreshCw className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`} />Sync to DB
+    </Button>
   );
 }
 

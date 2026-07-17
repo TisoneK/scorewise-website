@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readAndVerifyWebhookBodyAsync, type WebhookEnvelope } from "@/lib/webhook-verify";
+import { logWebhookRejected } from "@/lib/webhook-reject-log";
 import { ensureSystemUser } from "@/lib/system-user";
 import { db } from "@/lib/db-libsql";
 
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
   // 1. Verify HMAC signature
   const envelope = await readAndVerifyWebhookBodyAsync<WebhookEnvelope<ResultsPushData>>(request);
   if (!envelope) {
+    await logWebhookRejected("webhook/result", "scraper");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
