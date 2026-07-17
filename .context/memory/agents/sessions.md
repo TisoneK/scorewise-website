@@ -55,3 +55,12 @@ past entries — append corrections instead.
 - **Outcome:** done — all memory moved to `.context/memory/` via `git mv` (history preserved, zero data loss); core 0.2.0 vendored at `.context/core/` (verify passed); `kickoff.md`, `.context/README.md`, `AGENTS.md`, `memory/overrides/` regenerated/seeded; `workflows/active.md` updated to vendored-protocol shape (raw/blob fetch URLs replaced — they 404 post-0.2.0). Standing Target (Reduced-Risk Manual Entry) and all prior memory preserved as written.
 - **Open items:** Session 1 backlog unchanged — unwritten report, duplicate signIn bug, needingResults bug, dependabot vulns, PAT rotation (see `tasks/backlog.md`). PAT rotation applies to this session's chat-supplied PAT too.
 - **Report:** none — migration session, no project code reviewed or changed.
+
+---
+## 2026-07-16 — Session 4
+- **Agent:** Claude Code | **Model:** claude-fable-5 | **Platform:** Baos-Mac-mini.local, macOS 15.7.7 (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Analyze phase-one performance on the live site, then reset data (predictions + activity logs, keep users) for the phase-two reduced-risk restart.
+- **Commits:** 2 (`7762c72` phase-one baseline report, `733ddc5` DELETE /api/admin/logs endpoint)
+- **Outcome:** done — baseline saved to `memory/reviews/2026-07-16-phase-one-analysis.md` (totals 44.7% vs 1X2 69.1%; UNDER-skew diagnosed; reduced-risk simulation table). 312 predictions deleted via delete-by-date range mode; 1842 ActivityLog rows cleared via the new admin DELETE endpoint (user executed the final destructive call from their own admin session). Verified both tables at 0 via live API.
+- **Open items:** Session 1 backlog unchanged. NEW urgency: fix `needingResults` cron bug BEFORE phase two accumulates data — 24/101 phase-one predictions never got results, biasing every rate. Also: delete-by-date range mode responds slower than clients wait (full-table scan + JS filter + batched deletes) — the UI shows failure while the server finishes; consider a fast `all: true` mode or async job.
+- **Report:** .context/memory/reviews/2026-07-16-phase-one-analysis.md
