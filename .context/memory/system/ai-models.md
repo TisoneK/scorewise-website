@@ -10,7 +10,7 @@ accordingly).
 | Agent | Model | First seen | Last seen | Sessions |
 |---|---|---|---|---|
 | Super Z | unknown (GLM family; exact version not stated in system prompt) | 2026-07-14 | 2026-07-14 | 1 |
-| Claude Code | claude-fable-5 | 2026-07-16 | 2026-07-16 | 4 |
+| Claude Code | claude-fable-5 | 2026-07-16 | 2026-07-17 | 5 |
 
 ## Observations
 
