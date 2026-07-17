@@ -386,23 +386,48 @@ export function UserPredictionsView() {
               if (da && db) return da.getTime() - db.getTime();
               return 0;
             });
+          // Count each settled bet SEPARATELY — a single match usually has
+          // BOTH an O/U bet AND a 1X2 bet, each with its own outcome.
+          // Collapsing them with "any-win-is-a-win" logic (the old code)
+          // silently dropped the LOSS whenever one side won, so users saw
+          // "1 lost" when actually two bets had settled (1 lost + 1 won).
+          // PUSH outcomes (total === line, bet refunded) are skipped — no
+          // profit/loss, no form dot — matching the existing UI which only
+          // renders W (green) / L (red) dots.
           for (const p of settled) {
             const ou = computeReducedRiskOutcome(p);
             const win = computeWinnerOutcome(p);
-            if (ou === "WIN" || win === "WIN") {
-              wins++;
+
+            // O/U outcome (one bet)
+            if (ou === "WIN" || ou === "LOSS") {
               staked++;
-              const r = p.recommendation?.toUpperCase();
-              const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
-              const w = p.team_winner?.toUpperCase();
-              const wod = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
-              profit += (od ? Number(od) - 1 : 0) + (wod && win === "WIN" && ou !== "WIN" ? Number(wod) - 1 : 0);
-              form.push("W");
-            } else if (ou === "LOSS" || win === "LOSS") {
-              losses++;
+              if (ou === "WIN") {
+                wins++;
+                const r = p.recommendation?.toUpperCase();
+                const od = r === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : r === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+                profit += od ? Number(od) - 1 : 0;
+                form.push("W");
+              } else {
+                losses++;
+                profit -= 1;
+                form.push("L");
+              }
+            }
+
+            // Winner (1X2) outcome (another bet — counted independently)
+            if (win === "WIN" || win === "LOSS") {
               staked++;
-              profit -= 1;
-              form.push("L");
+              if (win === "WIN") {
+                wins++;
+                const w = p.team_winner?.toUpperCase();
+                const wod = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
+                profit += wod ? Number(wod) - 1 : 0;
+                form.push("W");
+              } else {
+                losses++;
+                profit -= 1;
+                form.push("L");
+              }
             }
           }
           if (wins + losses === 0) return null;
