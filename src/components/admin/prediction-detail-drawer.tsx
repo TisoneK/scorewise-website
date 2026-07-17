@@ -14,7 +14,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -74,8 +74,20 @@ export function PredictionDetailDrawer({
   const [rrMsg, setRrMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [rrClearConfirm, setRrClearConfirm] = useState(false);
 
-  // Reset input + tab when the drawer opens to a different prediction.
-  useEffect(() => {
+  // Reset input + tab when the drawer opens to a different prediction (or the
+  // underlying values change). Uses the render-time state-adjustment pattern
+  // instead of an effect so React re-renders once, before commit.
+  const resetKey = [
+    prediction?.match_id,
+    prediction?.bet_code,
+    prediction?.reduced_over_total,
+    prediction?.reduced_over_odds,
+    prediction?.reduced_under_total,
+    prediction?.reduced_under_odds,
+  ].join("|");
+  const [prevResetKey, setPrevResetKey] = useState<string | null>(null);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
     setBetCodeInput(prediction?.bet_code || "");
     setSaveMsg(null);
     setActiveTab("overview");
@@ -86,7 +98,7 @@ export function PredictionDetailDrawer({
     setRrUnderOdds(prediction?.reduced_under_odds != null ? String(prediction.reduced_under_odds) : "");
     setRrMsg(null);
     setRrClearConfirm(false);
-  }, [prediction?.match_id, prediction?.bet_code, prediction?.reduced_over_total, prediction?.reduced_over_odds, prediction?.reduced_under_total, prediction?.reduced_under_odds]);
+  }
 
   // Save the 4 reduced-risk fields. Validates client-side first (the API
   // re-validates, but client-side gives instant feedback). Empty strings → null.
@@ -185,8 +197,10 @@ export function PredictionDetailDrawer({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setSaveMsg({ kind: "ok", text: "Saved — users will see this code on the prediction card." });
-      // Optimistically update the local prediction object so the card UI reflects the change immediately.
-      prediction.bet_code = betCodeInput.trim() || null;
+      // Note: we deliberately do NOT mutate the `prediction` prop (React's
+      // immutability lint rule forbids it, and the parent owns the state).
+      // The input above already shows the saved code via local state; the
+      // card UI refreshes when the parent refetches predictions.
     } catch (e) {
       setSaveMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
