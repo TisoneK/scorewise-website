@@ -669,9 +669,17 @@ export function PredictionDetailDrawer({
                   </p>
                 )}
 
-                {/* 2x2 grid of inputs: OVER (total + odds) | UNDER (total + odds) */}
+                {/* Only the RECOMMENDED side is editable — an UNDER pick has
+                    no use for a reduced OVER line and vice versa (the API
+                    nulls the off side anyway). */}
+                {prediction.recommendation?.toUpperCase() !== "OVER" && prediction.recommendation?.toUpperCase() !== "UNDER" && (
+                  <p className="text-[10px] text-muted-foreground">
+                    No O/U recommendation on this prediction — there is no alternative line to override.
+                  </p>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   {/* Reduced OVER */}
+                  {prediction.recommendation?.toUpperCase() === "OVER" && (
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-neon-green flex items-center gap-1">
                       <TrendingUp className="w-2.5 h-2.5" /> Reduced OVER
@@ -703,7 +711,9 @@ export function PredictionDetailDrawer({
                       />
                     </div>
                   </div>
+                  )}
                   {/* Reduced UNDER */}
+                  {prediction.recommendation?.toUpperCase() === "UNDER" && (
                   <div className="space-y-1.5">
                     <p className="text-[10px] font-bold text-neon-red flex items-center gap-1">
                       <TrendingDown className="w-2.5 h-2.5" /> Reduced UNDER
@@ -735,6 +745,7 @@ export function PredictionDetailDrawer({
                       />
                     </div>
                   </div>
+                  )}
                 </div>
 
                 {/* Action buttons + message */}

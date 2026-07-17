@@ -134,10 +134,15 @@ export async function POST(request: Request) {
         // See /api/admin/predictions/reduced-risk for the manual writer.
         const hasManualOverride = existing?.reducedRiskSource === "manual";
         if (!hasManualOverride) {
-          payload.reducedOverTotal = p.reduced_over_total ?? null;
-          payload.reducedOverOdds = p.reduced_over_odds ?? null;
-          payload.reducedUnderTotal = p.reduced_under_total ?? null;
-          payload.reducedUnderOdds = p.reduced_under_odds ?? null;
+          // Only the reduced pair on the RECOMMENDED side is stored — an
+          // UNDER pick has no use for a reduced OVER line and vice versa.
+          // The engine already drops the off-side pair; this normalization
+          // is defense-in-depth against older engine deploys sending both.
+          const rec = (p.recommendation || "").toUpperCase();
+          payload.reducedOverTotal = rec === "OVER" ? p.reduced_over_total ?? null : null;
+          payload.reducedOverOdds = rec === "OVER" ? p.reduced_over_odds ?? null : null;
+          payload.reducedUnderTotal = rec === "UNDER" ? p.reduced_under_total ?? null : null;
+          payload.reducedUnderOdds = rec === "UNDER" ? p.reduced_under_odds ?? null : null;
           // Only stamp "scraper" source if there's something to record.
           // Empty arrays/null payloads from the scraper shouldn't pretend
           // to have set anything.

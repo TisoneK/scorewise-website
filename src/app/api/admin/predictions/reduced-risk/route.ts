@@ -126,10 +126,15 @@ export async function POST(request: Request) {
       return null;
     };
 
-    const reducedOverTotal = parseNum(body.reducedOverTotal);
-    const reducedOverOdds = parseNum(body.reducedOverOdds);
-    const reducedUnderTotal = parseNum(body.reducedUnderTotal);
-    const reducedUnderOdds = parseNum(body.reducedUnderOdds);
+    // Only the reduced pair on the RECOMMENDED side is meaningful — an
+    // UNDER pick has no use for a reduced OVER line and vice versa. Values
+    // sent for the off side are ignored (stored as null); the response's
+    // `values` object shows exactly what was stored.
+    const rec = (existing.recommendation || "").toUpperCase();
+    const reducedOverTotal = rec === "OVER" ? parseNum(body.reducedOverTotal) : null;
+    const reducedOverOdds = rec === "OVER" ? parseNum(body.reducedOverOdds) : null;
+    const reducedUnderTotal = rec === "UNDER" ? parseNum(body.reducedUnderTotal) : null;
+    const reducedUnderOdds = rec === "UNDER" ? parseNum(body.reducedUnderOdds) : null;
 
     // ── Semantic validation ──────────────────────────────────────────
     // Totals must be > 0 (a basketball total can't be 0 or negative).
