@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     });
 
     // Transform DB rows to the Prediction response format
-    let predictions = dbPreds.map((p) => ({
+    let predictions: Record<string, unknown>[] = dbPreds.map((p) => ({
       match_id: p.matchId,
       home_team: p.homeTeam,
       away_team: p.awayTeam,

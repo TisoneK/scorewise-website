@@ -30,7 +30,7 @@ export async function GET() {
       "SELECT id, email, name, role, createdAt FROM User ORDER BY createdAt DESC"
     );
 
-    const users = [];
+    const users: Record<string, unknown>[] = [];
     for (const u of usersResult.rows) {
       const user = u as any;
       // Get login count

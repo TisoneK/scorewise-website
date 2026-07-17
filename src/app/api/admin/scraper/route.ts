@@ -244,7 +244,7 @@ export async function GET() {
             } : null;
 
             // Also try to get progress if running
-            let progress = null;
+            let progress: { day?: string; current_match_index?: number; total_matches?: number } | null = null;
             if (isRunning) {
               try {
                 const progRes = await fetch(`${scraperUrl}/api/scrape/progress`, {

@@ -7,7 +7,7 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   const isProduction = process.env.NODE_ENV === 'production'
-  const logLevel = isProduction ? ['error'] : ['query']
+  const logLevel: ('error' | 'query')[] = isProduction ? ['error'] : ['query']
 
   // Turso / LibSQL adapter for Vercel serverless
   if (process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN) {
