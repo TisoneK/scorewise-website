@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db-libsql";
+import { db, getClient } from "@/lib/db-libsql";
 
 export const dynamic = 'force-dynamic';
 
@@ -42,5 +42,34 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("[admin/logs] GET error:", error);
     return NextResponse.json({ error: "Failed to fetch logs" }, { status: 500 });
+  }
+}
+
+// DELETE /api/admin/logs?confirm=all — Permanently clear ALL activity logs.
+// Used when resetting data between testing phases. The confirm=all query
+// param is required so the history can't be wiped by an accidental DELETE.
+export async function DELETE(request: Request) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user as { role: string })?.role !== "ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    if (searchParams.get("confirm") !== "all") {
+      return NextResponse.json(
+        { error: "Pass ?confirm=all to permanently delete every activity log entry" },
+        { status: 400 },
+      );
+    }
+
+    const client = getClient();
+    const before = await client.execute("SELECT COUNT(*) as c FROM ActivityLog");
+    const count = Number(before.rows[0]?.c ?? 0);
+    await client.execute("DELETE FROM ActivityLog");
+    return NextResponse.json({ ok: true, deleted: count });
+  } catch (error) {
+    console.error("[admin/logs] DELETE error:", error);
+    return NextResponse.json({ error: "Failed to clear logs" }, { status: 500 });
   }
 }
