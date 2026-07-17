@@ -158,6 +158,36 @@ export async function POST(request: Request) {
     const underErr = validatePair(reducedUnderTotal, reducedUnderOdds, "Reduced UNDER");
     if (underErr) return NextResponse.json({ error: underErr }, { status: 400 });
 
+    // ── Directional sanity — a REDUCED line is the SAFER line ─────────
+    // UNDER: safer means a HIGHER total (easier to stay under), so the
+    // reduced line must be above the standard line. OVER: safer means a
+    // LOWER total, so the reduced line must be below it. And a safer line
+    // always pays less, so reduced odds must be lower than the standard
+    // side's odds. These checks catch swapped/mistyped entries.
+    const stdLine = existing.bookmakerLine != null ? Number(existing.bookmakerLine) : null;
+    if (rec === "UNDER" && reducedUnderTotal != null && stdLine != null && reducedUnderTotal <= stdLine) {
+      return NextResponse.json({
+        error: `Reduced UNDER line must be HIGHER than the standard line (${stdLine}) — the safer under sits above it. Got ${reducedUnderTotal}.`,
+      }, { status: 400 });
+    }
+    if (rec === "OVER" && reducedOverTotal != null && stdLine != null && reducedOverTotal >= stdLine) {
+      return NextResponse.json({
+        error: `Reduced OVER line must be LOWER than the standard line (${stdLine}) — the safer over sits below it. Got ${reducedOverTotal}.`,
+      }, { status: 400 });
+    }
+    const stdUnderOdds = existing.underOdds != null ? Number(existing.underOdds) : null;
+    if (rec === "UNDER" && reducedUnderOdds != null && stdUnderOdds != null && reducedUnderOdds >= stdUnderOdds) {
+      return NextResponse.json({
+        error: `Reduced UNDER odds must be LOWER than the standard under odds (${stdUnderOdds}) — a safer line always pays less. Got ${reducedUnderOdds}.`,
+      }, { status: 400 });
+    }
+    const stdOverOdds = existing.overOdds != null ? Number(existing.overOdds) : null;
+    if (rec === "OVER" && reducedOverOdds != null && stdOverOdds != null && reducedOverOdds >= stdOverOdds) {
+      return NextResponse.json({
+        error: `Reduced OVER odds must be LOWER than the standard over odds (${stdOverOdds}) — a safer line always pays less. Got ${reducedOverOdds}.`,
+      }, { status: 400 });
+    }
+
     // ── All 4 fields null and not clear → nothing to do ──────────────
     const allNull =
       reducedOverTotal == null && reducedOverOdds == null &&

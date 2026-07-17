@@ -53,9 +53,13 @@ import { relativeTime } from "@/lib/admin/formatters";
 export function PredictionDetailDrawer({
   prediction,
   onClose,
+  onDataChanged,
 }: {
   prediction: Prediction | null;
   onClose: () => void;
+  /** Called after a successful save/clear so the parent refetches and the
+      drawer's read-only displays update in place (no close/reopen needed). */
+  onDataChanged?: () => void;
 }) {
   // Betslip code editor state — must be declared before the early return so
   // React's hook rules are satisfied (hooks can't be conditional).
@@ -133,6 +137,37 @@ export function PredictionDetailDrawer({
         return;
       }
 
+      // Directional sanity — a REDUCED line is the SAFER line (the API
+      // re-checks; this gives instant feedback). UNDER: reduced line must be
+      // ABOVE the standard line; OVER: below it. Reduced odds always pay
+      // LESS than the standard side's odds.
+      const rec2 = prediction.recommendation?.toUpperCase();
+      const stdLine = prediction.bookmaker_line;
+      const dirErr = (() => {
+        if (rec2 === "UNDER") {
+          const t = rrUnderTotal.trim() === "" ? null : Number(rrUnderTotal);
+          const o = rrUnderOdds.trim() === "" ? null : Number(rrUnderOdds);
+          if (t != null && stdLine != null && t <= stdLine)
+            return `Reduced UNDER line must be HIGHER than the standard line (${stdLine}) — the safer under sits above it`;
+          if (o != null && prediction.under_odds != null && o >= prediction.under_odds)
+            return `Reduced UNDER odds must be LOWER than the standard under odds (${prediction.under_odds}) — a safer line pays less`;
+        }
+        if (rec2 === "OVER") {
+          const t = rrOverTotal.trim() === "" ? null : Number(rrOverTotal);
+          const o = rrOverOdds.trim() === "" ? null : Number(rrOverOdds);
+          if (t != null && stdLine != null && t >= stdLine)
+            return `Reduced OVER line must be LOWER than the standard line (${stdLine}) — the safer over sits below it`;
+          if (o != null && prediction.over_odds != null && o >= prediction.over_odds)
+            return `Reduced OVER odds must be LOWER than the standard over odds (${prediction.over_odds}) — a safer line pays less`;
+        }
+        return null;
+      })();
+      if (dirErr) {
+        setRrMsg({ kind: "err", text: dirErr });
+        setRrSaving(false);
+        return;
+      }
+
       const res = await fetch("/api/admin/predictions/reduced-risk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -140,11 +175,10 @@ export function PredictionDetailDrawer({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setRrMsg({ kind: "ok", text: "Saved — scraper will not overwrite this manual override. Close and reopen the drawer to refresh the read-only display above." });
-      // Note: we deliberately do NOT mutate the `prediction` prop (React's
-      // immutability lint rule forbids it, and the parent owns the state).
-      // The input fields above already reflect the new values via local state.
-      // The read-only display + source badge will refresh on next drawer open.
+      setRrMsg({ kind: "ok", text: "Saved — the scraper will not overwrite this manual override." });
+      // Refresh the parent's predictions so the read-only display + source
+      // badge above update in place (no close/reopen needed).
+      onDataChanged?.();
     } catch (e) {
       setRrMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -172,9 +206,9 @@ export function PredictionDetailDrawer({
       setRrUnderTotal("");
       setRrUnderOdds("");
       setRrClearConfirm(false);
-      // Note: we deliberately do NOT mutate the `prediction` prop (React's
-      // immutability lint rule forbids it, and the parent owns the state).
-      // The source badge + read-only display will refresh on next drawer open.
+      // Refresh the parent's predictions so the read-only display + source
+      // badge update in place (no close/reopen needed).
+      onDataChanged?.();
     } catch (e) {
       setRrMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -197,10 +231,8 @@ export function PredictionDetailDrawer({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
       setSaveMsg({ kind: "ok", text: "Saved — users will see this code on the prediction card." });
-      // Note: we deliberately do NOT mutate the `prediction` prop (React's
-      // immutability lint rule forbids it, and the parent owns the state).
-      // The input above already shows the saved code via local state; the
-      // card UI refreshes when the parent refetches predictions.
+      // Refresh the parent's predictions so the card UI updates in place.
+      onDataChanged?.();
     } catch (e) {
       setSaveMsg({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {

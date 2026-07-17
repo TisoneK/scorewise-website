@@ -1077,6 +1077,7 @@ function AdminDashboard() {
       <PredictionDetailDrawer
         prediction={drawerPrediction}
         onClose={() => setDrawerPrediction(null)}
+        onDataChanged={fetchAllPredictions}
       />
     </div>
   );
