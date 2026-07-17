@@ -64,3 +64,12 @@ past entries — append corrections instead.
 - **Outcome:** done — baseline saved to `memory/reviews/2026-07-16-phase-one-analysis.md` (totals 44.7% vs 1X2 69.1%; UNDER-skew diagnosed; reduced-risk simulation table). 312 predictions deleted via delete-by-date range mode; 1842 ActivityLog rows cleared via the new admin DELETE endpoint (user executed the final destructive call from their own admin session). Verified both tables at 0 via live API.
 - **Open items:** Session 1 backlog unchanged. NEW urgency: fix `needingResults` cron bug BEFORE phase two accumulates data — 24/101 phase-one predictions never got results, biasing every rate. Also: delete-by-date range mode responds slower than clients wait (full-table scan + JS filter + batched deletes) — the UI shows failure while the server finishes; consider a fast `all: true` mode or async job.
 - **Report:** .context/memory/reviews/2026-07-16-phase-one-analysis.md
+
+---
+## 2026-07-16 — Session 5
+- **Agent:** Claude Code | **Model:** claude-fable-5 | **Platform:** Baos-Mac-mini.local, macOS 15.7.7 (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Fix all backlog items + verify reduced-risk wiring end-to-end (static only — NO scrapes, per user; scraping is phase-two work).
+- **Commits:** 6 website (`51a21d5` cron fix, `0026356` auth fix, `76a39fe` TS zero, `5a99f93` drawer lint, `869364c` deps audit-clean, `c357c1c` reduced lines for users) + 1 engine (`34103d7` webhook predictions payload restore)
+- **Outcome:** done — tsc 0 errors (was 13), drawer eslint clean, npm audit 0 vulns (was 9), Google OAuth auto-create restored, results cron unbroken. Wiring verified + two gaps fixed; full report in `reviews/2026-07-16-reduced-risk-wiring.md`. CRITICAL find: engine repo lacked the deployed predictions-webhook change (repo↔production divergence) — restored in repo; deployed engine may hold other uncommitted changes.
+- **Open items:** backlog "Push unpushed commits" (was already resolved per Session 1 corrections), "Write Session 1 report" (still open — historical), PAT rotation (still open — this session's PAT too). Phase-two first-scrape checklist at the end of the wiring report.
+- **Report:** .context/memory/reviews/2026-07-16-reduced-risk-wiring.md
