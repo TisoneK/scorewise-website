@@ -95,6 +95,10 @@ export async function GET(request: Request) {
         'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
         'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
         'over_odds', 'under_odds', 'home_odds', 'away_odds', 'bet_code',
+        // Reduced-risk lines are user-facing (the cards render the safer
+        // alternative line when present) — only the audit fields
+        // (reduced_risk_source/updated_at/updated_by) stay admin-only.
+        'reduced_over_total', 'reduced_over_odds', 'reduced_under_total', 'reduced_under_odds',
         'home_score', 'away_score', 'result_status', 'result_source', 'result_updated_at',
         'average_rate', 'matches_above', 'matches_below', 'decrement_test', 'increment_test',
       ];
