@@ -32,3 +32,12 @@ block (and its "last verified" date) every time you run on it again.
   - The `.context` package repo (`TisoneK/.context`) is documented as public but **required the PAT to clone** — treat as effectively private.
   - **The `Bash` tool can fail intermittently** with `tool call failed: Bash` / `Post "http://prod-wsmgr-svc:8080/mcp": EOF` — no output, no exit code. If this happens 2+ times consecutively, tell the user to restart (Rule 12) and commit/push any uncommitted work BEFORE the failures cascade.
   - **The repo has 143+ files at mode `100755` (executable)** — this is PRE-EXISTING (from commit `4ae2a7a` authored 2026-06-27), not caused by agent sessions. `git diff` will show mode changes if `core.fileMode` is true; set `git config core.fileMode false` locally to suppress the noise. Do NOT "fix" the mode bits — it would create a huge noise commit and the user has not requested it.
+
+---
+## Baos-Mac-mini.local (last verified 2026-07-16)
+- **Identify by:** hostname `Baos-Mac-mini.local`, `$USER` = `bao`, repo at `/Users/bao/Code/scorewise-website`
+- **OS:** macOS 15.7.7 (Darwin 24.6.0)
+- **Runtimes:** node v24.17.0, Python 3.9.6 (system)
+- **Package manager:** npm 11.13.0
+- **Verified commands:** git clone/mv/rm/commit/push (migration session); `npm install` and app commands not yet run here
+- **Quirks:** pushes to TisoneK repos from this machine used a chat-supplied PAT (one-off URL form, never stored in `.git/config`); node_modules not installed yet

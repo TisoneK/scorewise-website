@@ -46,3 +46,12 @@ past entries — append corrections instead.
 - **Report:** N/A (sync session — no project code reviewed or changed).
 - **Process note:** User pointed out that sync alone leaves stale data patterns (the buggy `kickoff.md` one-liner + single-edition `workflows/active.md`). Sync did its job correctly (never touched data files), but the follow-up regeneration was a separate action. Future sync-after-package-update sessions should proactively offer to regenerate `kickoff.md` when the package's kickoff template changed. Logged in `inefficiencies/log.md`.
 - **Self-assessment:** Sync discipline held — 6 structural files diffed, 1 updated, 5 left alone, 0 data files touched during sync. The data-file follow-up was clean too (regeneration from verified facts, not from memory). One small gap: the "Note for next session" about the clone-path rename initially landed only in chat — corrected by appending to `inefficiencies/log.md` this session.
+
+---
+## 2026-07-16 — Session 3
+- **Agent:** Claude Code | **Model:** claude-fable-5 | **Platform:** Baos-Mac-mini.local, macOS 15.7.7 (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Migrate `.context/` from the flat pre-0.2.0 layout to the core 0.2.0 two-zone layout per the package's MIGRATION.md (chat target: initialize/upgrade `.context/`, not a code sweep).
+- **Commits:** 1 (`chore(context): migrate to core 0.2.0 two-zone layout`)
+- **Outcome:** done — all memory moved to `.context/memory/` via `git mv` (history preserved, zero data loss); core 0.2.0 vendored at `.context/core/` (verify passed); `kickoff.md`, `.context/README.md`, `AGENTS.md`, `memory/overrides/` regenerated/seeded; `workflows/active.md` updated to vendored-protocol shape (raw/blob fetch URLs replaced — they 404 post-0.2.0). Standing Target (Reduced-Risk Manual Entry) and all prior memory preserved as written.
+- **Open items:** Session 1 backlog unchanged — unwritten report, duplicate signIn bug, needingResults bug, dependabot vulns, PAT rotation (see `tasks/backlog.md`). PAT rotation applies to this session's chat-supplied PAT too.
+- **Report:** none — migration session, no project code reviewed or changed.
