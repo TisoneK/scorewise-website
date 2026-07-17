@@ -79,6 +79,7 @@ export async function GET(request: Request) {
 
   let matchesNeedingResults = 0;
   let sampleMatchIds: string[] = [];
+  const needingResults: { matchId: string; homeTeam: string; awayTeam: string; date: string; time: string }[] = [];
 
   try {
     const turso = createClient({
@@ -100,7 +101,6 @@ export async function GET(request: Request) {
       args: [],
     });
 
-    const needingResults: { matchId: string; homeTeam: string; awayTeam: string; date: string; time: string }[] = [];
     for (const row of rs.rows) {
       const dateStr = row.date as string;
       const timeStr = row.time as string;
