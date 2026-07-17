@@ -125,6 +125,7 @@ export async function POST(request: Request) {
 
     // ── Branch 2: scheduled-match scrape (default) ──────────────────────
     const day = body.day || "Today";
+    const force = body.force === true; // re-scrape already-processed matches
     if (!["Today", "Tomorrow"].includes(day)) {
       return NextResponse.json({ error: "day must be 'Today' or 'Tomorrow', or operation must be 'scrape_results'" }, { status: 400 });
     }
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
       const res = await fetch(`${scraperUrl}/api/scrape`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ day }),
+        body: JSON.stringify({ day, force }),
         signal: AbortSignal.timeout(15000),
       });
 
@@ -152,7 +153,7 @@ export async function POST(request: Request) {
           userId: (session.user as { id: string }).id,
           action: "SERVICE_TRIGGER",
           service: "scraper",
-          details: JSON.stringify({ operation: "manual_scrape", day, scrape_id: data.scrape_id }),
+          details: JSON.stringify({ operation: "manual_scrape", day, force, scrape_id: data.scrape_id }),
         },
       });
 
