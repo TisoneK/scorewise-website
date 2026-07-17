@@ -64,7 +64,7 @@ export const authOptions: NextAuthOptions = {
       : []),
   ],
   callbacks: {
-    // ── signIn callback — auto-create Google users on first sign-in ───
+    // ── signIn callback — auto-create Google users, then log the login ──
     async signIn({ user, account }) {
       if (account?.provider === "google" && user.email) {
         const existing = await db.user.findUnique({
@@ -86,9 +86,6 @@ export const authOptions: NextAuthOptions = {
           });
         }
       }
-      return true;
-    },
-    async signIn({ user, account }) {
       // ── Record login event ─────────────────────────────────────────
       // Track every successful sign-in for user activity analytics.
       if (user.email) {
