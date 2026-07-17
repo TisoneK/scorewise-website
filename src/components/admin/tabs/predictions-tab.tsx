@@ -63,7 +63,25 @@ export function PredictionsTab({
   setDrawerPrediction,
 }: PredictionsTabProps) {
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [showDeleteBox, setShowDeleteBox] = useState(false);
+
+  // Pull the engine's store directly into the website DB — the recovery
+  // path when the engine→website webhook was down during an ingest.
+  const handleEngineSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/admin/engine/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      toast.success(`Engine sync: ${data.fetched} fetched — ${data.stored} new, ${data.updated} updated${data.errors ? `, ${data.errors} errors` : ""}`);
+      fetchAllPredictions();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Engine sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
   const [deleteFromDate, setDeleteFromDate] = useState("");
   const [deleteToDate, setDeleteToDate] = useState("");
   const [deleteMode, setDeleteMode] = useState<"single" | "range">("single");
@@ -143,6 +161,11 @@ export function PredictionsTab({
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
             <RefreshCw className={`w-3.5 h-3.5 ${loadingPred ? "animate-spin" : ""}`} /> Reload
+          </Button>
+          {/* Pulls the engine store into the website DB — use when the
+              webhook channel was down during an ingest (does NOT scrape). */}
+          <Button variant="outline" size="sm" onClick={handleEngineSync} disabled={syncing} className="gap-1.5 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10">
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? "animate-spin" : ""}`} /> Sync from engine
           </Button>
           <Button variant="outline" size="sm" onClick={handleDownloadPredictions} disabled={!allPredictionsData} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
             <Download className="w-3.5 h-3.5" /> Export
@@ -271,6 +294,21 @@ export function PredictionsTab({
                   <p className="font-bold text-sm leading-tight break-words">
                     {p.home_team || "Home"} <span className="text-muted-foreground/50 mx-0.5">vs</span> {p.away_team || "Away"}
                   </p>
+
+                  {/* Admin transparency — failed predictions show WHY they
+                      didn't qualify instead of being indistinguishable from
+                      qualifying ones (users never see these rows at all). */}
+                  {p.success === false && (
+                    <div className="text-[10px] text-neon-red bg-neon-red/5 border border-neon-red/20 rounded px-2 py-1 break-words">
+                      <span className="font-bold">DID NOT QUALIFY: </span>
+                      {(p.validation_errors || []).join("; ") || "no reason recorded by the engine"}
+                    </div>
+                  )}
+                  {p.success !== false && p.recommendation === "NO_BET" && (
+                    <div className="text-[10px] text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20 rounded px-2 py-1">
+                      <span className="font-bold">NO BET</span> — processed successfully, but the algorithm declined to pick a side
+                    </div>
+                  )}
 
                   {/* O/U Prediction row */}
                   {(isOver || isUnder) && (

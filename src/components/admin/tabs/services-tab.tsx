@@ -10,6 +10,7 @@
 
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import {
   Card,
   CardContent,
@@ -655,6 +656,116 @@ export function ServicesTab({
           )}
         </Card>
       )}
+
+      {/* Last scrape report — the FULL match list from the most recent scrape,
+          including matches that did NOT qualify for prediction and why. Only
+          complete matches travel to the engine, so this panel is the only
+          place admins can see the whole run. */}
+      <LastScrapeReport />
     </>
+  );
+}
+
+interface ScrapeReportMatch {
+  match_id?: string;
+  home_team?: string;
+  away_team?: string;
+  country?: string;
+  league?: string;
+  date?: string;
+  time?: string;
+  status?: string;
+  skip_reason?: string | null;
+}
+
+interface ScrapeReport {
+  scrape_id?: string;
+  day?: string;
+  total_collected?: number;
+  complete_matches?: number;
+  incomplete_matches?: number;
+  matches?: ScrapeReportMatch[];
+  received_at?: string;
+}
+
+function LastScrapeReport() {
+  const [report, setReport] = useState<ScrapeReport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // No setState before the first await — the react-hooks lint rule forbids
+  // synchronous setState inside an effect (loading starts true; the refresh
+  // button sets it back to true itself before re-invoking).
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/logs?action=SCRAPE_REPORT&limit=1");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const row = data.logs?.[0];
+      setReport(row ? (JSON.parse(row.details || "{}") as ScrapeReport) : null);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load scrape report");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    // Reports arrive right after each scrape finishes — poll so the panel
+    // updates without a manual refresh (same cadence as the user dashboard).
+    const interval = setInterval(load, 60000);
+    return () => clearInterval(interval);
+  }, [load]);
+
+  const matches = report?.matches || [];
+  // Incomplete first — those are the ones needing an admin's eyes.
+  const sorted = [...matches].sort((a, b) => (a.status === "complete" ? 1 : 0) - (b.status === "complete" ? 1 : 0));
+
+  return (
+    <Card className="bg-card/60 border-border/40">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div>
+            <CardTitle className="text-sm">Last Scrape Report — every match, including non-qualifying</CardTitle>
+            <CardDescription className="text-[11px]">
+              {report
+                ? `${report.day || "?"} · ${report.total_collected ?? matches.length} collected · ${report.complete_matches ?? 0} sent to engine · ${report.incomplete_matches ?? 0} did not qualify`
+                : "No scrape report received yet — reports arrive automatically after each scrape (scraper redeploy required for older scraper builds)."}
+            </CardDescription>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => { setLoading(true); load(); }} disabled={loading} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
+            Refresh
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="pt-0">
+        {error ? (
+          <p className="text-xs text-neon-red">{error}</p>
+        ) : loading ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : matches.length === 0 ? null : (
+          <ScrollArea className="max-h-72">
+            <div className="space-y-1">
+              {sorted.map((m, i) => (
+                <div key={m.match_id || i} className={`flex items-start gap-2 text-[11px] rounded px-2 py-1 border ${m.status === "complete" ? "border-neon-green/15 bg-neon-green/5" : "border-neon-yellow/20 bg-neon-yellow/5"}`}>
+                  {m.status === "complete"
+                    ? <CheckCircle2 className="w-3 h-3 text-neon-green shrink-0 mt-0.5" />
+                    : <XCircle className="w-3 h-3 text-neon-yellow shrink-0 mt-0.5" />}
+                  <div className="min-w-0">
+                    <span className="font-semibold">{m.home_team || "?"} vs {m.away_team || "?"}</span>
+                    <span className="text-muted-foreground/70"> · {[m.league, m.country].filter(Boolean).join(", ") || "unknown league"} · {m.time || "—"}</span>
+                    {m.status !== "complete" && (
+                      <p className="text-neon-yellow/90 break-words">{m.skip_reason || "no reason recorded"}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
   );
 }
