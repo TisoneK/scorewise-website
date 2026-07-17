@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +23,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const all = searchParams.get('all') === 'true';
+    // ?all=true (full unstripped payload) is honored ONLY for admins and
+    // operators — regular users always get the stripped view, even if they
+    // call the endpoint directly with the query param.
+    const session = await getServerSession(authOptions);
+    const role = (session?.user as { role?: string })?.role;
+    const isOp = role === "ADMIN" || role === "OPERATOR";
+    const all = searchParams.get('all') === 'true' && isOp;
 
     // Fetch from DB
     const dbPreds = await db.prediction.findMany({
@@ -90,15 +98,30 @@ export async function GET(request: Request) {
       // Filter out NO_BET
       predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
 
+      // Collapse the line hierarchy into ONE line before stripping: users
+      // must only ever see a single line per pick — the safer alternative
+      // line when one exists, else the primary line — with no field names,
+      // labels, or payload keys revealing that multiple line types exist.
+      // Admins/operators (all=true) see both lines uncollapsed.
+      predictions = predictions.map((p) => {
+        const rec = typeof p.recommendation === 'string' ? p.recommendation.toUpperCase() : '';
+        const altLine = rec === 'OVER' ? p.reduced_over_total : rec === 'UNDER' ? p.reduced_under_total : null;
+        const altOdds = rec === 'OVER' ? p.reduced_over_odds : rec === 'UNDER' ? p.reduced_under_odds : null;
+        if (altLine != null) {
+          p.bookmaker_line = altLine;
+          if (altOdds != null) {
+            if (rec === 'OVER') p.over_odds = altOdds;
+            else p.under_odds = altOdds;
+          }
+        }
+        return p;
+      });
+
       // Strip algorithm internals — but keep the fields needed for Top Picks ranking
       const USER_FIELDS = [
         'match_id', 'home_team', 'away_team', 'country', 'league', 'date', 'time',
         'recommendation', 'confidence', 'bookmaker_line', 'team_winner', 'success',
         'over_odds', 'under_odds', 'home_odds', 'away_odds', 'bet_code',
-        // Reduced-risk lines are user-facing (the cards render the safer
-        // alternative line when present) — only the audit fields
-        // (reduced_risk_source/updated_at/updated_by) stay admin-only.
-        'reduced_over_total', 'reduced_over_odds', 'reduced_under_total', 'reduced_under_odds',
         'home_score', 'away_score', 'result_status', 'result_source', 'result_updated_at',
         'average_rate', 'matches_above', 'matches_below', 'decrement_test', 'increment_test',
       ];
