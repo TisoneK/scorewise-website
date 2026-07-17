@@ -234,8 +234,10 @@ export function PredictionsTab({
         </div>
       </div>
 
-      {/* Prediction cards */}
-      {loadingPred ? (
+      {/* Prediction cards — the loading state only shows when there is no
+          data yet; background auto-refreshes keep the current list rendered
+          (stale-while-revalidate) so the page doesn't flicker every 30s. */}
+      {loadingPred && preds.length === 0 ? (
         <div className="text-center py-12">
           <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">Loading predictions...</p>

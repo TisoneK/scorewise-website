@@ -428,7 +428,9 @@ export function OverviewTab({
         </CardHeader>
         <CardContent>
           <ScrollArea className="max-h-[500px]">
-            {loadingPred ? (
+            {/* Skeletons only before the FIRST load — background refreshes
+                keep the table rendered so the page doesn't flicker. */}
+            {loadingPred && preds.length === 0 ? (
               <div className="space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <Skeleton key={i} className="h-12 w-full bg-muted/30" />
