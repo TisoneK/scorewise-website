@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
+import { runEngineAutoSync } from "@/lib/engine-auto-sync";
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +24,11 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request) {
   try {
+    // Self-heal: after the response is sent, check (debounced) whether the
+    // engine store has ingests the DB doesn't, and pull them if so. This is
+    // what keeps predictions flowing even when the push webhook is down.
+    after(() => runEngineAutoSync());
+
     const { searchParams } = new URL(request.url);
     // ?all=true (full unstripped payload) is honored ONLY for admins and
     // operators — regular users always get the stripped view, even if they

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
+import { runEngineAutoSync } from "@/lib/engine-auto-sync";
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +16,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    // Self-heal: debounced background pull from the engine store if the push
+    // webhook missed an ingest (see src/lib/engine-auto-sync.ts).
+    after(() => runEngineAutoSync());
+
     const session = await getServerSession(authOptions);
     const role = (session?.user as { role: string })?.role;
     if (!session || (role !== "ADMIN" && role !== "OPERATOR")) {
