@@ -12,8 +12,8 @@
 4. **Engine → website:** `notify_predictions_updated(..., predictions=new_results)` sends the ingested batch (both ingest paths) — **fixed this session, see gap A**.
 5. **Website webhook receiver** (`/api/webhook/predictions`): HMAC-verified; upserts reduced fields **only when no manual override exists** (`reducedRiskSource === "manual"` is never clobbered by the scraper); stamps `scraper` source only when values are actually present.
 6. **Manual override path:** `POST /api/admin/predictions/reduced-risk` (admin/operator, validated, audited, `clear` support) + drawer editor UI.
-7. **API exposure:** `/api/predictions` returns reduced fields to admins AND (after gap B fix) to regular users; audit fields stay admin-only.
-8. **UI:** predictions tab renders `effectiveLine = reducedLine ?? bookmaker_line` with the reduced odds badge for every logged-in user.
+7. **API exposure (design updated 2026-07-16, session 6):** for regular users `/api/predictions` COLLAPSES the line hierarchy server-side — `bookmaker_line`/odds are overwritten with the reduced values when present, and the `reduced_*` keys are stripped entirely. Users see exactly one line and cannot tell multiple line types exist (no field names, no labels). `?all=true` is enforced server-side to ADMIN/OPERATOR only. Admins see both lines uncollapsed.
+8. **UI:** the user card (`prediction-card.tsx`) shows the single collapsed line; strikethrough/dual-line displays exist only in the admin dashboard components, which are never rendered for USER role.
 9. **Analytics grading:** win profit uses `reduced_*_odds ?? *_odds` (`src/lib/analytics.ts:35`) — phase-two ROI will automatically be computed on the reduced lines where present.
 
 ## Gaps found and fixed this session
@@ -27,5 +27,5 @@
 
 1. After the first ingest, check a prediction in the DB/admin drawer: `reduced_*` populated, `reducedRiskSource = "scraper"`.
 2. Set a manual override on one match, re-scrape it, confirm the override survives.
-3. Log in as a regular USER: the card should show the reduced line + odds, not the primary line.
+3. Log in as a regular USER: the card should show the reduced line + odds presented as THE line — with no hint (label, second line, strikethrough, or API field) that any other line type exists. Also verify `/api/predictions?all=true` as a USER returns the stripped, collapsed payload.
 4. Confirm results arrive (the `needingResults` cron crash was fixed this session, website `51a21d5`) — phase one lost 24/101 results to it.

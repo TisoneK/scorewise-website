@@ -73,3 +73,12 @@ past entries — append corrections instead.
 - **Outcome:** done — tsc 0 errors (was 13), drawer eslint clean, npm audit 0 vulns (was 9), Google OAuth auto-create restored, results cron unbroken. Wiring verified + two gaps fixed; full report in `reviews/2026-07-16-reduced-risk-wiring.md`. CRITICAL find: engine repo lacked the deployed predictions-webhook change (repo↔production divergence) — restored in repo; deployed engine may hold other uncommitted changes.
 - **Open items:** backlog "Push unpushed commits" (was already resolved per Session 1 corrections), "Write Session 1 report" (still open — historical), PAT rotation (still open — this session's PAT too). Phase-two first-scrape checklist at the end of the wiring report.
 - **Report:** .context/memory/reviews/2026-07-16-reduced-risk-wiring.md
+
+---
+## 2026-07-16 — Session 6
+- **Agent:** Claude Code | **Model:** claude-fable-5 | **Platform:** Baos-Mac-mini.local, macOS 15.7.7 (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Product rule from user: regular users see exactly ONE line (alternative line when present, else primary) with zero exposure of line-type naming ("reduced risk" etc.) in UI or API; only admins/operators see both lines.
+- **Commits:** 1 (`feat(api): collapse line hierarchy for regular users`) + report/context updates
+- **Outcome:** done — server-side collapse in /api/predictions (bookmaker_line/odds overwritten, reduced_* keys stripped for USER role); ?all=true now enforced ADMIN/OPERATOR server-side (was caller-trusted). Verified user-facing components (UserPredictionsView, prediction-card) contain no line-type labels; admin dual-line displays are unreachable for USER role. tsc 0 errors, eslint clean.
+- **Open items:** Session 1 report (historical), PAT rotation. Note: raw JS bundle string literals from admin components may still contain the words (minified bundles, admin-only rendering) — acceptable per current threat model; revisit only if the user wants bundle-level separation.
+- **Report:** .context/memory/reviews/2026-07-16-reduced-risk-wiring.md (items 7-8 + checklist updated)
