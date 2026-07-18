@@ -224,20 +224,32 @@ export function UserPredictionsView() {
       .sort((a, b) => (b._strength || 0) - (a._strength || 0))
       .slice(0, 3);
 
+    // Moneyline "Value Picks" — predicted winners whose odds are AT OR
+    // ABOVE the admin-configured threshold (default 1.90). Unlike the O/U
+    // Top Picks (confidence-driven), value picks are odds-driven: a
+    // predicted winner priced ≥ threshold is a value bet. Best first
+    // (HIGH confidence ranks above the rest, then model strength).
+    const minOdds = data?.value_picks_min_odds ?? 1.9;
     const win = predictions
       .filter((p) => {
-        if (p.team_winner_confidence?.toUpperCase() !== "HIGH") return false;
         const w = p.team_winner?.toUpperCase();
         if (w !== "HOME_TEAM" && w !== "AWAY_TEAM") return false;
+        const odds = w === "HOME_TEAM" ? p.home_odds : p.away_odds;
+        if (odds == null || Number(odds) < minOdds) return false;
         if (excludeFinal && (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED")) return false;
         return true;
       })
       .map((p) => ({ ...p, _strength: computeWinStrength(p) }))
-      .sort((a, b) => (b._strength || 0) - (a._strength || 0))
+      .sort((a, b) => {
+        const confA = a.team_winner_confidence?.toUpperCase() === "HIGH" ? 1 : 0;
+        const confB = b.team_winner_confidence?.toUpperCase() === "HIGH" ? 1 : 0;
+        if (confA !== confB) return confB - confA;
+        return (b._strength || 0) - (a._strength || 0);
+      })
       .slice(0, 3);
 
     return { ou, win };
-  }, [computeOUStrength, computeWinStrength]);
+  }, [computeOUStrength, computeWinStrength, data?.value_picks_min_odds]);
 
   // ── Today's top picks — used for per-date rendering (computed inline per group)
   // The getTopPicksForGroup function above is called per date group in the render.
@@ -615,12 +627,16 @@ export function UserPredictionsView() {
                               </div>
                             </div>
                           )}
-                          {/* 1X2 picks */}
+                          {/* Moneyline VALUE PICKS — predicted winners priced
+                              at or above the admin-set odds threshold */}
                           {groupTopPicks.win.length > 0 && (
                             <div>
                               <div className="flex items-center gap-1.5 px-3 py-1 bg-neon-cyan/5">
                                 <div className="w-0.5 h-2.5 rounded-full bg-neon-cyan shrink-0" />
-                                <span className="text-[9px] font-bold text-neon-cyan/80 uppercase tracking-wider">1X2</span>
+                                <span className="text-[9px] font-bold text-neon-cyan/80 uppercase tracking-wider">Value Picks</span>
+                                <span className="text-[8px] text-neon-cyan/60 bg-neon-cyan/10 px-1 py-0.5 rounded-full border border-neon-cyan/20">
+                                  odds ≥ {(data?.value_picks_min_odds ?? 1.9).toFixed(2)}
+                                </span>
                               </div>
                               <div className="p-2 space-y-2">
                                 {groupTopPicks.win.map((p, i) => (

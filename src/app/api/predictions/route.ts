@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 import { runEngineAutoSync } from "@/lib/engine-auto-sync";
-import { userTotalsSuspended } from "@/lib/service-config";
+import { getConfig, userTotalsSuspended } from "@/lib/service-config";
 
 export const dynamic = 'force-dynamic';
 
@@ -174,6 +174,13 @@ export async function GET(request: Request) {
       succeeded,
       failed,
       predictions,
+      // Value Picks threshold — the user view highlights moneyline picks
+      // whose winner odds are at or above this. Admin-configurable via
+      // ServiceConfig website/value_picks_min_odds; clamped to sanity.
+      value_picks_min_odds: await (async () => {
+        const raw = Number(await getConfig('website', 'value_picks_min_odds'));
+        return Number.isFinite(raw) && raw >= 1.01 && raw <= 20 ? raw : 1.9;
+      })(),
     });
   } catch (error) {
     console.error('[predictions] Error:', error);

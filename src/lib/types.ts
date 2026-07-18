@@ -65,6 +65,9 @@ export interface StoredPredictions {
   succeeded: number;
   failed: number;
   predictions: Prediction[];
+  /** Minimum winner odds for a moneyline pick to qualify as a "Value Pick"
+      in the user view. Admin-configurable (website/value_picks_min_odds). */
+  value_picks_min_odds?: number;
 }
 
 export type ConfidenceLevel = "HIGH" | "MEDIUM" | "LOW";

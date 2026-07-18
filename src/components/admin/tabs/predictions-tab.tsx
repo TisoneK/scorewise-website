@@ -162,6 +162,8 @@ export function PredictionsTab({
         <div className="flex gap-2 flex-wrap items-center">
           {/* Admin-only: suspend/lift Totals (O/U) visibility for users */}
           <UserTotalsToggle />
+          {/* Admin-only: minimum odds for user-facing moneyline Value Picks */}
+          <ValuePicksOddsControl />
           <Button variant="outline" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
             <RefreshCw className={`w-3.5 h-3.5 ${loadingPred ? "animate-spin" : ""}`} /> Reload
           </Button>
@@ -471,6 +473,89 @@ function UserTotalsToggle() {
         onCheckedChange={(checked) => flip(!checked)}
         aria-label="Toggle Totals (O/U) picks visibility for regular users"
       />
+    </div>
+  );
+}
+
+/**
+ * ValuePicksOddsControl — admin-only editor for the minimum winner odds a
+ * moneyline pick needs to appear as a user-facing "Value Pick" (default
+ * 1.90). Backed by ServiceConfig website/value_picks_min_odds via the
+ * existing /api/admin/config endpoints — takes effect on the users' next
+ * dashboard poll, no redeploy. Self-gating like UserTotalsToggle.
+ */
+function ValuePicksOddsControl() {
+  const [visible, setVisible] = useState(false);
+  const [value, setValue] = useState("1.90");
+  const [savedValue, setSavedValue] = useState("1.90");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/config");
+      if (!res.ok) return; // 403 for operators → control stays hidden
+      const data = await res.json();
+      const rows = data.configs || [];
+      const row = rows.find((c: { service: string; key: string; value?: string }) =>
+        c.service === "website" && c.key === "value_picks_min_odds");
+      const n = Number(row?.value);
+      const text = Number.isFinite(n) && n >= 1.01 && n <= 20 ? n.toFixed(2) : "1.90";
+      setValue(text);
+      setSavedValue(text);
+      setVisible(true);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: every setState in load() happens after the first await, not synchronously in the effect
+    load();
+  }, [load]);
+
+  if (!visible) return null;
+
+  const save = async () => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 1.01 || n > 20) {
+      toast.error("Value Picks odds threshold must be between 1.01 and 20");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service: "website", key: "value_picks_min_odds", value: n.toFixed(2), secret: false }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSavedValue(n.toFixed(2));
+      setValue(n.toFixed(2));
+      toast.success(`Value Picks threshold saved — users now see moneyline picks with odds ≥ ${n.toFixed(2)}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save threshold");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-1.5 rounded-md border border-neon-cyan/30 bg-neon-cyan/5 px-2.5 h-9">
+      <span className="text-xs font-semibold whitespace-nowrap">Value picks ≥</span>
+      <Input
+        type="number"
+        step="0.05"
+        min="1.01"
+        max="20"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={saving}
+        className="h-6 w-16 px-1.5 text-xs font-mono bg-background"
+        aria-label="Minimum winner odds for user-facing Value Picks"
+      />
+      {value !== savedValue && (
+        <Button size="sm" variant="ghost" onClick={save} disabled={saving} className="h-6 px-2 text-[10px] text-neon-cyan hover:bg-neon-cyan/10">
+          {saving ? "Saving..." : "Save"}
+        </Button>
+      )}
     </div>
   );
 }
