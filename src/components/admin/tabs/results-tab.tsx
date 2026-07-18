@@ -227,23 +227,28 @@ export function ResultsTab() {
 
   /**
    * "Heal" button — one-click recovery when the scraper is wedged (stuck
-   * jobs, zombie Chrome, "session not created" errors). Kills EVERYTHING
-   * on the scraper (queued + running jobs + Chrome processes), resumes the
-   * queue, and leaves it in a fresh ready state — WITHOUT starting a
-   * scrape. Use Scrape Results afterwards to scrape.
+   * jobs, zombie Chrome, "session not created" errors). The scraper's
+   * kill_all stops EVERYTHING: the scheduled (Today/Tomorrow) batch scrape,
+   * the batch results scrape, all queued + running single-match jobs, and
+   * every Chrome/chromedriver process. The queue is then resumed so the
+   * scraper is in a fresh ready state — WITHOUT starting a scrape.
+   * Use Scrape Results afterwards to scrape.
+   *
+   * Note: batch scrapes stop cooperatively — the Services tab may show
+   * "running" for a few more seconds while the thread unwinds.
    */
   const healScraper = async () => {
     setHealing(true);
-    setScrapeMsg({ kind: "ok", text: "Healing scraper — killing all jobs + Chrome processes..." });
+    setScrapeMsg({ kind: "ok", text: "Healing scraper — stopping scheduled + results scrapes, killing all jobs + Chrome..." });
     try {
       const killRes = await fetch("/api/admin/scraper", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operation: "kill_all" }),
       });
+      const killData = await killRes.json().catch(() => ({}));
       if (!killRes.ok) {
-        const err = await killRes.json().catch(() => ({}));
-        throw new Error(err.message || err.error || `Kill failed (HTTP ${killRes.status})`);
+        throw new Error(killData.message || killData.error || `Kill failed (HTTP ${killRes.status})`);
       }
       // kill_all pauses the single-scrape queue — resume so the scraper is
       // genuinely ready for a fresh start.
@@ -252,16 +257,26 @@ export function ResultsTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operation: "resume_queue" }),
       }).catch(() => {});
+      // Report exactly what was killed so "did it stop the scheduled
+      // scrape?" never needs guessing.
+      const d = killData.details || {};
+      const q = d.queue_killed || {};
+      const parts = [
+        `scheduled scrape ${d.scheduled_stopped ? "STOPPED" : "was not running"}`,
+        `results scrape ${d.results_stopped ? "STOPPED" : "was not running"}`,
+        `${(q.killed_running ?? 0) + (q.killed_queued ?? 0)} queue job(s) killed`,
+        "Chrome processes cleared",
+      ];
       setScrapeMsg({
         kind: "ok",
-        text: "Scraper healed — all jobs and Chrome processes killed, queue resumed. Ready for a fresh Scrape Results.",
+        text: `Scraper healed — ${parts.join(", ")}. Queue resumed; batch scrapes wind down within a few seconds. Ready for a fresh Scrape Results.`,
       });
       fetchPredictions();
     } catch (err) {
       setScrapeMsg({ kind: "err", text: err instanceof Error ? err.message : "Heal failed — scraper may be unreachable" });
     } finally {
       setHealing(false);
-      setTimeout(() => setScrapeMsg(null), 8000);
+      setTimeout(() => setScrapeMsg(null), 12000);
     }
   };
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
@@ -1000,7 +1015,7 @@ export function ResultsTab() {
                 onClick={healScraper}
                 disabled={healing || scraping}
                 className="gap-1.5 h-8 border-neon-yellow/40 text-neon-yellow hover:bg-neon-yellow/10"
-                title="Kill all scraper jobs + Chrome processes and reset to a fresh state (does NOT scrape)"
+                title="Stop the scheduled + results batch scrapes, kill all queue jobs + Chrome processes, and reset to a fresh state (does NOT scrape)"
               >
                 {healing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wrench className="w-3.5 h-3.5" />}
                 <span className="hidden sm:inline">{healing ? "Healing..." : "Heal"}</span>
