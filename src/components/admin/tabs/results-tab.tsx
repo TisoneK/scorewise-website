@@ -26,6 +26,7 @@ import {
   Save,
   Loader2,
   RefreshCw,
+  Wrench,
   Check,
   AlertTriangle,
   Calendar,
@@ -222,6 +223,47 @@ export function ResultsTab() {
   const [savingAll, setSavingAll] = useState(false);
   const [batchMsg, setBatchMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [scraping, setScraping] = useState(false);
+  const [healing, setHealing] = useState(false);
+
+  /**
+   * "Heal" button — one-click recovery when the scraper is wedged (stuck
+   * jobs, zombie Chrome, "session not created" errors). Kills EVERYTHING
+   * on the scraper (queued + running jobs + Chrome processes), resumes the
+   * queue, and leaves it in a fresh ready state — WITHOUT starting a
+   * scrape. Use Scrape Results afterwards to scrape.
+   */
+  const healScraper = async () => {
+    setHealing(true);
+    setScrapeMsg({ kind: "ok", text: "Healing scraper — killing all jobs + Chrome processes..." });
+    try {
+      const killRes = await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "kill_all" }),
+      });
+      if (!killRes.ok) {
+        const err = await killRes.json().catch(() => ({}));
+        throw new Error(err.message || err.error || `Kill failed (HTTP ${killRes.status})`);
+      }
+      // kill_all pauses the single-scrape queue — resume so the scraper is
+      // genuinely ready for a fresh start.
+      await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "resume_queue" }),
+      }).catch(() => {});
+      setScrapeMsg({
+        kind: "ok",
+        text: "Scraper healed — all jobs and Chrome processes killed, queue resumed. Ready for a fresh Scrape Results.",
+      });
+      fetchPredictions();
+    } catch (err) {
+      setScrapeMsg({ kind: "err", text: err instanceof Error ? err.message : "Heal failed — scraper may be unreachable" });
+    } finally {
+      setHealing(false);
+      setTimeout(() => setScrapeMsg(null), 8000);
+    }
+  };
   const [scrapeMsg, setScrapeMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [lastLiveRefresh, setLastLiveRefresh] = useState<Date | null>(null);
   // Delete panel state
@@ -947,19 +989,21 @@ export function ResultsTab() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {/* Refresh — triggers a scrape of all matches that need results,
-                  then fetches the updated data from DB. Use as a manual fallback
-                  if auto-refresh missed something or you want to force-update now. */}
+              {/* Heal — recovery, not scraping: kills every scraper job +
+                  zombie Chrome process and resumes the queue, so a wedged
+                  scraper ("session not created", stuck jobs) is fixable
+                  from the UI without touching code. Scrape Results is the
+                  button that actually scrapes. */}
               <Button
                 variant="outline"
                 size="sm"
-                onClick={triggerResultsScrape}
-                disabled={scraping || loading}
-                className="gap-1.5 h-8 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10"
-                title="Scrape all matches that need results + refresh from DB"
+                onClick={healScraper}
+                disabled={healing || scraping}
+                className="gap-1.5 h-8 border-neon-yellow/40 text-neon-yellow hover:bg-neon-yellow/10"
+                title="Kill all scraper jobs + Chrome processes and reset to a fresh state (does NOT scrape)"
               >
-                {(scraping || loading) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                <span className="hidden sm:inline">{scraping ? "Scraping..." : "Refresh"}</span>
+                {healing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wrench className="w-3.5 h-3.5" />}
+                <span className="hidden sm:inline">{healing ? "Healing..." : "Heal"}</span>
               </Button>
               <Button
                 variant="outline"
