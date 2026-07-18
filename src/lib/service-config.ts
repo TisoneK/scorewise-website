@@ -37,6 +37,22 @@ export async function getEngineApiKey(): Promise<string> {
 }
 
 /**
+ * Are Totals (O/U) picks suspended for regular users?
+ *
+ * While the reduced-risk totals algorithm is being re-tuned "silently"
+ * through admin accounts, users see only 1X2 picks — no O/U rows, no O/U
+ * track-record card, no totals fields in their API payloads. Admins and
+ * operators are unaffected everywhere.
+ *
+ * Toggle WITHOUT a redeploy: set ServiceConfig website/suspend_user_totals
+ * to "false" (Config tab) to re-enable totals for users. Any other value —
+ * including the row not existing — means SUSPENDED (fail-hidden).
+ */
+export async function userTotalsSuspended(): Promise<boolean> {
+  return (await getConfig("website", "suspend_user_totals")) !== "false";
+}
+
+/**
  * Get the scraper URL — checks DB first, falls back to env/hardcoded.
  */
 export async function getScraperUrl(): Promise<string> {

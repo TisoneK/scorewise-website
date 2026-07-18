@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 import { runEngineAutoSync } from "@/lib/engine-auto-sync";
+import { userTotalsSuspended } from "@/lib/service-config";
 
 export const dynamic = 'force-dynamic';
 
@@ -102,8 +103,29 @@ export async function GET(request: Request) {
 
     // For regular users (all=false): filter out NO_BET + strip algorithm internals
     if (!all) {
-      // Filter out NO_BET
-      predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
+      if (await userTotalsSuspended()) {
+        // Totals (O/U) picks are SUSPENDED for users while the reduced-risk
+        // algorithm is re-tuned via admin accounts: users get only matches
+        // with a real 1X2 pick, and every totals field is removed from the
+        // payload so nothing about the O/U market leaks.
+        predictions = predictions
+          .filter(p => p.team_winner === 'HOME_TEAM' || p.team_winner === 'AWAY_TEAM')
+          .map(p => ({
+            ...p,
+            recommendation: null,
+            recommendation_confidence: null,
+            bookmaker_line: null,
+            over_odds: null,
+            under_odds: null,
+            reduced_over_total: null,
+            reduced_over_odds: null,
+            reduced_under_total: null,
+            reduced_under_odds: null,
+          }));
+      } else {
+        // Filter out NO_BET
+        predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
+      }
 
       // Collapse the line hierarchy into ONE line before stripping: users
       // must only ever see a single line per pick — the safer alternative
