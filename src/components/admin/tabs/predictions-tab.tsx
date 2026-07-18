@@ -13,7 +13,8 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -158,7 +159,9 @@ export function PredictionsTab({
             {totalPreds} total · {successCount} processed · {failCount} errors · showing {filtered.length}
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Admin-only: suspend/lift Totals (O/U) visibility for users */}
+          <UserTotalsToggle />
           <Button variant="outline" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
             <RefreshCw className={`w-3.5 h-3.5 ${loadingPred ? "animate-spin" : ""}`} /> Reload
           </Button>
@@ -388,5 +391,86 @@ export function PredictionsTab({
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * UserTotalsToggle — admin-only switch to suspend / re-enable Totals (O/U)
+ * picks in the USER view (users then see only 1X2; no totals fields leak
+ * from the APIs). Backed by ServiceConfig website/suspend_user_totals via
+ * the existing /api/admin/config endpoints — no redeploy involved.
+ *
+ * Self-gating: the config GET is admin-only, so operators get a 403 and the
+ * control renders nothing.
+ */
+function UserTotalsToggle() {
+  const [suspended, setSuspended] = useState<boolean | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/config");
+      if (!res.ok) return; // 403 for operators → control stays hidden
+      const data = await res.json();
+      const rows = data.configs || [];
+      const row = rows.find((c: { service: string; key: string; value?: string }) =>
+        c.service === "website" && c.key === "suspend_user_totals");
+      // Suspended unless the row explicitly says "false" (absent = suspended).
+      setSuspended((row?.value ?? "") !== "false");
+      setVisible(true);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: every setState in load() happens after the first await, not synchronously in the effect
+    load();
+    // Keep in sync if another admin flips it (matches dashboard poll cadence).
+    const id = setInterval(load, 60000);
+    return () => clearInterval(id);
+  }, [load]);
+
+  if (!visible || suspended === null) return null;
+
+  const flip = async (nextSuspended: boolean) => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          service: "website",
+          key: "suspend_user_totals",
+          value: nextSuspended ? "true" : "false",
+          secret: false,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSuspended(nextSuspended);
+      toast.success(nextSuspended
+        ? "O/U picks SUSPENDED for users — they now see only 1X2 picks. Admins keep seeing everything."
+        : "O/U picks are LIVE for users again — totals lines and the O/U track record are visible.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={`flex items-center gap-2 rounded-md border px-2.5 h-9 ${suspended ? "border-neon-yellow/40 bg-neon-yellow/5" : "border-neon-green/30 bg-neon-green/5"}`}>
+      <span className="text-xs font-semibold whitespace-nowrap">
+        User O/U picks:{" "}
+        <span className={suspended ? "text-neon-yellow" : "text-neon-green"}>
+          {suspended ? "SUSPENDED" : "LIVE"}
+        </span>
+      </span>
+      <Switch
+        checked={!suspended}
+        disabled={saving}
+        onCheckedChange={(checked) => flip(!checked)}
+        aria-label="Toggle Totals (O/U) picks visibility for regular users"
+      />
+    </div>
   );
 }
