@@ -156,19 +156,24 @@ export function OverviewTab({
     const hitRate = totalWins + totalLosses > 0 ? (totalWins / (totalWins + totalLosses)) * 100 : 0;
     const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
 
-    // Streak (across all settled, not just last N)
+    // Streak (across all settled, not just last N). Every settled BET is its
+    // own streak element — a match with both an O/U and a 1X2 outcome
+    // contributes two entries. The old code kept only the last outcome per
+    // match, silently dropping the other market's result from the streak
+    // (same collapse bug as the user-stats bar, fixed in a783e15).
     let streakType: "W" | "L" | null = null;
     let streakLen = 0;
-    for (let i = settledBets.length - 1; i >= 0; i--) {
+    outer: for (let i = settledBets.length - 1; i >= 0; i--) {
       const b = settledBets[i];
       const outcomes: ("W" | "L")[] = [];
       if (b.ou) outcomes.push(b.ou);
       if (b.win) outcomes.push(b.win);
-      if (outcomes.length === 0) continue;
-      const last = outcomes[outcomes.length - 1];
-      if (streakType === null) { streakType = last; streakLen = 1; }
-      else if (last === streakType) streakLen++;
-      else break;
+      for (let j = outcomes.length - 1; j >= 0; j--) {
+        const o = outcomes[j];
+        if (streakType === null) { streakType = o; streakLen = 1; }
+        else if (o === streakType) streakLen++;
+        else break outer;
+      }
     }
 
     // Form arrays (full, sliced at render)
