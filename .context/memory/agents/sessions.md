@@ -124,3 +124,10 @@ past entries — append corrections instead.
 - **Actions:** `9fddc3f` reverts dff65c6 (Value Picks — only deploy between last-known-good and the incident; timeline-based suspicion, NOT a confirmed root cause). `385b430` adds route + global error boundaries showing the real error message + digest with Try Again / Reload buttons — users can never be stranded again, and the next crash self-reports its message for diagnosis.
 - **Open items:** confirm site recovery with the user; if it recurs, the error page now shows the exact message — collect it before touching anything. Value Picks feature is reverted, to be reintroduced after a local repro of the crash. Next revert candidates if still broken (in order): b60083f (totals toggle), 047c472/791b830 (Heal).
 - **Report:** none — incident session.
+
+---
+## 2026-07-18 — Session 10 (addendum — ROOT CAUSE found and fixed)
+- **User's decisive clue:** the dead zone is `/api/auth/error` — NextAuth's default error endpoint, NOT a React crash (which is why error boundaries never caught it).
+- **Root cause chain:** no `pages.error` configured + `authorize()`/Google `signIn`/`jwt` callbacks hit the DB unguarded → any transient Turso failure (Results tab's client-side scrape storm is the pressure source) threw inside the auth flow → NextAuth redirected the user to its bare `/api/auth/error` page → "suddenly logged out, error page, no way out".
+- **Fix `cb47d7e`:** pages.error → "/" (login page renders without DB); all auth DB calls guarded (authorize → null, Google create → return false, jwt → degraded no-role token). Also this session: `3273322` CLIENT_CRASH telemetry + prod source maps, `385b430` error boundaries, `9fddc3f` Value Picks revert (likely innocent — candidate to re-land).
+- **Remaining structural debt:** Results tab fires client-side scrape storms (immediate + 30s live + 2min awaiting loops per open tab) — the DB/scraper pressure source; should move to server-driven refresh. Value Picks re-land pending user confirmation that the site is stable.
