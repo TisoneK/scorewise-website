@@ -116,3 +116,11 @@ past entries — append corrections instead.
 - **Outcome:** done — streak now counts both markets' outcomes per match (same pattern as Session 8's a783e15). Totals suspension is enforced at the API layer: /api/predictions (users get only matches with a real 1X2 pick, all totals fields stripped) and /api/analytics (totals bucket omitted → O/U track-record card self-hides). Admin/operator views unaffected. Toggle WITHOUT redeploy: ServiceConfig `website/suspend_user_totals` = "false" re-enables; absent/any other value = suspended.
 - **Open items:** re-enable totals for users when re-tuning is done (flip the config row). Standing: Railway deploy-source question, webhook env config, PAT rotation.
 - **Report:** none — targeted fixes; Session 8's report covers the sibling bug.
+
+---
+## 2026-07-18 — Session 10 (incident: site down for authenticated users)
+- **Agent:** Claude Code | **Model:** claude-fable-5 | **Platform:** Baos-Mac-mini.local, macOS 15.7.7 (local) | **Role:** engineer | **Core:** 0.2.0
+- **Symptom:** authenticated users suddenly "logged out" onto Next's default error page, unrecoverable by reload. Login page + all API routes answered normally (200/401/405 as expected) — crash was client-side behind auth.
+- **Actions:** `9fddc3f` reverts dff65c6 (Value Picks — only deploy between last-known-good and the incident; timeline-based suspicion, NOT a confirmed root cause). `385b430` adds route + global error boundaries showing the real error message + digest with Try Again / Reload buttons — users can never be stranded again, and the next crash self-reports its message for diagnosis.
+- **Open items:** confirm site recovery with the user; if it recurs, the error page now shows the exact message — collect it before touching anything. Value Picks feature is reverted, to be reintroduced after a local repro of the crash. Next revert candidates if still broken (in order): b60083f (totals toggle), 047c472/791b830 (Heal).
+- **Report:** none — incident session.
