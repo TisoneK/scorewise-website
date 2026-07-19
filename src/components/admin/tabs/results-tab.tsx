@@ -224,6 +224,9 @@ export function ResultsTab() {
   const [batchMsg, setBatchMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [scraping, setScraping] = useState(false);
   const [healing, setHealing] = useState(false);
+  // Set while the auto-refresh loops are standing down because a batch
+  // scrape is running on the scraper (see isBatchScrapeRunning).
+  const [autoPauseNote, setAutoPauseNote] = useState<string | null>(null);
 
   /**
    * "Heal" button — one-click recovery when the scraper is wedged (stuck
@@ -756,11 +759,35 @@ export function ResultsTab() {
     let liveRunning = false;  // guard against overlapping live runs
     let awaitingRunning = false;  // guard against overlapping awaiting runs
 
+    /** Is a batch scrape (scheduled or results) running on the scraper?
+     *  While it is, the auto-refresh loops must STAND DOWN: every single-
+     *  match scrape launches its own Chrome, and Chrome-next-to-the-batch
+     *  is what OOM-kills the scraper ("session not created: Chrome instance
+     *  exited"). The deployed scraper enforces this server-side only after
+     *  its next redeploy — this client-side gate works against the current
+     *  build today. */
+    const isBatchScrapeRunning = async (): Promise<boolean> => {
+      try {
+        const res = await fetch("/api/admin/scraper");
+        if (!res.ok) return false;
+        const s = await res.json();
+        return s?.scraper?.scraperStatus === "running";
+      } catch {
+        return false; // status unknown — behave as before
+      }
+    };
+
     /** Scrape matches that need real-time updates (LIVE + just-started).
      *  Runs every 30 seconds. Skips if previous run is still in progress. */
     const refreshLiveMatches = async () => {
       if (cancelled || liveRunning) return;
       liveRunning = true;
+      if (await isBatchScrapeRunning()) {
+        setAutoPauseNote("paused — batch scrape running on the scraper (resumes automatically when it finishes)");
+        liveRunning = false;
+        return;
+      }
+      setAutoPauseNote(null);
       const liveMatchIds: string[] = [];
       const currentData = dataRef.current;
       const currentRows = rowsRef.current;
@@ -812,6 +839,12 @@ export function ResultsTab() {
     const refreshAwaitingMatches = async () => {
       if (cancelled || awaitingRunning) return;
       awaitingRunning = true;
+      if (await isBatchScrapeRunning()) {
+        setAutoPauseNote("paused — batch scrape running on the scraper (resumes automatically when it finishes)");
+        awaitingRunning = false;
+        return;
+      }
+      setAutoPauseNote(null);
       const awaitingMatchIds: string[] = [];
       const currentData = dataRef.current;
       const currentRows = rowsRef.current;
@@ -1066,9 +1099,13 @@ export function ResultsTab() {
           )}
 
           {/* Auto-refresh status indicator — always visible (always on) */}
-          <div className="text-xs flex items-center gap-1.5 text-neon-red">
-            <Radio className="w-3.5 h-3.5 animate-pulse" />
-            <span>Auto-refresh ON — LIVE every 30s · Awaiting every 2 min</span>
+          <div className={`text-xs flex items-center gap-1.5 flex-wrap ${autoPauseNote ? "text-neon-yellow" : "text-neon-red"}`}>
+            <Radio className={`w-3.5 h-3.5 ${autoPauseNote ? "" : "animate-pulse"}`} />
+            <span>
+              {autoPauseNote
+                ? `Auto-refresh ${autoPauseNote}`
+                : "Auto-refresh ON — LIVE every 30s · Awaiting every 2 min"}
+            </span>
             {lastLiveRefresh && (
               <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
             )}
