@@ -23,9 +23,19 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        });
+        // A thrown error here redirects the user to the auth ERROR flow
+        // (dead zone); returning null keeps them on the login page with a
+        // "sign in failed" message. A transient DB hiccup must be the
+        // second, never the first.
+        let user;
+        try {
+          user = await db.user.findUnique({
+            where: { email: credentials.email },
+          });
+        } catch (e) {
+          console.error("[auth/authorize] DB lookup failed:", e);
+          return null;
+        }
 
         if (!user) return null;
         if (!user.passwordHash) return null;
@@ -67,23 +77,31 @@ export const authOptions: NextAuthOptions = {
     // ── signIn callback — auto-create Google users, then log the login ──
     async signIn({ user, account }) {
       if (account?.provider === "google" && user.email) {
-        const existing = await db.user.findUnique({
-          where: { email: user.email },
-        });
-        if (!existing) {
-          // Generate a random password that no one will ever know.
-          // Hash it with bcrypt so the DB column constraint (NOT NULL) is
-          // satisfied. Google users authenticate via OAuth, never credentials.
-          const randomPassword = crypto.randomUUID() + crypto.randomUUID() + crypto.randomUUID();
-          const placeholderHash = await bcrypt.hash(randomPassword, 12);
-          await db.user.create({
-            data: {
-              email: user.email,
-              name: user.name || undefined,
-              role: "USER",
-              passwordHash: placeholderHash,
-            },
+        // A throw here sends the user to the auth ERROR flow (dead zone);
+        // returning false keeps them on the login page with an error
+        // message. A transient DB hiccup must never hard-strand them.
+        try {
+          const existing = await db.user.findUnique({
+            where: { email: user.email },
           });
+          if (!existing) {
+            // Generate a random password that no one will ever know.
+            // Hash it with bcrypt so the DB column constraint (NOT NULL) is
+            // satisfied. Google users authenticate via OAuth, never credentials.
+            const randomPassword = crypto.randomUUID() + crypto.randomUUID() + crypto.randomUUID();
+            const placeholderHash = await bcrypt.hash(randomPassword, 12);
+            await db.user.create({
+              data: {
+                email: user.email,
+                name: user.name || undefined,
+                role: "USER",
+                passwordHash: placeholderHash,
+              },
+            });
+          }
+        } catch (e) {
+          console.error("[auth/signIn] Google auto-create failed:", e);
+          return false;
         }
       }
       // ── Record login event ─────────────────────────────────────────
@@ -116,12 +134,19 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (user) {
         if (account?.provider === "google") {
-          const dbUser = await db.user.findUnique({
-            where: { email: user.email! },
-          });
-          if (dbUser) {
-            token.role = dbUser.role;
-            token.id = dbUser.id;
+          // Guarded: a throw here also ends in the auth error flow. On a
+          // DB hiccup the token keeps default (no-role) claims — the user
+          // gets a degraded USER session instead of a dead end.
+          try {
+            const dbUser = await db.user.findUnique({
+              where: { email: user.email! },
+            });
+            if (dbUser) {
+              token.role = dbUser.role;
+              token.id = dbUser.id;
+            }
+          } catch (e) {
+            console.error("[auth/jwt] DB lookup failed:", e);
           }
         } else {
           token.role = (user as unknown as { role: string }).role;
@@ -141,6 +166,12 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/",
     signOut: "/",
+    // CRITICAL: without this, any auth-flow error (e.g. a DB hiccup making
+    // authorize()/callbacks throw) dumps users on NextAuth's default
+    // /api/auth/error — a bare dead-end page with no way back (the
+    // 2026-07-18 "site died" dead zone). Route errors to the login page,
+    // which renders fine even when the DB is down.
+    error: "/",
   },
   session: {
     strategy: "jwt",
