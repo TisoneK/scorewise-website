@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * Global error boundary (root layout crashes) — catches any render/runtime crash in the page
  * tree and shows a recoverable screen instead of Next's dead-end default
@@ -16,6 +18,19 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    fetch("/api/client-crash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error?.message,
+        digest: error?.digest,
+        stack: error?.stack,
+        url: typeof window !== "undefined" ? window.location.href : "",
+      }),
+    }).catch(() => {});
+  }, [error]);
+
   return (
     <html lang="en"><body style={{ margin: 0 }}>
     <div style={{

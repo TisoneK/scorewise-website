@@ -1,13 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
+
 /**
  * Route-level error boundary — catches any render/runtime crash in the page
  * tree and shows a recoverable screen instead of Next's dead-end default
  * ("Application error"), which users read as being logged out with no way
  * back (2026-07-18 incident).
  *
- * Shows the real error message + digest so admins can report exactly what
- * broke instead of guessing.
+ * Shows the real error message + digest, and reports the crash to
+ * /api/client-crash so it lands in the activity log (CLIENT_CRASH) with
+ * message + stack + URL — diagnosis without needing the user to describe it.
  */
 export default function RouteError({
   error,
@@ -16,6 +19,18 @@ export default function RouteError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    fetch("/api/client-crash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error?.message,
+        digest: error?.digest,
+        stack: error?.stack,
+        url: typeof window !== "undefined" ? window.location.href : "",
+      }),
+    }).catch(() => {});
+  }, [error]);
   return (
     <div style={{
       minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
