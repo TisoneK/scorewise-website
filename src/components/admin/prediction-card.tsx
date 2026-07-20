@@ -51,12 +51,15 @@ export function PredictionCard({
   showLeague = true,
   showDateTime = true,
   showBetCode = true,
+  onSelect,
 }: {
   prediction: Prediction;
   rank?: number;
   showLeague?: boolean;
   showDateTime?: boolean;
   showBetCode?: boolean;
+  /** When provided, the whole card is tappable and opens the match detail. */
+  onSelect?: (p: Prediction) => void;
 }) {
   const rec = p.recommendation?.toUpperCase() || "";
   const isOver = rec === "OVER";
@@ -137,7 +140,9 @@ export function PredictionCard({
   };
 
   return (
-    <div className={`rounded-lg bg-card/90 border-2 transition-all overflow-hidden ${
+    <div
+      onClick={onSelect ? () => onSelect(p) : undefined}
+      className={`rounded-lg bg-card/90 border-2 transition-all overflow-hidden ${onSelect ? "cursor-pointer" : ""} ${
       rank !== undefined
         ? "border-neon-green/50 hover:border-neon-green/70 hover:shadow-[0_0_16px_-4px_rgba(34,197,94,0.3)]"
         : "border-border hover:border-neon-green/40"
@@ -352,7 +357,7 @@ export function PredictionCard({
           {betCode ? (
             <button
               type="button"
-              onClick={handleCopy}
+              onClick={(e) => { e.stopPropagation(); handleCopy(); }}
               className="w-full flex items-center justify-center gap-2 group/betcode"
               aria-label="Copy betslip code"
             >

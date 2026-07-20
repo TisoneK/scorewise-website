@@ -27,6 +27,7 @@ import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
 import { PublicStatsBanner } from "./public-stats-banner";
 import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
+import { timeToKickoff } from "@/lib/countdown";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -90,6 +91,8 @@ export function UserPredictionsView() {
   const [menuOpen, setMenuOpen] = useState(false);
   // Active bottom-nav tab.
   const [view, setView] = useState<"predictions" | "results" | "stats" | "menu">("predictions");
+  // Match detail overlay — set when a user taps a prediction card.
+  const [selected, setSelected] = useState<Prediction | null>(null);
   const [data, setData] = useState<StoredPredictions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -702,7 +705,7 @@ export function UserPredictionsView() {
                               </div>
                               <div className="p-2 space-y-2">
                                 {groupTopPicks.ou.map((p, i) => (
-                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} onSelect={setSelected} />
                                 ))}
                               </div>
                             </div>
@@ -716,7 +719,7 @@ export function UserPredictionsView() {
                               </div>
                               <div className="p-2 space-y-2">
                                 {groupTopPicks.win.map((p, i) => (
-                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} />
+                                  <PredictionCard key={p.match_id} prediction={p} rank={i + 1} onSelect={setSelected} />
                                 ))}
                               </div>
                             </div>
@@ -733,7 +736,7 @@ export function UserPredictionsView() {
                         </div>
                       )}
                       <div className="grid gap-2 sm:gap-3">
-                        {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} />)}
+                        {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} onSelect={setSelected} />)}
                       </div>
                     </div>
                   );
@@ -771,6 +774,140 @@ export function UserPredictionsView() {
           })}
         </div>
       </nav>
+
+      {/* Match detail overlay (Linebet borrow #5) */}
+      {selected && <MatchDetail prediction={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+}
+
+/**
+ * MatchDetail — full-screen detail for a tapped prediction (Linebet borrow #5).
+ *
+ * Teams + kickoff countdown, the pick with its effective line/odds, the bet
+ * code to copy, the head-to-head evidence behind the call, and the result if
+ * settled. Reuses data already on the prediction — nothing new fetched.
+ */
+function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const rec = p.recommendation?.toUpperCase();
+  const isOU = rec === "OVER" || rec === "UNDER";
+  const line = rec === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line)
+    : rec === "UNDER" ? (p.reduced_under_total ?? p.bookmaker_line) : p.bookmaker_line;
+  const ouOdds = rec === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : rec === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+  const w = p.team_winner?.toUpperCase();
+  const winnerName = w === "HOME_TEAM" ? p.home_team : w === "AWAY_TEAM" ? p.away_team : null;
+  const winnerOdds = w === "HOME_TEAM" ? p.home_odds : w === "AWAY_TEAM" ? p.away_odds : null;
+  const md = parseMatchDateTime(p.date, p.time);
+  const countdown = timeToKickoff(p.date, p.time);
+  const settled = p.result_status === "FINAL" && p.home_score != null && p.away_score != null;
+  const streak = p.winning_streak_data;
+
+  const copyCode = async () => {
+    if (!p.bet_code) return;
+    try { await navigator.clipboard.writeText(p.bet_code); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch {}
+  };
+
+  const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div className="text-center">
+      <p className="text-base font-black font-mono">{value}</p>
+      <p className="text-[9px] text-muted-foreground uppercase tracking-wider">{label}</p>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-background overflow-y-auto">
+      {/* Top bar */}
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 h-12 border-b border-border/40 bg-card/95 backdrop-blur-md">
+        <button onClick={onClose} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" aria-label="Back">
+          <ChevronDown className="w-5 h-5 rotate-90" /> Back
+        </button>
+        <span className="ml-auto text-[11px] text-muted-foreground/70 truncate">{[p.league, p.country].filter(Boolean).join(" · ")}</span>
+      </div>
+
+      <div className="max-w-2xl mx-auto p-4 space-y-4" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
+        {/* Teams + countdown */}
+        <div className="rounded-xl border border-border/40 bg-card/70 p-4 text-center">
+          <p className="text-lg font-black leading-tight break-words">{p.home_team || "Home"} <span className="text-muted-foreground/50">vs</span> {p.away_team || "Away"}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {md ? md.toLocaleString(undefined, { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
+          </p>
+          {countdown && !settled && (
+            <span className="inline-block mt-2 text-xs font-bold px-3 py-1 rounded-full border border-neon-cyan/30 bg-neon-cyan/5 text-neon-cyan">⏱ {countdown}</span>
+          )}
+          {settled && (
+            <p className="mt-2 text-2xl font-black font-mono">{p.home_score} <span className="text-muted-foreground/50">–</span> {p.away_score}</p>
+          )}
+        </div>
+
+        {/* The pick(s) */}
+        {isOU && line != null && (
+          <div className="rounded-xl border border-neon-green/30 bg-neon-green/5 p-4">
+            <p className="text-[10px] font-bold text-neon-green uppercase tracking-wider mb-1">Totals pick</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-xl font-black">{rec} {line}</span>
+              {ouOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {ouOdds}</span>}
+              {p.recommendation_confidence && <span className="ml-auto text-[10px] font-bold text-neon-green">{p.recommendation_confidence} confidence</span>}
+            </div>
+          </div>
+        )}
+        {winnerName && (
+          <div className="rounded-xl border border-neon-cyan/30 bg-neon-cyan/5 p-4">
+            <p className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider mb-1">Moneyline pick</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-xl font-black">{winnerName}</span>
+              {winnerOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {winnerOdds}</span>}
+              {p.team_winner_confidence && <span className="ml-auto text-[10px] font-bold text-neon-cyan">{p.team_winner_confidence} confidence</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Bet code */}
+        {p.bet_code && (
+          <button onClick={copyCode} className="w-full rounded-xl border border-border/40 bg-card/70 p-4 flex items-center gap-3 hover:border-neon-green/40 transition-colors">
+            <div className="text-left">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Betslip code — tap to copy</p>
+              <p className="text-lg font-black font-mono text-neon-green">{p.bet_code}</p>
+            </div>
+            <span className={`ml-auto text-xs font-semibold ${copied ? "text-neon-green" : "text-muted-foreground"}`}>{copied ? "Copied ✓" : "Copy"}</span>
+          </button>
+        )}
+
+        {/* Evidence behind the call */}
+        <div className="rounded-xl border border-border/40 bg-card/70 overflow-hidden">
+          <div className="px-3 py-2 border-b border-border/20 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-foreground" /><h3 className="text-[11px] font-bold">The evidence</h3>
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-border/30">
+            <Stat label="Avg rate" value={p.average_rate != null ? Number(p.average_rate).toFixed(1) : "—"} />
+            <Stat label="Above line" value={p.matches_above ?? "—"} />
+            <Stat label="Below line" value={p.matches_below ?? "—"} />
+          </div>
+          {streak && (
+            <div className="grid grid-cols-2 divide-x divide-border/30 border-t border-border/20">
+              <div className="p-3 text-center">
+                <p className="text-sm font-bold font-mono">{streak.home_team_h2h_wins ?? 0} – {streak.away_team_h2h_wins ?? 0}</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">H2H wins (of {streak.total_h2h_matches ?? 0})</p>
+              </div>
+              <div className="p-3 text-center">
+                <p className="text-sm font-bold font-mono">{streak.home_team_recent_wins ?? 0} – {streak.away_team_recent_wins ?? 0}</p>
+                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Recent form</p>
+              </div>
+            </div>
+          )}
+          {Array.isArray(p.h2h_totals) && p.h2h_totals.length > 0 && (
+            <div className="px-3 py-2.5 border-t border-border/20">
+              <p className="text-[9px] text-muted-foreground uppercase tracking-wider mb-1">Recent head-to-head totals</p>
+              <div className="flex flex-wrap gap-1.5">
+                {p.h2h_totals.slice(0, 12).map((t, i) => (
+                  <span key={i} className={`text-[11px] font-mono px-2 py-0.5 rounded border ${line != null && t > line ? "border-neon-green/30 text-neon-green" : "border-neon-red/30 text-neon-red"}`}>{t}</span>
+                ))}
+              </div>
+              {line != null && <p className="text-[9px] text-muted-foreground/60 mt-1.5">green = over {line}, red = under</p>}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
