@@ -195,3 +195,8 @@ past entries — append corrections instead.
 - `2c4d07b` Pick of the Day hero (#7) — strongest upcoming HIGH-conf pick atop Picks tab, reuses strength scoring, taps to detail.
 - `<next>` user Settings (#9) via Menu→Settings (menuPage state, icon-circle rows, back-nav) + working odds-format toggle (#10). New src/lib/odds-format.ts: localStorage + reactive useOddsFormat hook + formatOdds (decimal/fractional/american); applied live in prediction-card, hero, MatchDetail, ResultsHistory.
 - Remaining borrows: #8 favorites+alerts (needs backend — own project), #11 line-movement (needs historical snapshots). Board essentially done bar those two.
+
+---
+## 2026-07-20 — Session 15 addendum 2 (settings categories)
+- `<next>` expanded user Settings (Menu→Settings) into real categories: Profile (session, read-only), Alerts (browser kickoff notifications, permission-gated, 15/30/60 lead, fires in the poll while app open), Display (odds format + opening tab), Security (change password via new POST /api/user/password — bcrypt-verifies current, blocks Google accounts), About. New src/lib/user-prefs.ts (default tab + alerts prefs in localStorage). Only functional controls — no placeholder switches.
+- Note: moved `data` state declaration up in UserPredictionsView (alerts effect referenced it before declaration).
