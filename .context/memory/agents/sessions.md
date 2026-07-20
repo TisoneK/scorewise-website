@@ -212,3 +212,8 @@ past entries — append corrections instead.
 ---
 ## 2026-07-20 — Session 15 addendum 5 (richer Menu)
 - `<next>` Menu enriched with applicable Linebet entries (skipped betting-only ones): Notifications (favourite teams' upcoming matches = what alerts fire for, taps to detail, empty-state guidance), Help & support (email contact — mailto support@scorewise-ke.com; owner should confirm/replace address), About & legal (how predictions work, responsible-play 18+, terms). menuPage now: root|profile|settings|notifications|support|about.
+
+---
+## 2026-07-20 — Session 15 addendum 6 (coming-soon + notify opt-in)
+- `<next>` Menu "Coming soon" section: 2FA Authenticator, Telegram/WhatsApp alerts, Line movement — each opens a ComingSoon screen with a real "Notify me" opt-in → POST /api/feature-interest (logged as FEATURE_INTEREST for admin demand-gauging) + remembered on-device (getOptedFeatures/addOptedFeature in user-prefs). Pattern reusable for any future not-yet-built feature.
+- UI-borrow sprint effectively complete. Outstanding real backend projects if pursued: account-synced favorites, 2FA, server push (Telegram/WhatsApp/web-push), line-movement data capture. Support email placeholder support@scorewise-ke.com needs owner confirmation.
