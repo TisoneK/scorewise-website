@@ -15,13 +15,13 @@
 
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut, useSession } from "next-auth/react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell, Shield } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -29,6 +29,7 @@ import { PublicStatsBanner } from "./public-stats-banner";
 import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 import { timeToKickoff } from "@/lib/countdown";
 import { useOddsFormat, setOddsFormat, formatOdds, type OddsFormat } from "@/lib/odds-format";
+import { getDefaultTab, setDefaultTab, getAlertsEnabled, setAlertsEnabled, getAlertsLead, setAlertsLead, type DefaultTab } from "@/lib/user-prefs";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -97,7 +98,67 @@ export function UserPredictionsView() {
   // Menu tab sub-page: the root list, or the Settings panel.
   const [menuPage, setMenuPage] = useState<"root" | "settings">("root");
   const oddsFmt = useOddsFormat();
+  const userRole = (session?.user as { role?: string })?.role;
   const [data, setData] = useState<StoredPredictions | null>(null);
+  // Settings-driven prefs (mirrored from localStorage).
+  const [defaultTab, setDefaultTabState] = useState<DefaultTab>("predictions");
+  const [alertsOn, setAlertsOn] = useState(false);
+  const [alertsLead, setAlertsLeadState] = useState(30);
+  const notifiedRef = useRef<Set<string>>(new Set());
+  // Change-password form.
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  // On mount: load prefs + apply default tab.
+  useEffect(() => {
+    setDefaultTabState(getDefaultTab());
+    setAlertsOn(getAlertsEnabled());
+    setAlertsLeadState(getAlertsLead());
+    const t = getDefaultTab();
+    if (t !== "predictions") setView(t);
+  }, []);
+
+  // Kickoff alerts — while the app is open, fire a browser notification for
+  // upcoming HIGH-confidence picks crossing the lead-time threshold.
+  useEffect(() => {
+    if (!alertsOn || typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") return;
+    const now = Date.now();
+    for (const p of data?.predictions ?? []) {
+      const high = p.confidence?.toUpperCase() === "HIGH" || p.team_winner_confidence?.toUpperCase() === "HIGH";
+      if (!high) continue;
+      const d = parseMatchDateTime(p.date, p.time);
+      if (!d) continue;
+      const mins = (d.getTime() - now) / 60000;
+      if (mins > 0 && mins <= alertsLead && !notifiedRef.current.has(p.match_id)) {
+        notifiedRef.current.add(p.match_id);
+        try { new Notification("ScoreWise — pick starting soon", { body: `${p.home_team || "Home"} vs ${p.away_team || "Away"} tips off in ~${Math.round(mins)}m` }); } catch {}
+      }
+    }
+  }, [data, alertsOn, alertsLead]);
+
+  const enableAlerts = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    let perm = Notification.permission;
+    if (perm === "default") perm = await Notification.requestPermission();
+    if (perm === "granted") { setAlertsEnabled(true); setAlertsOn(true); }
+    else { setAlertsEnabled(false); setAlertsOn(false); }
+  };
+  const disableAlerts = () => { setAlertsEnabled(false); setAlertsOn(false); };
+
+  const changePassword = async () => {
+    setPwSaving(true); setPwMsg(null);
+    try {
+      const res = await fetch("/api/user/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }) });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setPwMsg({ ok: true, text: "Password changed." });
+      setPwCurrent(""); setPwNew("");
+    } catch (e) {
+      setPwMsg({ ok: false, text: e instanceof Error ? e.message : "Failed" });
+    } finally { setPwSaving(false); }
+  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -444,30 +505,100 @@ export function UserPredictionsView() {
         )}
 
         {view === "menu" && menuPage === "settings" && (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ChevronDown className="w-5 h-5 rotate-90" /> Menu
             </button>
 
+            {/* Profile */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><User className="w-3 h-3" /> Profile</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-4 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+                  <span className="text-xl font-black text-neon-green">{userInitial}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{userName}</p>
+                  {userEmail && <p className="text-xs text-muted-foreground truncate">{userEmail}</p>}
+                  {userRole && <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-neon-green/30 text-neon-green bg-neon-green/5">{userRole}</span>}
+                </div>
+              </div>
+            </div>
+
+            {/* Alerts */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><Bell className="w-3 h-3" /> Alerts</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Kickoff alerts</p>
+                    <p className="text-xs text-muted-foreground">Browser notification before a top pick tips off (while the app is open).</p>
+                  </div>
+                  <button onClick={() => (alertsOn ? disableAlerts() : enableAlerts())}
+                    className={`ml-auto shrink-0 w-12 h-7 rounded-full border transition-colors relative ${alertsOn ? "bg-neon-green/20 border-neon-green/40" : "bg-background border-border/50"}`}
+                    aria-label="Toggle kickoff alerts" aria-pressed={alertsOn}>
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full transition-all ${alertsOn ? "left-6 bg-neon-green" : "left-0.5 bg-muted-foreground"}`} />
+                  </button>
+                </div>
+                {alertsOn && (
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Lead time</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[15, 30, 60].map((m) => (
+                        <button key={m} onClick={() => { setAlertsLead(m); setAlertsLeadState(m); }}
+                          className={`rounded-lg border p-2 text-xs font-bold transition-colors ${alertsLead === m ? "border-neon-green/50 bg-neon-green/10 text-neon-green" : "border-border/50 bg-background/40 text-foreground"}`}>
+                          {m} min
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Display */}
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">Display</p>
-              <div className="rounded-xl border border-border/40 bg-card/70 p-4">
-                <p className="text-sm font-semibold mb-1">Odds format</p>
-                <p className="text-xs text-muted-foreground mb-3">How odds are shown across the app.</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {([
-                    { v: "decimal", ex: "1.85" },
-                    { v: "fractional", ex: "17/20" },
-                    { v: "american", ex: "+185" },
-                  ] as const).map((o) => (
-                    <button key={o.v} onClick={() => setOddsFormat(o.v as OddsFormat)}
-                      className={`rounded-lg border p-2.5 text-center transition-colors ${oddsFmt === o.v ? "border-neon-green/50 bg-neon-green/10" : "border-border/50 bg-background/40 hover:border-border"}`}>
-                      <p className={`text-xs font-bold capitalize ${oddsFmt === o.v ? "text-neon-green" : "text-foreground"}`}>{o.v}</p>
-                      <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{o.ex}</p>
-                    </button>
-                  ))}
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><Settings className="w-3 h-3" /> Display</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20">
+                <div className="p-4">
+                  <p className="text-sm font-semibold mb-1">Odds format</p>
+                  <p className="text-xs text-muted-foreground mb-3">How odds are shown across the app.</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([{ v: "decimal", ex: "1.85" }, { v: "fractional", ex: "17/20" }, { v: "american", ex: "+185" }] as const).map((o) => (
+                      <button key={o.v} onClick={() => setOddsFormat(o.v as OddsFormat)}
+                        className={`rounded-lg border p-2.5 text-center transition-colors ${oddsFmt === o.v ? "border-neon-green/50 bg-neon-green/10" : "border-border/50 bg-background/40 hover:border-border"}`}>
+                        <p className={`text-xs font-bold capitalize ${oddsFmt === o.v ? "text-neon-green" : "text-foreground"}`}>{o.v}</p>
+                        <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{o.ex}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <div className="p-4">
+                  <p className="text-sm font-semibold mb-1">Opening tab</p>
+                  <p className="text-xs text-muted-foreground mb-3">Which tab to show when you open the app.</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([{ v: "predictions", l: "Picks" }, { v: "results", l: "Results" }, { v: "stats", l: "Stats" }] as const).map((o) => (
+                      <button key={o.v} onClick={() => { setDefaultTab(o.v as DefaultTab); setDefaultTabState(o.v as DefaultTab); }}
+                        className={`rounded-lg border p-2.5 text-xs font-bold transition-colors ${defaultTab === o.v ? "border-neon-green/50 bg-neon-green/10 text-neon-green" : "border-border/50 bg-background/40 text-foreground"}`}>
+                        {o.l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Security */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><Shield className="w-3 h-3" /> Security</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-4 space-y-3">
+                <p className="text-sm font-semibold">Change password</p>
+                <Input type="password" placeholder="Current password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="current-password" />
+                <Input type="password" placeholder="New password (min 8 chars)" value={pwNew} onChange={(e) => setPwNew(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="new-password" />
+                {pwMsg && <p className={`text-xs ${pwMsg.ok ? "text-neon-green" : "text-neon-red"}`}>{pwMsg.text}</p>}
+                <Button onClick={changePassword} disabled={pwSaving || !pwCurrent || pwNew.length < 8} className="w-full h-9 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25">
+                  {pwSaving ? "Saving…" : "Update password"}
+                </Button>
               </div>
             </div>
 
