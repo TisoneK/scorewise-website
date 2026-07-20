@@ -157,3 +157,12 @@ past entries — append corrections instead.
 - **PREREQUISITE:** the results scheduler needs SCOREWISE_WEBSITE_URL set on the scraper (env/env-config) to know which matches are live/awaiting — else it idles (current_action=no_website_url). The scheduled-matches loop works without it.
 - **FOLLOW-UP (not yet done):** website Results-tab client-side auto-refresh is now redundant + was the crash/DB-pressure culprit — strip it to display-only (poll /api/predictions to SHOW state, stop commanding scrapes) AFTER confirming the scraper scheduler runs post-deploy. Held deliberately to avoid a window where nothing scrapes if the env var is missing.
 - **"6h -5min?" answer:** clean 6h; no -5min stagger needed because wait-for-batch already prevents scheduled-vs-results Chrome collision. Interval is admin-configurable via PUT /api/schedule.
+
+---
+## 2026-07-20 — Session 13 (rich Services scraper cockpit)
+- **Agent:** Claude Code | **Model:** claude-opus-4-8 | **Platform:** Baos-Mac-mini.local (local) | **Role:** engineer | **Core:** 0.2.0
+- **User direction:** KEEP manual triggers (do NOT strip Results-tab auto-refresh). Services page is the PRIMARY scraper cockpit and was under-featured — needs scrape-type choice (results vs scheduled), stop, and controls for the new autonomous schedulers. Results page co-exists as the complementary results surface.
+- **Commit:** website `4cfb9e0`. New `<ScraperControlPanel>` in services-tab replaces the old scheduled-only Run/Stop: mode switch (Scheduled matches: Today/Tomorrow + Force | Results: date), Stop(kill_all)+Resume, and an Autonomous-schedulers panel (live status + on/off toggles for both loops, editable scheduled interval + day). New proxy GET/PUT /api/admin/scraper/schedule → scraper /api/schedule (admin/operator, audited SCHEDULER_CONFIG).
+- **Scraper autonomous scheduling (c4baa98) confirmed LIVE:** both schedulers running on deploy; scheduled loop fired its first scrape autonomously (scraper_busy went True ~30s after boot). Results scheduler reached "idle" (not no_website_url) → SCOREWISE_WEBSITE_URL is set on the scraper.
+- **NOTE:** the old ServicesTab props (scraperDay/handleTriggerScraper/handleStopScraper/scraperLoading/stopLoading) are now unused-but-still-passed from page.tsx; harmless (eslint config doesn't flag unused destructured props). Could clean up page.tsx later.
+- **Standing:** Results-tab client auto-refresh stays (user wants it). Value Picks still reverted (re-land after stability). Phase-two reduced-line confirmation still pending a clean scrape observation.
