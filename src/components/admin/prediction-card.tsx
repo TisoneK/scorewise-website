@@ -35,6 +35,7 @@ import {
   getTimezoneAbbr,
 } from "@/lib/timezone";
 import { computeOverUnderOutcome, computeReducedRiskOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
+import { useOddsFormat, formatOdds } from "@/lib/odds-format";
 import { timeToKickoff } from "@/lib/countdown";
 
 /** Map a confidence label to a star count (0-5) for the visual rating. */
@@ -61,6 +62,7 @@ export function PredictionCard({
   /** When provided, the whole card is tappable and opens the match detail. */
   onSelect?: (p: Prediction) => void;
 }) {
+  const oddsFmt = useOddsFormat();
   const rec = p.recommendation?.toUpperCase() || "";
   const isOver = rec === "OVER";
   const isUnder = rec === "UNDER";
@@ -247,7 +249,7 @@ export function PredictionCard({
                 </span>
               )}
               {odds != null && (
-                <span className="text-[10px] font-mono text-muted-foreground">@{odds}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(odds), oddsFmt)}</span>
               )}
               {/* Inline outcome badge for FINAL matches */}
               {isFinal && ouOutcome !== "MISSING" && (() => {
@@ -267,7 +269,7 @@ export function PredictionCard({
             <div className="flex items-center gap-2 mt-1 flex-wrap text-[10px] text-muted-foreground">
               <Trophy className="w-2.5 h-2.5 text-neon-cyan" />
               <span className="font-bold">{winnerName}</span>
-              {winnerOdds != null && <span className="font-mono">@{winnerOdds}</span>}
+              {winnerOdds != null && <span className="font-mono">@{formatOdds(Number(winnerOdds), oddsFmt)}</span>}
               {/* Inline outcome badge for FINAL matches */}
               {isFinal && winOutcome !== "MISSING" && (() => {
                 const winTone = winOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : winOutcome === "LOSS" ? "border-neon-red/40 bg-neon-red/10 text-neon-red" : "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow";

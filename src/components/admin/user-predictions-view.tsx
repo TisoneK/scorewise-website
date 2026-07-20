@@ -28,6 +28,7 @@ import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
 import { PublicStatsBanner } from "./public-stats-banner";
 import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 import { timeToKickoff } from "@/lib/countdown";
+import { useOddsFormat, setOddsFormat, formatOdds, type OddsFormat } from "@/lib/odds-format";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -93,6 +94,9 @@ export function UserPredictionsView() {
   const [view, setView] = useState<"predictions" | "results" | "stats" | "menu">("predictions");
   // Match detail overlay — set when a user taps a prediction card.
   const [selected, setSelected] = useState<Prediction | null>(null);
+  // Menu tab sub-page: the root list, or the Settings panel.
+  const [menuPage, setMenuPage] = useState<"root" | "settings">("root");
+  const oddsFmt = useOddsFormat();
   const [data, setData] = useState<StoredPredictions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -411,7 +415,7 @@ export function UserPredictionsView() {
 
         {view === "results" && <ResultsHistory predictions={data?.predictions ?? []} />}
 
-        {view === "menu" && (
+        {view === "menu" && menuPage === "root" && (
           <div className="space-y-3">
             <div className="rounded-xl border border-border/40 bg-card/70 p-4">
               <div className="flex items-center gap-3">
@@ -424,9 +428,62 @@ export function UserPredictionsView() {
                 </div>
               </div>
             </div>
+            {/* Menu rows — icon-circle style */}
+            <div className="rounded-xl border border-border/40 bg-card/70 overflow-hidden">
+              <button onClick={() => setMenuPage("settings")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><Settings className="w-4 h-4 text-neon-green" /></span>
+                <span className="text-sm font-semibold">Settings</span>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto" />
+              </button>
+            </div>
             <button onClick={() => signOut()} className="w-full flex items-center gap-3 rounded-xl border border-neon-red/30 bg-neon-red/5 p-4 text-neon-red hover:bg-neon-red/10 transition-colors">
-              <LogOut className="w-4 h-4 shrink-0" /><span className="text-sm font-semibold">Log out</span>
+              <span className="w-9 h-9 rounded-full bg-neon-red/10 border border-neon-red/20 flex items-center justify-center shrink-0"><LogOut className="w-4 h-4" /></span>
+              <span className="text-sm font-semibold">Log out</span>
             </button>
+          </div>
+        )}
+
+        {view === "menu" && menuPage === "settings" && (
+          <div className="space-y-4">
+            <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+              <ChevronDown className="w-5 h-5 rotate-90" /> Menu
+            </button>
+
+            {/* Display */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">Display</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-4">
+                <p className="text-sm font-semibold mb-1">Odds format</p>
+                <p className="text-xs text-muted-foreground mb-3">How odds are shown across the app.</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { v: "decimal", ex: "1.85" },
+                    { v: "fractional", ex: "17/20" },
+                    { v: "american", ex: "+185" },
+                  ] as const).map((o) => (
+                    <button key={o.v} onClick={() => setOddsFormat(o.v as OddsFormat)}
+                      className={`rounded-lg border p-2.5 text-center transition-colors ${oddsFmt === o.v ? "border-neon-green/50 bg-neon-green/10" : "border-border/50 bg-background/40 hover:border-border"}`}>
+                      <p className={`text-xs font-bold capitalize ${oddsFmt === o.v ? "text-neon-green" : "text-foreground"}`}>{o.v}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground mt-0.5">{o.ex}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* About */}
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">About</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20">
+                <div className="flex items-center gap-3 p-4">
+                  <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><BasketballIcon className="w-4 h-4 text-neon-green" /></span>
+                  <div><p className="text-sm font-semibold">ScoreWise</p><p className="text-xs text-muted-foreground">Basketball predictions</p></div>
+                </div>
+                <div className="p-4">
+                  <p className="text-xs text-muted-foreground">Predictions are informational only. Always gamble responsibly — 18+.</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -611,7 +668,7 @@ export function UserPredictionsView() {
                 <p className="text-sm font-black leading-tight break-words">{p.home_team || "Home"} <span className="text-muted-foreground/50">vs</span> {p.away_team || "Away"}</p>
                 <div className="flex items-baseline gap-2 mt-1.5">
                   <span className={`text-lg font-black ${market === "ou" ? "text-neon-green" : "text-neon-cyan"}`}>{pickLabel}</span>
-                  {pickOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {pickOdds}</span>}
+                  {pickOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {formatOdds(Number(pickOdds), oddsFmt)}</span>}
                   <span className="ml-auto text-[10px] font-semibold text-muted-foreground">{reason}</span>
                 </div>
               </div>
@@ -823,7 +880,7 @@ export function UserPredictionsView() {
             return (
               <button
                 key={v}
-                onClick={() => setView(v)}
+                onClick={() => { setView(v); setMenuPage("root"); }}
                 className={`flex flex-col items-center justify-center gap-0.5 h-14 transition-colors ${active ? "text-neon-green" : "text-muted-foreground hover:text-foreground"}`}
                 aria-label={label}
                 aria-current={active ? "page" : undefined}
@@ -851,6 +908,7 @@ export function UserPredictionsView() {
  */
 function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const oddsFmt = useOddsFormat();
   const rec = p.recommendation?.toUpperCase();
   const isOU = rec === "OVER" || rec === "UNDER";
   const line = rec === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line)
@@ -907,7 +965,7 @@ function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClo
             <p className="text-[10px] font-bold text-neon-green uppercase tracking-wider mb-1">Totals pick</p>
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-black">{rec} {line}</span>
-              {ouOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {ouOdds}</span>}
+              {ouOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {formatOdds(Number(ouOdds), oddsFmt)}</span>}
               {p.recommendation_confidence && <span className="ml-auto text-[10px] font-bold text-neon-green">{p.recommendation_confidence} confidence</span>}
             </div>
           </div>
@@ -917,7 +975,7 @@ function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClo
             <p className="text-[10px] font-bold text-neon-cyan uppercase tracking-wider mb-1">Moneyline pick</p>
             <div className="flex items-baseline gap-2">
               <span className="text-xl font-black">{winnerName}</span>
-              {winnerOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {winnerOdds}</span>}
+              {winnerOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {formatOdds(Number(winnerOdds), oddsFmt)}</span>}
               {p.team_winner_confidence && <span className="ml-auto text-[10px] font-bold text-neon-cyan">{p.team_winner_confidence} confidence</span>}
             </div>
           </div>
@@ -984,6 +1042,7 @@ function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClo
  */
 function ResultsHistory({ predictions }: { predictions: Prediction[] }) {
   const [period, setPeriod] = useState<7 | 30 | 0>(30); // days; 0 = all
+  const oddsFmt = useOddsFormat();
 
   const entries = useMemo(() => {
     const cutoff = period === 0 ? 0 : Date.now() - period * 86400_000;
@@ -1087,7 +1146,7 @@ function ResultsHistory({ predictions }: { predictions: Prediction[] }) {
                   <p className="text-sm font-bold mt-1.5 leading-tight break-words">{r.home} <span className="text-muted-foreground/50 mx-0.5">vs</span> {r.away}</p>
                   <div className="flex items-center gap-2 mt-1 text-xs">
                     <span className={`font-bold font-mono ${won ? "text-neon-green" : push ? "text-neon-yellow" : "text-neon-red"}`}>{r.pick}</span>
-                    {r.odds != null && <span className="text-[10px] font-mono text-muted-foreground">@{r.odds}</span>}
+                    {r.odds != null && <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(r.odds), oddsFmt)}</span>}
                     <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border ${won ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : push ? "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow" : "border-neon-red/40 bg-neon-red/10 text-neon-red"}`}>
                       {won ? "WON ✓" : push ? "PUSH" : "LOST ✗"}
                     </span>
