@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell, Info, LifeBuoy, Mail } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -98,7 +98,7 @@ export function UserPredictionsView() {
   // Match detail overlay — set when a user taps a prediction card.
   const [selected, setSelected] = useState<Prediction | null>(null);
   // Menu tab sub-page.
-  const [menuPage, setMenuPage] = useState<"root" | "settings" | "profile">("root");
+  const [menuPage, setMenuPage] = useState<"root" | "settings" | "profile" | "notifications" | "support" | "about">("root");
   const oddsFmt = useOddsFormat();
   const [data, setData] = useState<StoredPredictions | null>(null);
   // Settings-driven prefs (mirrored from localStorage).
@@ -485,10 +485,25 @@ export function UserPredictionsView() {
                 <span className="text-sm font-semibold">Personal profile</span>
                 <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto" />
               </button>
+              <button onClick={() => setMenuPage("notifications")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><Bell className="w-4 h-4 text-neon-green" /></span>
+                <div className="text-left min-w-0"><p className="text-sm font-semibold">Notifications</p><p className="text-xs text-muted-foreground truncate">Matches you'll be alerted about</p></div>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto shrink-0" />
+              </button>
               <button onClick={() => setMenuPage("settings")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
                 <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><Settings className="w-4 h-4 text-neon-green" /></span>
                 <span className="text-sm font-semibold">Settings</span>
                 <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto" />
+              </button>
+              <button onClick={() => setMenuPage("support")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><LifeBuoy className="w-4 h-4 text-neon-green" /></span>
+                <div className="text-left min-w-0"><p className="text-sm font-semibold">Help &amp; support</p><p className="text-xs text-muted-foreground truncate">Contact us and we'll help</p></div>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto shrink-0" />
+              </button>
+              <button onClick={() => setMenuPage("about")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><Info className="w-4 h-4 text-neon-green" /></span>
+                <div className="text-left min-w-0"><p className="text-sm font-semibold">About &amp; legal</p><p className="text-xs text-muted-foreground truncate">How it works, terms, responsible play</p></div>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto shrink-0" />
               </button>
             </div>
             <button onClick={() => signOut()} className="w-full flex items-center gap-3 rounded-xl border border-neon-red/30 bg-neon-red/5 p-4 text-neon-red hover:bg-neon-red/10 transition-colors">
@@ -500,6 +515,81 @@ export function UserPredictionsView() {
 
         {view === "menu" && menuPage === "profile" && (
           <UserProfile userInitial={userInitial} onBack={() => setMenuPage("root")} />
+        )}
+
+        {view === "menu" && menuPage === "notifications" && (() => {
+          const upcoming = (data?.predictions ?? [])
+            .filter((p) => matchHasFavorite(favs, p.home_team, p.away_team))
+            .filter((p) => { const d = parseMatchDateTime(p.date, p.time); return d && d.getTime() > Date.now(); })
+            .sort((a, b) => (parseMatchDateTime(a.date, a.time)?.getTime() ?? 0) - (parseMatchDateTime(b.date, b.time)?.getTime() ?? 0));
+          return (
+            <div className="space-y-3">
+              <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronDown className="w-5 h-5 rotate-90" /> Menu</button>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-3 text-xs text-muted-foreground">
+                {alertsOn ? `Kickoff alerts are ON — ${alertsLead} min before a favourite tips off.` : "Kickoff alerts are OFF. Turn them on in Settings → Alerts."}
+              </div>
+              {favs.length === 0 ? (
+                <div className="rounded-xl border border-border/40 bg-card/60 p-8 text-center">
+                  <Star className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">Favourite a team to get alerts for its matches.</p>
+                  <p className="text-xs text-muted-foreground/50 mt-1">Tap a match, then star a team.</p>
+                </div>
+              ) : upcoming.length === 0 ? (
+                <div className="rounded-xl border border-border/40 bg-card/60 p-8 text-center"><p className="text-sm text-muted-foreground">No upcoming matches for your favourite teams.</p></div>
+              ) : (
+                <div className="space-y-2">
+                  {upcoming.map((p) => (
+                    <button key={p.match_id} onClick={() => setSelected(p)} className="w-full text-left rounded-xl border border-border/40 bg-card/70 p-3 hover:border-neon-green/40 transition-colors flex items-center gap-2">
+                      <Star className="w-3.5 h-3.5 fill-neon-yellow text-neon-yellow shrink-0" />
+                      <p className="text-sm font-bold truncate">{p.home_team} <span className="text-muted-foreground/50">vs</span> {p.away_team}</p>
+                      <span className="ml-auto text-[10px] font-bold text-neon-cyan shrink-0">⏱ {timeToKickoff(p.date, p.time)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {view === "menu" && menuPage === "support" && (
+          <div className="space-y-4">
+            <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronDown className="w-5 h-5 rotate-90" /> Menu</button>
+            <div className="rounded-xl border border-border/40 bg-card/70 p-5 text-center">
+              <span className="w-12 h-12 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center mx-auto mb-3"><LifeBuoy className="w-5 h-5 text-neon-green" /></span>
+              <p className="text-sm font-bold">Need a hand?</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Questions about a prediction, your account, or the app? Reach the team and we'll help.</p>
+              <a href="mailto:support@scorewise-ke.com?subject=ScoreWise%20support" className="inline-flex items-center gap-2 rounded-lg border border-neon-green/40 bg-neon-green/15 text-neon-green px-4 h-10 text-sm font-semibold">
+                <Mail className="w-4 h-4" /> Email support
+              </a>
+            </div>
+            <p className="text-[10px] text-muted-foreground/50 text-center">We usually reply within a day.</p>
+          </div>
+        )}
+
+        {view === "menu" && menuPage === "about" && (
+          <div className="space-y-4">
+            <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronDown className="w-5 h-5 rotate-90" /> Menu</button>
+            <div className="rounded-xl border border-border/40 bg-card/70 p-4 flex items-center gap-3">
+              <span className="w-10 h-10 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><BasketballIcon className="w-5 h-5 text-neon-green" /></span>
+              <div><p className="text-sm font-bold">ScoreWise</p><p className="text-xs text-muted-foreground">Data-driven basketball predictions</p></div>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">How it works</p>
+              <div className="rounded-xl border border-border/40 bg-card/70 p-4 text-xs text-muted-foreground leading-relaxed">
+                We scrape upcoming matches and their odds, run a statistical model over head-to-head history and recent form, and publish the picks it's most confident in — for both totals (Over/Under) and the moneyline (1X2). Each pick shows the evidence behind it. We don't take bets: you copy the betslip code to your own bookmaker.
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">Responsible play</p>
+              <div className="rounded-xl border border-neon-yellow/25 bg-neon-yellow/5 p-4 text-xs text-muted-foreground leading-relaxed">
+                Predictions are informational and never guaranteed. Only stake what you can afford to lose. Betting is 18+. If it stops being fun, take a break.
+              </div>
+            </div>
+            <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20">
+              <div className="flex items-center gap-3 p-4"><span className="text-sm">Terms &amp; conditions</span><span className="ml-auto text-xs text-muted-foreground">Informational service</span></div>
+              <div className="flex items-center gap-3 p-4"><span className="text-sm">Version</span><span className="ml-auto text-xs font-mono text-muted-foreground">ScoreWise web</span></div>
+            </div>
+          </div>
         )}
 
         {view === "menu" && menuPage === "settings" && (
