@@ -176,3 +176,16 @@ past entries — append corrections instead.
 - **Surfaced data:** breakdown stats bar (O/U/1X2/reduced/HIGH/NO_BET/failed/results-in; market+NO_BET chips are filters); per-card algorithm strip (avg rate, H2H above/below, both confidence tiers, reduced-risk source, bet code, validation-issue count) — was drawer-only.
 - **Lint note:** hoisted SuspensionPill to module scope (never define a component inside render — react/no-unstable-nested-components). Baseline set-state-in-effect warnings remain (repo-wide pattern).
 - **Standing:** phase-2 reduced-line confirmation still pending a scrape observation; Value Picks still reverted (re-land candidate); Results-tab auto-refresh kept per user.
+
+---
+## 2026-07-20 — Session 15 (Linebet borrows → real changes + dark-mode softening)
+- **Agent:** Claude Code | **Model:** claude-opus-4-8 | **Platform:** Baos-Mac-mini.local (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Move the Linebet exploration (Session's borrow board, plans/2026-07-20-linebet-borrow-exploration.md) from prototype to real changes, one borrow at a time, push between each. Also: "dark mode too black".
+- **Commits (website):**
+  - `13ecdcd` softened dark mode (globals.css tokens: #08080d→#0d1210 ground, cold blue-purple neutrals → neutral-green to suit neon accent) + "starting soon" time-window filter chips on user Picks (borrow #3); countdown (#4) already existed.
+  - `b7cc0fc` Results History page (borrow #1) — settled picks as status-rail cards + "Statistics for the period" (Wins/Losses/HitRate/ROI) + 7d/30d/All chips. New ResultsHistory component in user-predictions-view.tsx.
+  - `e20a74b` bottom tab navigation (borrow #2) — Picks/Results/Stats/Menu app shell, fixed safe-area nav. Track-record banners + overall-record moved to Stats tab. `view` state drives it.
+  - `3b2a5e9` user Match detail page (borrow #5, also covers #6) — tap a card → full-screen: teams+countdown/score, totals+moneyline picks, tap-to-copy bet code, "the evidence" (avg rate, above/below, H2H wins, recent form, h2h_totals chips colored vs line). PredictionCard gained optional onSelect (bet-code copy stopPropagation).
+- **Design:** all borrows reuse existing data; single dark theme kept. Borrow board artifact: https://claude.ai/code/artifact/16354935-eda8-42dd-9c86-224985b711c3
+- **Remaining borrows:** #7 Pick of the Day hero (next), #8 favorites+alerts (needs backend), #9 grouped settings, #10 odds-format toggle, #11 line-movement (needs historical snapshots). Header user-menu dropdown now overlaps the Menu tab (harmless; could strip later).
+- **Standing (unchanged):** scraper autonomous scheduling live (c4baa98); engine deployed build ≠ repo (has /api/logs); phase-2 reduced-line confirmation pending a scrape observation; Value Picks still reverted.
