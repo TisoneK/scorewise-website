@@ -436,11 +436,30 @@ export function UserPredictionsView() {
           const last15 = form.slice(-15);
           const hitTone = Number(hitRate) >= 55 ? "text-neon-green" : Number(hitRate) >= 45 ? "text-neon-yellow" : "text-neon-red";
           const roiTone = Number(roi) >= 0 ? "text-neon-green" : "text-neon-red";
+          // Combined current streak (trailing run of same outcome) for the
+          // header — mirrors the O/U + 1X2 cards.
+          let sType: "W" | "L" | null = null, sLen = 0;
+          for (let i = form.length - 1; i >= 0; i--) {
+            if (sType === null) { sType = form[i]; sLen = 1; }
+            else if (form[i] === sType) sLen++;
+            else break;
+          }
 
           return (
-            <div className="rounded-xl border-2 border-border bg-card/90 overflow-hidden">
+            <div className="rounded-xl border border-border/40 bg-card/70 overflow-hidden">
+              {/* Slim header — matches the O/U + 1X2 cards */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5">
+                <Activity className="w-3.5 h-3.5 text-foreground shrink-0" />
+                <h3 className="text-[11px] font-bold truncate">Overall Record</h3>
+                <span className="text-[8px] font-bold text-foreground/60 shrink-0">● LIVE</span>
+                <span className="ml-auto flex items-center gap-1 shrink-0">
+                  {sType === "W" && <Flame className="w-3 h-3 text-neon-green" />}
+                  <span className={`text-[10px] font-black font-mono ${sType === "W" ? "text-neon-green" : sType === "L" ? "text-neon-red" : "text-muted-foreground"}`}>{sType ?? "—"}{sLen || ""}</span>
+                </span>
+                <span className="text-[9px] text-muted-foreground/50 shrink-0 hidden sm:inline">{wins + losses} resolved</span>
+              </div>
               {/* Stats row */}
-              <div className="grid grid-cols-4 divide-x divide-border/30">
+              <div className="grid grid-cols-4 divide-x divide-border/30 border-t border-border/20">
                 <div className="p-2.5 text-center">
                   <div className="flex items-center justify-center gap-1 mb-0.5">
                     <CheckCircle2 className="w-3 h-3 text-neon-green" />
