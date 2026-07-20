@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -88,8 +88,8 @@ export function UserPredictionsView() {
   const userEmail = (session?.user as { email?: string })?.email || "";
   const userInitial = userName.charAt(0).toUpperCase();
   const [menuOpen, setMenuOpen] = useState(false);
-  // Which view the user is on. A precursor to the bottom-nav shell.
-  const [view, setView] = useState<"predictions" | "history">("predictions");
+  // Active bottom-nav tab.
+  const [view, setView] = useState<"predictions" | "results" | "stats" | "menu">("predictions");
   const [data, setData] = useState<StoredPredictions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -362,35 +362,49 @@ export function UserPredictionsView() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 space-y-5" style={{ paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-28 space-y-5" style={{ paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
 
-        {/* Title */}
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight">{view === "history" ? "Results" : "Predictions"}</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">
-            {view === "history" ? "How our settled picks have landed" : "Basketball predictions for today's matches"}
-            <span className="ml-2 text-[10px] text-muted-foreground/60">· times shown in your local TZ ({tzAbbr})</span>
-          </p>
-        </div>
+        {/* Title — per active tab */}
+        {(() => {
+          const t = {
+            predictions: ["Predictions", "Basketball predictions for today's matches"],
+            results: ["Results", "How our settled picks have landed"],
+            stats: ["Stats", "System track record across markets"],
+            menu: ["Menu", "Account & preferences"],
+          }[view];
+          return (
+            <div>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight">{t[0]}</h1>
+              <p className="text-xs sm:text-sm text-muted-foreground">
+                {t[1]}
+                <span className="ml-2 text-[10px] text-muted-foreground/60">· times in your local TZ ({tzAbbr})</span>
+              </p>
+            </div>
+          );
+        })()}
 
-        {/* View toggle — Predictions vs Results (settled history) */}
-        <div className="flex gap-1 p-0.5 rounded-lg bg-card border border-border/50 w-fit">
-          {(["predictions", "history"] as const).map((v) => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`text-xs font-semibold px-4 h-8 rounded-md transition-colors ${
-                view === v ? "bg-neon-green/15 text-neon-green" : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {v === "predictions" ? "Predictions" : "Results"}
+        {view === "results" && <ResultsHistory predictions={data?.predictions ?? []} />}
+
+        {view === "menu" && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-border/40 bg-card/70 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+                  <span className="text-lg font-black text-neon-green">{userInitial}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{userName}</p>
+                  {userEmail && <p className="text-xs text-muted-foreground truncate">{userEmail}</p>}
+                </div>
+              </div>
+            </div>
+            <button onClick={() => signOut()} className="w-full flex items-center gap-3 rounded-xl border border-neon-red/30 bg-neon-red/5 p-4 text-neon-red hover:bg-neon-red/10 transition-colors">
+              <LogOut className="w-4 h-4 shrink-0" /><span className="text-sm font-semibold">Log out</span>
             </button>
-          ))}
-        </div>
+          </div>
+        )}
 
-        {view === "history" && <ResultsHistory predictions={data?.predictions ?? []} />}
-
-        {view === "predictions" && (<>
+        {view === "stats" && (<>
         {/* SYSTEM TRACK RECORD — split into two SEPARATE cards per user request:
             1) Over/Under track record (totals algorithm)
             2) Win track record (winner algorithm — moneyline / 1X2)
@@ -538,7 +552,9 @@ export function UserPredictionsView() {
             </div>
           );
         })()}
+        </>)}
 
+        {view === "predictions" && (<>
         {/* Starting-soon time-window chips — jump to matches about to tip off */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
           {([
@@ -729,6 +745,32 @@ export function UserPredictionsView() {
         )}
         </>)}
       </main>
+
+      {/* Bottom tab navigation (Linebet borrow #2) */}
+      <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/40 bg-card/95 backdrop-blur-md" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <div className="max-w-3xl mx-auto grid grid-cols-4">
+          {([
+            { v: "predictions", label: "Picks", Icon: Flame },
+            { v: "results", label: "Results", Icon: Clock },
+            { v: "stats", label: "Stats", Icon: BarChart3 },
+            { v: "menu", label: "Menu", Icon: LayoutGrid },
+          ] as const).map(({ v, label, Icon }) => {
+            const active = view === v;
+            return (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`flex flex-col items-center justify-center gap-0.5 h-14 transition-colors ${active ? "text-neon-green" : "text-muted-foreground hover:text-foreground"}`}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+              >
+                <Icon className={`w-5 h-5 ${active ? "" : "opacity-80"}`} />
+                <span className="text-[10px] font-semibold">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
