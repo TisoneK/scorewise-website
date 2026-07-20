@@ -37,3 +37,15 @@ export function getAlertsLead(): number {
 export function setAlertsLead(min: number): void {
   if (typeof window !== "undefined") window.localStorage.setItem(ALERTS_LEAD_KEY, String(min));
 }
+
+// Features the user has asked to be notified about when they launch.
+const OPTED_KEY = "sw_feature_optins";
+export function getOptedFeatures(): string[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(window.localStorage.getItem(OPTED_KEY) || "[]"); } catch { return []; }
+}
+export function addOptedFeature(key: string): void {
+  if (typeof window === "undefined") return;
+  const list = getOptedFeatures();
+  if (!list.includes(key)) { list.push(key); window.localStorage.setItem(OPTED_KEY, JSON.stringify(list)); }
+}

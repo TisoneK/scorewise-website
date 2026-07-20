@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell, Info, LifeBuoy, Mail } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell, Info, LifeBuoy, Mail, Shield, Sparkles } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -29,7 +29,7 @@ import { PublicStatsBanner } from "./public-stats-banner";
 import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 import { timeToKickoff } from "@/lib/countdown";
 import { useOddsFormat, setOddsFormat, formatOdds, type OddsFormat } from "@/lib/odds-format";
-import { getDefaultTab, setDefaultTab, getAlertsEnabled, setAlertsEnabled, getAlertsLead, setAlertsLead, type DefaultTab } from "@/lib/user-prefs";
+import { getDefaultTab, setDefaultTab, getAlertsEnabled, setAlertsEnabled, getAlertsLead, setAlertsLead, getOptedFeatures, addOptedFeature, type DefaultTab } from "@/lib/user-prefs";
 import { useFavoriteTeams, toggleFavoriteTeam, matchHasFavorite } from "@/lib/favorites";
 import { Star } from "lucide-react";
 import {
@@ -98,7 +98,8 @@ export function UserPredictionsView() {
   // Match detail overlay — set when a user taps a prediction card.
   const [selected, setSelected] = useState<Prediction | null>(null);
   // Menu tab sub-page.
-  const [menuPage, setMenuPage] = useState<"root" | "settings" | "profile" | "notifications" | "support" | "about">("root");
+  const [menuPage, setMenuPage] = useState<"root" | "settings" | "profile" | "notifications" | "support" | "about" | "coming-soon">("root");
+  const [comingSoon, setComingSoon] = useState<{ key: string; title: string; desc: string } | null>(null);
   const oddsFmt = useOddsFormat();
   const [data, setData] = useState<StoredPredictions | null>(null);
   // Settings-driven prefs (mirrored from localStorage).
@@ -506,6 +507,23 @@ export function UserPredictionsView() {
                 <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto shrink-0" />
               </button>
             </div>
+
+            {/* Coming soon — aspirational features with a notify opt-in */}
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] pt-1 px-1">Coming soon</p>
+            <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20 overflow-hidden">
+              {([
+                { key: "2fa", title: "Authenticator", desc: "Protect your account with two-factor authentication (an authenticator app or one-time codes).", Icon: Shield },
+                { key: "channel-alerts", title: "Telegram & WhatsApp alerts", desc: "Get top picks delivered to Telegram or WhatsApp — even when the app is closed.", Icon: Bell },
+                { key: "line-movement", title: "Line movement", desc: "See how a match's line and odds have moved since the pick was posted.", Icon: BarChart3 },
+              ] as const).map(({ key, title, desc, Icon }) => (
+                <button key={key} onClick={() => { setComingSoon({ key, title, desc }); setMenuPage("coming-soon"); }} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                  <span className="w-9 h-9 rounded-full bg-background border border-border/50 flex items-center justify-center shrink-0"><Icon className="w-4 h-4 text-muted-foreground" /></span>
+                  <span className="text-sm font-semibold text-muted-foreground">{title}</span>
+                  <span className="ml-auto text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">Soon</span>
+                </button>
+              ))}
+            </div>
+
             <button onClick={() => signOut()} className="w-full flex items-center gap-3 rounded-xl border border-neon-red/30 bg-neon-red/5 p-4 text-neon-red hover:bg-neon-red/10 transition-colors">
               <span className="w-9 h-9 rounded-full bg-neon-red/10 border border-neon-red/20 flex items-center justify-center shrink-0"><LogOut className="w-4 h-4" /></span>
               <span className="text-sm font-semibold">Log out</span>
@@ -515,6 +533,10 @@ export function UserPredictionsView() {
 
         {view === "menu" && menuPage === "profile" && (
           <UserProfile userInitial={userInitial} onBack={() => setMenuPage("root")} />
+        )}
+
+        {view === "menu" && menuPage === "coming-soon" && comingSoon && (
+          <ComingSoon feature={comingSoon} onBack={() => setMenuPage("root")} />
         )}
 
         {view === "menu" && menuPage === "notifications" && (() => {
@@ -1528,6 +1550,46 @@ function UserProfile({ userInitial, onBack }: { userInitial: string; onBack: () 
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * ComingSoon — a not-yet-built feature the user can opt in to be notified
+ * about. The opt-in is real: it POSTs to /api/feature-interest (logged so
+ * admins can see demand) and is remembered on the device so we don't re-ask.
+ */
+function ComingSoon({ feature, onBack }: { feature: { key: string; title: string; desc: string }; onBack: () => void }) {
+  const [opted, setOpted] = useState(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setOpted(getOptedFeatures().includes(feature.key)); }, [feature.key]);
+
+  const notifyMe = async () => {
+    setSaving(true);
+    try { await fetch("/api/feature-interest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ feature: feature.key }) }); } catch {}
+    addOptedFeature(feature.key);
+    setOpted(true);
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <button onClick={onBack} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ChevronDown className="w-5 h-5 rotate-90" /> Menu</button>
+      <div className="rounded-xl border border-neon-cyan/25 bg-gradient-to-br from-neon-cyan/10 to-card/40 p-6 text-center">
+        <span className="w-14 h-14 rounded-full bg-neon-cyan/10 border border-neon-cyan/20 flex items-center justify-center mx-auto mb-3"><Sparkles className="w-6 h-6 text-neon-cyan" /></span>
+        <span className="inline-block text-[10px] font-bold uppercase tracking-[0.2em] text-neon-cyan mb-2">Coming soon</span>
+        <h2 className="text-lg font-black">{feature.title}</h2>
+        <p className="text-sm text-muted-foreground mt-2 max-w-sm mx-auto">{feature.desc}</p>
+      </div>
+      {opted ? (
+        <div className="rounded-xl border border-neon-green/30 bg-neon-green/5 p-4 flex items-center gap-2 justify-center text-neon-green">
+          <CheckCircle2 className="w-4 h-4" /><span className="text-sm font-semibold">You're on the list — we'll let you know when it's ready.</span>
+        </div>
+      ) : (
+        <Button onClick={notifyMe} disabled={saving} className="w-full h-11 bg-neon-cyan/15 border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/25 gap-2">
+          <Bell className="w-4 h-4" />{saving ? "Adding you…" : "Notify me when it's available"}
+        </Button>
       )}
     </div>
   );
