@@ -200,3 +200,7 @@ past entries — append corrections instead.
 ## 2026-07-20 — Session 15 addendum 2 (settings categories)
 - `<next>` expanded user Settings (Menu→Settings) into real categories: Profile (session, read-only), Alerts (browser kickoff notifications, permission-gated, 15/30/60 lead, fires in the poll while app open), Display (odds format + opening tab), Security (change password via new POST /api/user/password — bcrypt-verifies current, blocks Google accounts), About. New src/lib/user-prefs.ts (default tab + alerts prefs in localStorage). Only functional controls — no placeholder switches.
 - Note: moved `data` state declaration up in UserPredictionsView (alerts effect referenced it before declaration).
+
+---
+## 2026-07-20 — Session 15 addendum 3 (favorites, borrow #8 v1)
+- `<next>` favorite teams — device-scoped (localStorage + reactive useFavoriteTeams hook + event, like odds-format). New src/lib/favorites.ts. Match detail: tap-a-team stars; cards show filled star when a fav is involved; Picks gets a Favorites filter chip; kickoff alerts targeted to favorites when any exist. NOT account-synced (no schema migration) — swappable to a server store later. Borrow board now fully covered except #11 line-movement (needs historical line snapshots).
