@@ -247,6 +247,29 @@ export function UserPredictionsView() {
     return { ou, win };
   }, [computeOUStrength, computeWinStrength]);
 
+  // ── Pick of the Day — the single strongest UPCOMING HIGH-confidence pick
+  // across both markets (Linebet "best offer of the day" borrow). Reuses the
+  // same strength scoring as Top Picks.
+  const pickOfDay = useMemo(() => {
+    const preds = data?.predictions ?? [];
+    const now = Date.now();
+    let best: { p: Prediction; market: "ou" | "win"; strength: number } | null = null;
+    for (const p of preds) {
+      if (p.result_status === "FINAL" || p.result_status === "POSTPONED" || p.result_status === "CANCELLED") continue;
+      const d = parseMatchDateTime(p.date, p.time);
+      if (d && d.getTime() < now) continue; // already started — not a fresh call
+      if (p.confidence?.toUpperCase() === "HIGH" && (p.recommendation === "OVER" || p.recommendation === "UNDER")) {
+        const s = computeOUStrength(p);
+        if (!best || s > best.strength) best = { p, market: "ou", strength: s };
+      }
+      if (p.team_winner_confidence?.toUpperCase() === "HIGH" && (p.team_winner === "HOME_TEAM" || p.team_winner === "AWAY_TEAM")) {
+        const s = computeWinStrength(p);
+        if (!best || s > best.strength) best = { p, market: "win", strength: s };
+      }
+    }
+    return best;
+  }, [data, computeOUStrength, computeWinStrength]);
+
   // ── Today's top picks — used for per-date rendering (computed inline per group)
   // The getTopPicksForGroup function above is called per date group in the render.
 
@@ -558,6 +581,44 @@ export function UserPredictionsView() {
         </>)}
 
         {view === "predictions" && (<>
+        {/* Pick of the Day hero — the single strongest upcoming pick */}
+        {pickOfDay && (() => {
+          const { p, market } = pickOfDay;
+          const rec = p.recommendation?.toUpperCase();
+          const line = rec === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line) : rec === "UNDER" ? (p.reduced_under_total ?? p.bookmaker_line) : null;
+          const ouOdds = rec === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : rec === "UNDER" ? (p.reduced_under_odds ?? p.under_odds) : null;
+          const w = p.team_winner?.toUpperCase();
+          const winnerName = w === "HOME_TEAM" ? p.home_team : p.away_team;
+          const winnerOdds = w === "HOME_TEAM" ? p.home_odds : p.away_odds;
+          const pickLabel = market === "ou" ? `${rec} ${line ?? ""}` : winnerName;
+          const pickOdds = market === "ou" ? ouOdds : winnerOdds;
+          const cd = timeToKickoff(p.date, p.time);
+          const streak = p.winning_streak_data;
+          const reason = market === "ou"
+            ? (p.matches_above != null && p.matches_below != null ? `${p.matches_above}▲ / ${p.matches_below}▼ vs line` : "HIGH confidence")
+            : (streak ? `H2H ${streak.home_team_h2h_wins ?? 0}–${streak.away_team_h2h_wins ?? 0}` : "HIGH confidence");
+          return (
+            <button
+              onClick={() => setSelected(p)}
+              className="w-full text-left rounded-xl overflow-hidden border border-neon-green/40 bg-gradient-to-br from-neon-green/10 to-card/40 hover:from-neon-green/15 transition-colors"
+            >
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-neon-green/15">
+                <Flame className="w-3.5 h-3.5 text-neon-green" />
+                <span className="text-[10px] font-black text-neon-green uppercase tracking-[0.15em]">Pick of the Day</span>
+                {cd && <span className="ml-auto text-[10px] text-neon-cyan font-bold">⏱ {cd}</span>}
+              </div>
+              <div className="p-3">
+                <p className="text-sm font-black leading-tight break-words">{p.home_team || "Home"} <span className="text-muted-foreground/50">vs</span> {p.away_team || "Away"}</p>
+                <div className="flex items-baseline gap-2 mt-1.5">
+                  <span className={`text-lg font-black ${market === "ou" ? "text-neon-green" : "text-neon-cyan"}`}>{pickLabel}</span>
+                  {pickOdds != null && <span className="text-sm font-mono text-muted-foreground">@ {pickOdds}</span>}
+                  <span className="ml-auto text-[10px] font-semibold text-muted-foreground">{reason}</span>
+                </div>
+              </div>
+            </button>
+          );
+        })()}
+
         {/* Starting-soon time-window chips — jump to matches about to tip off */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
           {([
