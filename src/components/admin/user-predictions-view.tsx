@@ -21,7 +21,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell, Shield } from "lucide-react";
+import { Search, RefreshCw, AlertTriangle, LogOut, Calendar, Flame, User, Settings, ChevronDown, CheckCircle2, XCircle, Target, Coins, Activity, Clock, BarChart3, LayoutGrid, Bell } from "lucide-react";
 import type { StoredPredictions, Prediction } from "@/lib/types";
 import { BasketballIcon } from "./icons";
 import { PredictionCard, PredictionCardSkeleton } from "./prediction-card";
@@ -97,21 +97,15 @@ export function UserPredictionsView() {
   const [view, setView] = useState<"predictions" | "results" | "stats" | "menu">("predictions");
   // Match detail overlay — set when a user taps a prediction card.
   const [selected, setSelected] = useState<Prediction | null>(null);
-  // Menu tab sub-page: the root list, or the Settings panel.
-  const [menuPage, setMenuPage] = useState<"root" | "settings">("root");
+  // Menu tab sub-page.
+  const [menuPage, setMenuPage] = useState<"root" | "settings" | "profile">("root");
   const oddsFmt = useOddsFormat();
-  const userRole = (session?.user as { role?: string })?.role;
   const [data, setData] = useState<StoredPredictions | null>(null);
   // Settings-driven prefs (mirrored from localStorage).
   const [defaultTab, setDefaultTabState] = useState<DefaultTab>("predictions");
   const [alertsOn, setAlertsOn] = useState(false);
   const [alertsLead, setAlertsLeadState] = useState(30);
   const notifiedRef = useRef<Set<string>>(new Set());
-  // Change-password form.
-  const [pwCurrent, setPwCurrent] = useState("");
-  const [pwNew, setPwNew] = useState("");
-  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [pwSaving, setPwSaving] = useState(false);
 
   // On mount: load prefs + apply default tab.
   useEffect(() => {
@@ -150,19 +144,6 @@ export function UserPredictionsView() {
     else { setAlertsEnabled(false); setAlertsOn(false); }
   };
   const disableAlerts = () => { setAlertsEnabled(false); setAlertsOn(false); };
-
-  const changePassword = async () => {
-    setPwSaving(true); setPwMsg(null);
-    try {
-      const res = await fetch("/api/user/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: pwCurrent, newPassword: pwNew }) });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-      setPwMsg({ ok: true, text: "Password changed." });
-      setPwCurrent(""); setPwNew("");
-    } catch (e) {
-      setPwMsg({ ok: false, text: e instanceof Error ? e.message : "Failed" });
-    } finally { setPwSaving(false); }
-  };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -485,7 +466,7 @@ export function UserPredictionsView() {
 
         {view === "menu" && menuPage === "root" && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-border/40 bg-card/70 p-4">
+            <button onClick={() => setMenuPage("profile")} className="w-full text-left rounded-xl border border-border/40 bg-card/70 p-4 hover:border-neon-green/40 transition-colors">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
                   <span className="text-lg font-black text-neon-green">{userInitial}</span>
@@ -494,10 +475,16 @@ export function UserPredictionsView() {
                   <p className="text-sm font-bold truncate">{userName}</p>
                   {userEmail && <p className="text-xs text-muted-foreground truncate">{userEmail}</p>}
                 </div>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto shrink-0" />
               </div>
-            </div>
+            </button>
             {/* Menu rows — icon-circle style */}
-            <div className="rounded-xl border border-border/40 bg-card/70 overflow-hidden">
+            <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20 overflow-hidden">
+              <button onClick={() => setMenuPage("profile")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
+                <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><User className="w-4 h-4 text-neon-green" /></span>
+                <span className="text-sm font-semibold">Personal profile</span>
+                <ChevronDown className="w-4 h-4 text-muted-foreground -rotate-90 ml-auto" />
+              </button>
               <button onClick={() => setMenuPage("settings")} className="w-full flex items-center gap-3 p-4 hover:bg-background/40 transition-colors">
                 <span className="w-9 h-9 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0"><Settings className="w-4 h-4 text-neon-green" /></span>
                 <span className="text-sm font-semibold">Settings</span>
@@ -511,26 +498,15 @@ export function UserPredictionsView() {
           </div>
         )}
 
+        {view === "menu" && menuPage === "profile" && (
+          <UserProfile userInitial={userInitial} onBack={() => setMenuPage("root")} />
+        )}
+
         {view === "menu" && menuPage === "settings" && (
           <div className="space-y-5">
             <button onClick={() => setMenuPage("root")} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ChevronDown className="w-5 h-5 rotate-90" /> Menu
             </button>
-
-            {/* Profile */}
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><User className="w-3 h-3" /> Profile</p>
-              <div className="rounded-xl border border-border/40 bg-card/70 p-4 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
-                  <span className="text-xl font-black text-neon-green">{userInitial}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold truncate">{userName}</p>
-                  {userEmail && <p className="text-xs text-muted-foreground truncate">{userEmail}</p>}
-                  {userRole && <span className="inline-block mt-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-neon-green/30 text-neon-green bg-neon-green/5">{userRole}</span>}
-                </div>
-              </div>
-            </div>
 
             {/* Alerts */}
             <div>
@@ -592,20 +568,6 @@ export function UserPredictionsView() {
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Security */}
-            <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1 flex items-center gap-1.5"><Shield className="w-3 h-3" /> Security</p>
-              <div className="rounded-xl border border-border/40 bg-card/70 p-4 space-y-3">
-                <p className="text-sm font-semibold">Change password</p>
-                <Input type="password" placeholder="Current password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="current-password" />
-                <Input type="password" placeholder="New password (min 8 chars)" value={pwNew} onChange={(e) => setPwNew(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="new-password" />
-                {pwMsg && <p className={`text-xs ${pwMsg.ok ? "text-neon-green" : "text-neon-red"}`}>{pwMsg.text}</p>}
-                <Button onClick={changePassword} disabled={pwSaving || !pwCurrent || pwNew.length < 8} className="w-full h-9 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25">
-                  {pwSaving ? "Saving…" : "Update password"}
-                </Button>
               </div>
             </div>
 
@@ -1317,6 +1279,165 @@ function ResultsHistory({ predictions }: { predictions: Prediction[] }) {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * UserProfile — Linebet-style "Personal profile" (Menu → Personal profile).
+ * Account block (id, email, password change, registration date) + editable
+ * Personal information (name, phone, country, city). Loads from and saves to
+ * /api/user/profile; password changes go through /api/user/password.
+ */
+interface ProfileData {
+  id: string; email: string; role: string;
+  name: string; phone: string; country: string; city: string;
+  createdAt: string; passwordManaged: boolean;
+}
+function UserProfile({ userInitial, onBack }: { userInitial: string; onBack: () => void }) {
+  const [p, setP] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", country: "", city: "" });
+  const [saving, setSaving] = useState(false);
+  // Change-password (asks for confirmation now)
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwCur, setPwCur] = useState("");
+  const [pwNew, setPwNew] = useState("");
+  const [pwConfirm, setPwConfirm] = useState("");
+  const [pwMsg, setPwMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pwSaving, setPwSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user/profile");
+      if (!res.ok) return;
+      const d = (await res.json()) as ProfileData;
+      setP(d);
+      setForm({ name: d.name, phone: d.phone, country: d.country, city: d.city });
+    } finally { setLoading(false); }
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs after the first await
+    load();
+  }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/user/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (res.ok) { setEditing(false); load(); }
+    } finally { setSaving(false); }
+  };
+
+  const changePassword = async () => {
+    setPwMsg(null);
+    if (pwNew.length < 8) { setPwMsg({ ok: false, text: "New password must be at least 8 characters." }); return; }
+    if (pwNew !== pwConfirm) { setPwMsg({ ok: false, text: "New passwords don't match." }); return; }
+    setPwSaving(true);
+    try {
+      const res = await fetch("/api/user/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currentPassword: pwCur, newPassword: pwNew }) });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+      setPwMsg({ ok: true, text: "Password changed." });
+      setPwCur(""); setPwNew(""); setPwConfirm(""); setPwOpen(false);
+    } catch (e) {
+      setPwMsg({ ok: false, text: e instanceof Error ? e.message : "Failed" });
+    } finally { setPwSaving(false); }
+  };
+
+  const Row = ({ label, sub, value, action }: { label: string; sub?: string; value?: React.ReactNode; action?: React.ReactNode }) => (
+    <div className="flex items-start gap-3 p-4">
+      <div className="min-w-0">
+        <p className="text-sm font-semibold">{label}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5 truncate">{sub}</p>}
+      </div>
+      <div className="ml-auto text-right shrink-0">{action ?? <span className="text-sm text-muted-foreground">{value}</span>}</div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <button onClick={onBack} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+        <ChevronDown className="w-5 h-5 rotate-90" /> Menu
+      </button>
+
+      {loading || !p ? (
+        <div className="rounded-xl border border-border/40 bg-card/70 p-8 text-center text-sm text-muted-foreground">Loading profile…</div>
+      ) : (
+        <>
+          {/* Header card */}
+          <div className="rounded-xl border border-border/40 bg-card/70 p-4 flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-neon-green/10 border border-neon-green/20 flex items-center justify-center shrink-0">
+              <span className="text-xl font-black text-neon-green">{userInitial}</span>
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate">{p.name || "Your profile"}</p>
+              <span className="inline-block mt-0.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border border-neon-green/30 text-neon-green bg-neon-green/5">{p.role}</span>
+            </div>
+          </div>
+
+          {/* Account */}
+          <div>
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em] mb-2 px-1">Account</p>
+            <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20">
+              <Row label="Account number" value={<span className="font-mono text-xs">id: {p.id.slice(0, 12)}</span>} />
+              <Row label="Email" sub={p.email} />
+              <Row label="Password" sub={p.passwordManaged ? "Managed by Google" : undefined}
+                action={p.passwordManaged ? <span className="text-xs text-muted-foreground">Google</span> :
+                  <button onClick={() => { setPwOpen((v) => !v); setPwMsg(null); }} className="text-sm font-semibold text-neon-green">Change</button>} />
+              {pwOpen && !p.passwordManaged && (
+                <div className="p-4 space-y-2.5 bg-background/30">
+                  <Input type="password" placeholder="Current password" value={pwCur} onChange={(e) => setPwCur(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="current-password" />
+                  <Input type="password" placeholder="New password (min 8 chars)" value={pwNew} onChange={(e) => setPwNew(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="new-password" />
+                  <Input type="password" placeholder="Confirm new password" value={pwConfirm} onChange={(e) => setPwConfirm(e.target.value)} className="bg-background border-border/50 h-9" autoComplete="new-password" />
+                  {pwMsg && <p className={`text-xs ${pwMsg.ok ? "text-neon-green" : "text-neon-red"}`}>{pwMsg.text}</p>}
+                  <Button onClick={changePassword} disabled={pwSaving || !pwCur || pwNew.length < 8 || !pwConfirm} className="w-full h-9 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25">
+                    {pwSaving ? "Saving…" : "Update password"}
+                  </Button>
+                </div>
+              )}
+              <Row label="Registration date" value={new Date(p.createdAt).toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "numeric" })} />
+            </div>
+          </div>
+
+          {/* Personal information */}
+          <div>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.15em]">Personal information</p>
+              {!editing ? (
+                <button onClick={() => setEditing(true)} className="text-xs font-semibold text-neon-green">Edit</button>
+              ) : (
+                <button onClick={() => { setEditing(false); setForm({ name: p.name, phone: p.phone, country: p.country, city: p.city }); }} className="text-xs text-muted-foreground">Cancel</button>
+              )}
+            </div>
+            <div className="rounded-xl border border-border/40 bg-card/70 divide-y divide-border/20">
+              {([
+                { k: "name", label: "Name" },
+                { k: "phone", label: "Phone number" },
+                { k: "country", label: "Country" },
+                { k: "city", label: "City" },
+              ] as const).map(({ k, label }) => (
+                <div key={k} className="flex items-center gap-3 p-4">
+                  <p className="text-sm font-semibold shrink-0">{label}</p>
+                  {editing ? (
+                    <Input value={form[k]} onChange={(e) => setForm((f) => ({ ...f, [k]: e.target.value }))} placeholder={label} className="ml-auto max-w-[55%] bg-background border-border/50 h-9 text-right" />
+                  ) : (
+                    <span className="ml-auto text-sm text-muted-foreground truncate">{p[k] || "—"}</span>
+                  )}
+                </div>
+              ))}
+              {editing && (
+                <div className="p-4">
+                  <Button onClick={save} disabled={saving || !form.name.trim()} className="w-full h-9 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25">
+                    {saving ? "Saving…" : "Save details"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
