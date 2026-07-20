@@ -189,3 +189,9 @@ past entries — append corrections instead.
 - **Design:** all borrows reuse existing data; single dark theme kept. Borrow board artifact: https://claude.ai/code/artifact/16354935-eda8-42dd-9c86-224985b711c3
 - **Remaining borrows:** #7 Pick of the Day hero (next), #8 favorites+alerts (needs backend), #9 grouped settings, #10 odds-format toggle, #11 line-movement (needs historical snapshots). Header user-menu dropdown now overlaps the Menu tab (harmless; could strip later).
 - **Standing (unchanged):** scraper autonomous scheduling live (c4baa98); engine deployed build ≠ repo (has /api/logs); phase-2 reduced-line confirmation pending a scrape observation; Value Picks still reverted.
+
+---
+## 2026-07-20 — Session 15 addendum (borrows #7, #9, #10)
+- `2c4d07b` Pick of the Day hero (#7) — strongest upcoming HIGH-conf pick atop Picks tab, reuses strength scoring, taps to detail.
+- `<next>` user Settings (#9) via Menu→Settings (menuPage state, icon-circle rows, back-nav) + working odds-format toggle (#10). New src/lib/odds-format.ts: localStorage + reactive useOddsFormat hook + formatOdds (decimal/fractional/american); applied live in prediction-card, hero, MatchDetail, ResultsHistory.
+- Remaining borrows: #8 favorites+alerts (needs backend — own project), #11 line-movement (needs historical snapshots). Board essentially done bar those two.
