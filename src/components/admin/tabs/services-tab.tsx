@@ -27,6 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -58,6 +59,9 @@ import {
   TrendingUp,
   Info,
   RotateCcw,
+  CalendarClock,
+  Clock,
+  Trophy,
 } from "lucide-react";
 import type {
   ServiceStatus,
@@ -318,33 +322,10 @@ export function ServicesTab({
               <div className="flex justify-between"><span>Endpoint</span><span className="font-mono text-[10px] truncate ml-2">{serviceStatus?.scraperUrl || "—"}</span></div>
             </div>
 
-            {/* Trigger controls (admin only) */}
-            {isAdmin && <div className="space-y-2">
-              {serviceStatus?.scraper?.scraperStatus === "running" ? (
-                <Button variant="outline" onClick={handleStopScraper} disabled={stopLoading}
-                  className="w-full gap-2 border-neon-red/30 text-neon-red hover:bg-neon-red/10">
-                  {stopLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ZapOff className="w-4 h-4" />}
-                  Stop Scraper
-                </Button>
-              ) : (
-                <div className="flex gap-2">
-                  <Select value={scraperDay} onValueChange={(v) => setScraperDay(v as "Today" | "Tomorrow")}>
-                    <SelectTrigger className="h-9 text-xs bg-background border-border/50 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Today">Today</SelectItem>
-                      <SelectItem value="Tomorrow">Tomorrow</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" onClick={handleTriggerScraper} disabled={scraperLoading}
-                    className="shrink-0 gap-2 border-neon-green/30 text-neon-green hover:bg-neon-green/10">
-                    {scraperLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                    Run
-                  </Button>
-                </div>
-              )}
-            </div>}
+            {/* Rich scraper control cockpit (admin/operator): manual scheduled
+                + results triggers, force, stop, and the autonomous schedulers.
+                Replaces the old scheduled-only Run/Stop. */}
+            {isAdmin && <ScraperControlPanel onAction={fetchServiceStatus} />}
             <div className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
               {isAdmin && <Button variant="outline" onClick={() => { setSelectedService("scraper"); }} className="gap-2 border-neon-cyan/30 text-neon-cyan hover:bg-neon-cyan/10 text-xs">
                 <Settings className="w-4 h-4" />Configure
@@ -795,5 +776,252 @@ function LastScrapeReport() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * ScraperControlPanel — the rich scraper cockpit for the Services tab.
+ *
+ * Manual triggers (kept alongside the scraper's autonomous schedulers):
+ *   - Scheduled scrape: fetch matches + predict, Today/Tomorrow, optional force
+ *   - Results scrape: fetch final scores for a date
+ *   - Stop (kill all) + Resume queue
+ * Autonomous schedulers (drive the site without manual clicks):
+ *   - Scheduled-matches loop (every N hours) — enable + interval + day
+ *   - Results loop (live/awaiting) — enable
+ *
+ * Everything is self-contained (its own fetches) so it needs no new props.
+ * Admin/operator gated by the endpoints it calls.
+ */
+interface SchedulerState {
+  results_scheduler?: { enabled?: boolean; running?: boolean; current_action?: string; matches_scraped?: number };
+  scheduled_scraper?: { enabled?: boolean; running?: boolean; interval_hours?: number; day?: string; runs_triggered?: number; last_run?: string | null; next_run?: string | null; current_action?: string };
+  config?: Record<string, unknown>;
+}
+
+function ScraperControlPanel({ onAction }: { onAction?: () => void }) {
+  const [mode, setMode] = useState<"scheduled" | "results">("scheduled");
+  const [day, setDay] = useState<"Today" | "Tomorrow">("Today");
+  const [force, setForce] = useState(false);
+  const [resultsDate, setResultsDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState<string | null>(null); // which action is in-flight
+  const [sched, setSched] = useState<SchedulerState | null>(null);
+  const [schedErr, setSchedErr] = useState<string | null>(null);
+  const [savingSched, setSavingSched] = useState(false);
+
+  const loadSched = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/scraper/schedule");
+      if (!res.ok) { setSchedErr(`scheduler unreachable (HTTP ${res.status})`); return; }
+      setSched(await res.json());
+      setSchedErr(null);
+    } catch {
+      setSchedErr("scheduler unreachable");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSched();
+    const id = setInterval(loadSched, 20000);
+    return () => clearInterval(id);
+  }, [loadSched]);
+
+  const post = async (label: string, body: Record<string, unknown>) => {
+    setBusy(label);
+    try {
+      const res = await fetch("/api/admin/scraper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      toast.success(data.message || `${label} triggered`);
+      onAction?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `${label} failed`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runScheduled = () => post("Scheduled scrape", { day, force });
+  const runResults = () => {
+    // scraper expects DD.MM.YYYY
+    const [y, m, d] = resultsDate.split("-");
+    if (!y || !m || !d) { toast.error("Pick a valid date"); return; }
+    post("Results scrape", { operation: "scrape_results", date: `${d}.${m}.${y}` });
+  };
+  const stopAll = () => post("Stop", { operation: "kill_all" });
+  const resumeQueue = () => post("Resume queue", { operation: "resume_queue" });
+
+  // Push a full scheduler config (the scraper PUT wants the whole object).
+  const putSched = async (patch: Record<string, unknown>) => {
+    const rs = sched?.results_scheduler || {};
+    const ss = sched?.scheduled_scraper || {};
+    const cfg = (sched?.config || {}) as Record<string, unknown>;
+    const payload = {
+      results_enabled: rs.enabled ?? true,
+      live_interval_seconds: (cfg.live_interval_seconds as number) ?? 60,
+      awaiting_interval_seconds: (cfg.awaiting_interval_seconds as number) ?? 30,
+      idle_interval_seconds: (cfg.idle_interval_seconds as number) ?? 120,
+      scheduled_enabled: ss.enabled ?? true,
+      scheduled_interval_hours: ss.interval_hours ?? 6,
+      scheduled_day: ss.day ?? "Today",
+      ...patch,
+    };
+    setSavingSched(true);
+    try {
+      const res = await fetch("/api/admin/scraper/schedule", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success("Scheduler updated");
+      await loadSched();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Scheduler update failed");
+    } finally {
+      setSavingSched(false);
+    }
+  };
+
+  const rs = sched?.results_scheduler;
+  const ss = sched?.scheduled_scraper;
+  const [intervalInput, setIntervalInput] = useState<string>("6");
+  useEffect(() => { if (ss?.interval_hours != null) setIntervalInput(String(ss.interval_hours)); }, [ss?.interval_hours]);
+
+  return (
+    <div className="space-y-3">
+      {/* ── Manual trigger ─────────────────────────────────────────── */}
+      <div className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-2.5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold">
+          <Play className="w-3.5 h-3.5 text-neon-green" /> Manual trigger
+        </div>
+        {/* Mode segmented control */}
+        <div className="flex gap-1 p-0.5 rounded-md bg-background border border-border/50 w-fit">
+          <button
+            onClick={() => setMode("scheduled")}
+            className={`text-[11px] px-2.5 py-1 rounded flex items-center gap-1 ${mode === "scheduled" ? "bg-neon-green/15 text-neon-green font-bold" : "text-muted-foreground"}`}
+          >
+            <CalendarClock className="w-3 h-3" /> Scheduled (matches)
+          </button>
+          <button
+            onClick={() => setMode("results")}
+            className={`text-[11px] px-2.5 py-1 rounded flex items-center gap-1 ${mode === "results" ? "bg-neon-cyan/15 text-neon-cyan font-bold" : "text-muted-foreground"}`}
+          >
+            <Trophy className="w-3 h-3" /> Results (scores)
+          </button>
+        </div>
+
+        {mode === "scheduled" ? (
+          <div className="flex items-end gap-2 flex-wrap">
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Day</Label>
+              <Select value={day} onValueChange={(v) => setDay(v as "Today" | "Tomorrow")}>
+                <SelectTrigger className="h-8 text-xs bg-background border-border/50 w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Today">Today</SelectItem>
+                  <SelectItem value="Tomorrow">Tomorrow</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground h-8">
+              <Switch checked={force} onCheckedChange={setForce} aria-label="Force re-scrape" />
+              Force <span title="Re-scrape matches already scraped (use after a code update)" className="text-muted-foreground/50">(re-do all)</span>
+            </label>
+            <Button size="sm" onClick={runScheduled} disabled={!!busy}
+              className="h-8 gap-1.5 bg-neon-green/15 border border-neon-green/40 text-neon-green hover:bg-neon-green/25">
+              {busy === "Scheduled scrape" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-end gap-2 flex-wrap">
+            <div>
+              <Label className="text-[10px] text-muted-foreground">Date</Label>
+              <Input type="date" value={resultsDate} onChange={(e) => setResultsDate(e.target.value)}
+                className="h-8 text-xs bg-background border-border/50 w-40" />
+            </div>
+            <Button size="sm" onClick={runResults} disabled={!!busy}
+              className="h-8 gap-1.5 bg-neon-cyan/15 border border-neon-cyan/40 text-neon-cyan hover:bg-neon-cyan/25">
+              {busy === "Results scrape" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run
+            </Button>
+          </div>
+        )}
+
+        {/* Stop / resume */}
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" variant="outline" onClick={stopAll} disabled={!!busy}
+            className="h-8 gap-1.5 border-neon-red/30 text-neon-red hover:bg-neon-red/10">
+            {busy === "Stop" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ZapOff className="w-3.5 h-3.5" />} Stop (kill all)
+          </Button>
+          <Button size="sm" variant="outline" onClick={resumeQueue} disabled={!!busy}
+            className="h-8 gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
+            {busy === "Resume queue" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />} Resume queue
+          </Button>
+        </div>
+      </div>
+
+      {/* ── Autonomous schedulers ──────────────────────────────────── */}
+      <div className="rounded-lg border border-border/40 bg-background/40 p-3 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-xs font-semibold">
+            <Clock className="w-3.5 h-3.5 text-neon-cyan" /> Autonomous schedulers
+          </div>
+          {schedErr && <span className="text-[10px] text-neon-yellow">{schedErr}</span>}
+        </div>
+
+        {/* Scheduled-matches scheduler */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+              <CalendarClock className="w-3 h-3 text-neon-green" /> Scheduled matches
+              <span className={`text-[9px] px-1.5 rounded-full border ${ss?.running ? "border-neon-green/40 text-neon-green bg-neon-green/5" : "border-border/40 text-muted-foreground"}`}>
+                {ss?.running ? "RUNNING" : "OFF"}
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              every {ss?.interval_hours ?? 6}h · {ss?.day ?? "Today"} · {ss?.runs_triggered ?? 0} run(s)
+              {ss?.next_run && ` · next ${new Date(ss.next_run).toLocaleTimeString()}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number" step="0.5" min="0.5" max="24"
+              value={intervalInput}
+              onChange={(e) => setIntervalInput(e.target.value)}
+              onBlur={() => { const n = Number(intervalInput); if (n >= 0.5 && n <= 24 && n !== ss?.interval_hours) putSched({ scheduled_interval_hours: n }); }}
+              disabled={savingSched}
+              className="h-7 w-16 text-xs font-mono bg-background" aria-label="Scheduled interval hours"
+            />
+            <span className="text-[10px] text-muted-foreground">h</span>
+            <Switch checked={!!ss?.enabled} disabled={savingSched}
+              onCheckedChange={(v) => putSched({ scheduled_enabled: v })}
+              aria-label="Toggle scheduled-matches scheduler" />
+          </div>
+        </div>
+
+        <Separator className="bg-border/30" />
+
+        {/* Results scheduler */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+              <Trophy className="w-3 h-3 text-neon-cyan" /> Results (live + awaiting)
+              <span className={`text-[9px] px-1.5 rounded-full border ${rs?.running ? "border-neon-green/40 text-neon-green bg-neon-green/5" : "border-border/40 text-muted-foreground"}`}>
+                {rs?.running ? "RUNNING" : "OFF"}
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">
+              {rs?.current_action || "idle"} · {rs?.matches_scraped ?? 0} scraped
+            </p>
+          </div>
+          <Switch checked={!!rs?.enabled} disabled={savingSched}
+            onCheckedChange={(v) => putSched({ results_enabled: v })}
+            aria-label="Toggle results scheduler" />
+        </div>
+      </div>
+    </div>
   );
 }
