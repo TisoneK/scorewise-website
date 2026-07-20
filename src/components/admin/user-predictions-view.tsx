@@ -94,6 +94,9 @@ export function UserPredictionsView() {
   const [search, setSearch] = useState("");
   const [confFilter, setConfFilter] = useState<ConfFilter>("ALL");
   const [recFilter, setRecFilter] = useState<RecFilter>("ALL");
+  // "Starting soon" time-window filter (borrowed pattern). Values are minutes
+  // to kickoff; null = no window filter.
+  const [soonFilter, setSoonFilter] = useState<number | null>(null);
   // Expanded date groups — dates the user has manually expanded.
   // Today + tomorrow are expanded by DEFAULT. All other dates start collapsed.
   // User can click any date header to toggle expand/collapse.
@@ -253,6 +256,14 @@ export function UserPredictionsView() {
       }
       if (confFilter !== "ALL" && p.confidence?.toUpperCase() !== confFilter) return false;
       if (recFilter !== "ALL" && p.recommendation?.toUpperCase() !== recFilter) return false;
+      // Starting-soon window: keep only matches that tip off within N minutes
+      // from now (and haven't started yet).
+      if (soonFilter != null) {
+        const d = parseMatchDateTime(p.date, p.time);
+        if (!d) return false;
+        const minsToTip = (d.getTime() - Date.now()) / 60000;
+        if (minsToTip < 0 || minsToTip > soonFilter) return false;
+      }
       return true;
     });
 
@@ -273,7 +284,7 @@ export function UserPredictionsView() {
       }
     }
     return groups;
-  }, [data, search, confFilter, recFilter]);
+  }, [data, search, confFilter, recFilter, soonFilter]);
 
   const totalCount = grouped.reduce((sum, g) => sum + g.predictions.length, 0);
   const tzAbbr = getTimezoneAbbr();
@@ -507,6 +518,32 @@ export function UserPredictionsView() {
             </div>
           );
         })()}
+
+        {/* Starting-soon time-window chips — jump to matches about to tip off */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
+          {([
+            { label: "All", mins: null },
+            { label: "30 min", mins: 30 },
+            { label: "1 hour", mins: 60 },
+            { label: "3 hours", mins: 180 },
+            { label: "6 hours", mins: 360 },
+          ] as const).map((opt) => {
+            const active = soonFilter === opt.mins;
+            return (
+              <button
+                key={opt.label}
+                onClick={() => setSoonFilter(opt.mins)}
+                className={`shrink-0 text-xs font-semibold px-3 h-8 rounded-full border transition-colors ${
+                  active
+                    ? "bg-neon-green/15 border-neon-green/40 text-neon-green"
+                    : "bg-card border-border/50 text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.mins === null ? opt.label : `⏱ ${opt.label}`}
+              </button>
+            );
+          })}
+        </div>
 
         {/* Search + Filters */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
