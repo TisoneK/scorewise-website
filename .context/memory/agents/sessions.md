@@ -204,3 +204,7 @@ past entries — append corrections instead.
 ---
 ## 2026-07-20 — Session 15 addendum 3 (favorites, borrow #8 v1)
 - `<next>` favorite teams — device-scoped (localStorage + reactive useFavoriteTeams hook + event, like odds-format). New src/lib/favorites.ts. Match detail: tap-a-team stars; cards show filled star when a fav is involved; Picks gets a Favorites filter chip; kickoff alerts targeted to favorites when any exist. NOT account-synced (no schema migration) — swappable to a server store later. Borrow board now fully covered except #11 line-movement (needs historical line snapshots).
+
+---
+## 2026-07-20 — Session 15 addendum 4 (Personal profile screen)
+- `<next>` Menu→Personal profile: Linebet-style screen. Account (id, email, Change password, registration date=createdAt) + editable Personal information (Name/Phone/Country/City). New GET/PATCH /api/user/profile — lazily ALTERs User to add phone/country/city columns (idempotent, per-instance flag; same pattern as Prediction reduced-risk cols); PATCH persists name/phone/country/city account-side. Change password moved here from Settings, NOW WITH CONFIRM field (current+new+confirm, match-checked). Google users see "Managed by Google". Removed unused Shield/userRole. Note: session name (greeting) reflects edits only after next login (JWT session).
