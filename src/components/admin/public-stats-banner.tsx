@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Target, Coins, Flame, Snowflake, Activity, TrendingUp, ChevronDown } from "lucide-react";
 
@@ -123,22 +122,24 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   return (
     <Card className={`bg-gradient-to-br from-card/80 to-card/40 ${meta.tone} overflow-hidden`}>
 
-      {/* ════════ HEADER ════════ */}
+      {/* ════════ HEADER — slim strip (compact, like card 3's density) ════════ */}
       <div
-        className="flex items-center gap-2 px-3 py-2 border-b border-border/20 cursor-pointer hover:bg-background/20 transition-colors"
+        className="flex items-center gap-1.5 px-3 py-1.5 cursor-pointer hover:bg-background/20 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className={`w-6 h-6 rounded-md ${meta.iconBg} flex items-center justify-center shrink-0`}>
-          <Activity className={`w-3.5 h-3.5 ${meta.iconColor}`} />
-        </div>
-        <h3 className="text-xs sm:text-sm font-bold truncate">
+        <Activity className={`w-3.5 h-3.5 ${meta.iconColor} shrink-0`} />
+        <h3 className="text-[11px] font-bold truncate">
           {expanded ? meta.title : meta.shortTitle}
         </h3>
-        <Badge variant="outline" className={`text-[9px] ${meta.tone} ${meta.iconColor} bg-${meta.accent}/5 shrink-0`}>LIVE</Badge>
-        <span className="text-[10px] text-muted-foreground/60 ml-auto hidden sm:inline shrink-0">
-          {d.resolved} resolved
+        <span className={`text-[8px] font-bold ${meta.iconColor} shrink-0`}>● LIVE</span>
+        {/* Streak inline in the header so the stat grid can mirror card 3's
+            Wins/Losses/HitRate/ROI exactly. */}
+        <span className="ml-auto flex items-center gap-1 shrink-0">
+          {streakIcon}
+          <span className={`text-[10px] font-black font-mono ${streakTone}`}>{st ?? "—"}{d.currentStreak.length || ""}</span>
         </span>
-        <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
+        <span className="text-[9px] text-muted-foreground/50 shrink-0 hidden sm:inline">{d.resolved} resolved</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </div>
 
       {/* ════════ BODY ════════ */}
@@ -196,38 +197,27 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
           )}
         </div>
       ) : (
-        // ── COLLAPSED BODY — compact 3-stat row ──
-        // Uses flex-1 on each stat so they share width equally and the
-        // STREAK column can't get pushed off-screen by floating overlays.
-        // min-w-0 allows graceful shrinking on very narrow viewports.
-        <div className="px-3 py-2.5">
-          <div className="flex items-stretch gap-1">
-            {/* Hit Rate */}
-            <div className="text-center flex-1 min-w-0 py-1">
-              <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Hit Rate</p>
-              <p className={`text-base font-black font-mono ${hitTone}`}>{d.hitRate.toFixed(1)}%</p>
-            </div>
-            <div className="w-px bg-border/30 self-stretch" />
-            {/* ROI */}
-            <div className="text-center flex-1 min-w-0 py-1">
-              <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">ROI</p>
-              <p className={`text-base font-black font-mono ${roiTone}`}>{d.roiPercent >= 0 ? "+" : ""}{d.roiPercent.toFixed(1)}%</p>
-            </div>
-            <div className="w-px bg-border/30 self-stretch" />
-            {/* Streak */}
-            <div className="text-center flex-1 min-w-0 py-1">
-              <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Streak</p>
-              <div className="flex items-center justify-center gap-0.5">
-                {streakIcon}
-                <p className={`text-base font-black font-mono ${streakTone}`}>{st ?? "—"}{d.currentStreak.length || ""}</p>
-              </div>
-            </div>
-            <div className="w-px bg-border/30 self-stretch hidden sm:block" />
-            {/* W/L summary — hidden on very small screens */}
-            <div className="text-center flex-1 min-w-0 py-1 hidden sm:block">
-              <p className="text-[8px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5">Record</p>
-              <p className="text-base font-black font-mono text-foreground">{d.wins}-{d.losses}{d.pushes > 0 ? `-${d.pushes}` : ""}</p>
-            </div>
+        // ── COLLAPSED BODY — dense 4-column grid, mirrors card 3 ──
+        <div className="grid grid-cols-4 divide-x divide-border/30 border-t border-border/20">
+          <div className="p-2.5 text-center">
+            <div className="flex items-center justify-center mb-0.5"><Target className="w-3 h-3 text-neon-green" /></div>
+            <p className="text-base font-black font-mono text-neon-green">{d.wins}</p>
+            <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Wins</p>
+          </div>
+          <div className="p-2.5 text-center">
+            <div className="flex items-center justify-center mb-0.5"><Target className="w-3 h-3 text-neon-red" /></div>
+            <p className="text-base font-black font-mono text-neon-red">{d.losses}</p>
+            <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Losses</p>
+          </div>
+          <div className="p-2.5 text-center">
+            <div className="flex items-center justify-center mb-0.5"><Target className="w-3 h-3 text-muted-foreground" /></div>
+            <p className={`text-base font-black font-mono ${hitTone}`}>{d.hitRate.toFixed(1)}%</p>
+            <p className="text-[8px] text-muted-foreground uppercase tracking-wider">Hit Rate</p>
+          </div>
+          <div className="p-2.5 text-center">
+            <div className="flex items-center justify-center mb-0.5"><Coins className="w-3 h-3 text-muted-foreground" /></div>
+            <p className={`text-base font-black font-mono ${roiTone}`}>{d.roiPercent >= 0 ? "+" : ""}{d.roiPercent.toFixed(1)}%</p>
+            <p className="text-[8px] text-muted-foreground uppercase tracking-wider">ROI</p>
           </div>
         </div>
       )}
