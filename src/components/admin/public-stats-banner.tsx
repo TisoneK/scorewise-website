@@ -1,6 +1,5 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Target, Coins, Flame, Snowflake, Activity, TrendingUp, ChevronDown } from "lucide-react";
 
@@ -75,13 +74,13 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   const meta = ALG_META[algorithm];
 
   if (loading) return (
-    <Card className="bg-card/60 border-border/40 animate-pulse">
-      <CardContent className="p-0">
-        <div className="px-3 py-2 border-b border-border/20"><div className="h-3 w-32 bg-muted/40 rounded" /></div>
-        <div className="px-3 py-3"><div className="h-4 w-full bg-muted/40 rounded" /></div>
-        <div className="px-3 py-1.5 border-t border-border/20"><div className="h-2 w-24 bg-muted/40 rounded mx-auto" /></div>
-      </CardContent>
-    </Card>
+    <div className="rounded-xl border border-border/40 bg-card/60 overflow-hidden animate-pulse">
+      <div className="px-3 py-1.5"><div className="h-3 w-32 bg-muted/40 rounded" /></div>
+      <div className="grid grid-cols-4 divide-x divide-border/30 border-t border-border/20">
+        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="p-2.5"><div className="h-6 w-full bg-muted/40 rounded" /></div>)}
+      </div>
+      <div className="px-3 py-1.5 border-t border-border/20"><div className="h-2 w-24 bg-muted/40 rounded mx-auto" /></div>
+    </div>
   );
 
   if (error || !data || !data[algorithm]) return null;
@@ -96,7 +95,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   const streakIcon = st === "W" ? <Flame className="w-3 h-3 text-neon-green" /> : st === "L" ? <Snowflake className="w-3 h-3 text-neon-red" /> : null;
 
   // Recent form — last 5 in collapsed, last 15 in expanded
-  const rfCollapsed = d.recentForm.slice(-5);
+  const rfCollapsed = d.recentForm.slice(-15);
   const rfExpanded = d.recentForm.slice(-15);
 
   // Helper: render a row of recent-form dots
@@ -120,7 +119,9 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
   };
 
   return (
-    <Card className={`bg-gradient-to-br from-card/80 to-card/40 ${meta.tone} overflow-hidden`}>
+    // Plain div (NOT the shadcn Card, which forces gap-6 + py-6 = the big
+    // empty space). Matches the compact summary card's wrapper exactly.
+    <div className={`rounded-xl border ${meta.tone} bg-card/70 overflow-hidden`}>
 
       {/* ════════ HEADER — slim strip (compact, like card 3's density) ════════ */}
       <div
@@ -231,7 +232,7 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
           {expanded ? (
             <span className="text-[9px] text-muted-foreground/40 shrink-0 leading-none">last 15 (oldest → newest)</span>
           ) : (
-            <span className="text-[9px] text-muted-foreground/40 shrink-0 leading-none">L5</span>
+            <span className="text-[9px] text-muted-foreground/40 shrink-0 leading-none">L15</span>
           )}
           <div className="flex-1 flex items-center justify-center gap-1">
             {renderFormDots(expanded ? rfExpanded : rfCollapsed, expanded ? "md" : "sm")}
@@ -247,6 +248,6 @@ export function PublicStatsBanner({ algorithm = "totals" }: PublicStatsBannerPro
           )}
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
