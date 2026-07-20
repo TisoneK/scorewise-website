@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 import { runEngineAutoSync } from "@/lib/engine-auto-sync";
-import { userTotalsSuspended } from "@/lib/service-config";
+import { userTotalsSuspended, userWinnerSuspended } from "@/lib/service-config";
 
 export const dynamic = 'force-dynamic';
 
@@ -101,31 +101,43 @@ export async function GET(request: Request) {
     const succeeded = predictions.filter(p => p.success).length;
     const failed = predictions.length - succeeded;
 
-    // For regular users (all=false): filter out NO_BET + strip algorithm internals
+    // For regular users (all=false): apply per-market suspension + filter +
+    // strip algorithm internals. Totals and winner suspend independently.
     if (!all) {
-      if (await userTotalsSuspended()) {
-        // Totals (O/U) picks are SUSPENDED for users while the reduced-risk
-        // algorithm is re-tuned via admin accounts: users get only matches
-        // with a real 1X2 pick, and every totals field is removed from the
-        // payload so nothing about the O/U market leaks.
-        predictions = predictions
-          .filter(p => p.team_winner === 'HOME_TEAM' || p.team_winner === 'AWAY_TEAM')
-          .map(p => ({
-            ...p,
-            recommendation: null,
-            recommendation_confidence: null,
-            bookmaker_line: null,
-            over_odds: null,
-            under_odds: null,
-            reduced_over_total: null,
-            reduced_over_odds: null,
-            reduced_under_total: null,
-            reduced_under_odds: null,
-          }));
-      } else {
-        // Filter out NO_BET
-        predictions = predictions.filter(p => p.recommendation && p.recommendation !== 'NO_BET');
-      }
+      const totalsSuspended = await userTotalsSuspended();
+      const winnerSuspended = await userWinnerSuspended();
+
+      const hasTotalsPick = (p: Record<string, unknown>) =>
+        !totalsSuspended && p.recommendation != null && p.recommendation !== 'NO_BET';
+      const hasWinnerPick = (p: Record<string, unknown>) =>
+        !winnerSuspended && (p.team_winner === 'HOME_TEAM' || p.team_winner === 'AWAY_TEAM');
+
+      predictions = predictions
+        // Keep a prediction only if at least one still-visible market has a pick.
+        .filter(p => hasTotalsPick(p) || hasWinnerPick(p))
+        .map(p => {
+          const out = { ...p };
+          if (totalsSuspended) {
+            // Strip every totals field so nothing about the O/U market leaks.
+            out.recommendation = null;
+            out.recommendation_confidence = null;
+            out.bookmaker_line = null;
+            out.over_odds = null;
+            out.under_odds = null;
+            out.reduced_over_total = null;
+            out.reduced_over_odds = null;
+            out.reduced_under_total = null;
+            out.reduced_under_odds = null;
+          }
+          if (winnerSuspended) {
+            // Strip every winner field so nothing about the 1X2 market leaks.
+            out.team_winner = null;
+            out.team_winner_confidence = null;
+            out.home_odds = null;
+            out.away_odds = null;
+          }
+          return out;
+        });
 
       // Collapse the line hierarchy into ONE line before stripping: users
       // must only ever see a single line per pick — the safer alternative

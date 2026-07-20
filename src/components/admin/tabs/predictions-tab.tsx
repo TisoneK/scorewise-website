@@ -115,6 +115,22 @@ export function PredictionsTab({
     });
   }, [preds, search, filterRec, filterConf]);
 
+  // Breakdown across ALL predictions — surfaces data the old header omitted.
+  const summary = useMemo(() => {
+    let ou = 0, winner = 0, noBet = 0, failed = 0, reduced = 0, withResult = 0, hi = 0;
+    for (const p of preds) {
+      const rec = p.recommendation?.toUpperCase();
+      if (p.success === false) failed++;
+      if (rec === "OVER" || rec === "UNDER") ou++;
+      if (rec === "NO_BET") noBet++;
+      if (p.team_winner === "HOME_TEAM" || p.team_winner === "AWAY_TEAM") winner++;
+      if (p.reduced_over_total != null || p.reduced_under_total != null) reduced++;
+      if (p.result_status === "FINAL") withResult++;
+      if (p.confidence?.toUpperCase() === "HIGH") hi++;
+    }
+    return { ou, winner, noBet, failed, reduced, withResult, hi };
+  }, [preds]);
+
   const handleDelete = async () => {
     let payload: Record<string, string> = {};
     let label = "";
@@ -160,8 +176,8 @@ export function PredictionsTab({
           </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          {/* Admin-only: suspend/lift Totals (O/U) visibility for users */}
-          <UserTotalsToggle />
+          {/* Admin-only: per-market user visibility (O/U + 1X2 suspension) */}
+          <UserVisibilityControls />
           <Button variant="outline" size="sm" onClick={fetchAllPredictions} disabled={loadingPred} className="gap-1.5 border-border/50 text-muted-foreground hover:text-foreground">
             <RefreshCw className={`w-3.5 h-3.5 ${loadingPred ? "animate-spin" : ""}`} /> Reload
           </Button>
@@ -177,6 +193,36 @@ export function PredictionsTab({
             <Trash2 className="w-3.5 h-3.5" /> Delete
           </Button>
         </div>
+      </div>
+
+      {/* Breakdown stats — clickable chips double as recommendation filters */}
+      <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+        <Badge variant="outline" className="border-border/40 bg-background/30">{totalPreds} total</Badge>
+        <button onClick={() => setFilterRec("OVER")} className="focus:outline-none">
+          <Badge variant="outline" className="border-neon-green/30 text-neon-green bg-neon-green/5 hover:bg-neon-green/10 cursor-pointer gap-1">
+            <TrendingUp className="w-2.5 h-2.5" />O/U {summary.ou}</Badge>
+        </button>
+        <button onClick={() => setFilterRec("1X2")} className="focus:outline-none">
+          <Badge variant="outline" className="border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10 cursor-pointer gap-1">
+            <Trophy className="w-2.5 h-2.5" />1X2 {summary.winner}</Badge>
+        </button>
+        {summary.reduced > 0 && (
+          <Badge variant="outline" className="border-neon-green/30 text-neon-green bg-neon-green/5 gap-1">
+            <TrendingDown className="w-2.5 h-2.5" />reduced {summary.reduced}</Badge>
+        )}
+        <Badge variant="outline" className="border-neon-yellow/30 text-neon-yellow bg-neon-yellow/5">HIGH conf {summary.hi}</Badge>
+        <button onClick={() => setFilterRec("NO_BET")} className="focus:outline-none">
+          <Badge variant="outline" className="border-neon-yellow/30 text-neon-yellow bg-neon-yellow/5 hover:bg-neon-yellow/10 cursor-pointer">NO BET {summary.noBet}</Badge>
+        </button>
+        {summary.failed > 0 && (
+          <Badge variant="outline" className="border-neon-red/30 text-neon-red bg-neon-red/5">failed {summary.failed}</Badge>
+        )}
+        <Badge variant="outline" className="border-border/40 text-muted-foreground">results in {summary.withResult}</Badge>
+        {filterRec !== "ALL" && (
+          <button onClick={() => setFilterRec("ALL")} className="focus:outline-none">
+            <Badge variant="outline" className="border-border/40 text-muted-foreground hover:text-foreground cursor-pointer">clear filter ✕</Badge>
+          </button>
+        )}
       </div>
 
       {/* Delete panel */}
@@ -368,6 +414,27 @@ export function PredictionsTab({
                     </div>
                   )}
 
+                  {/* Algorithm data strip — surfaces internals that were
+                      previously only in the detail drawer. Each token renders
+                      only when its data exists. */}
+                  <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[9px] text-muted-foreground/70 font-mono pt-1">
+                    {p.average_rate != null && <span title="Average rate">rate {Number(p.average_rate).toFixed(2)}</span>}
+                    {(p.matches_above != null || p.matches_below != null) && (
+                      <span title="H2H matches above / below the line">{p.matches_above ?? 0}▲ / {p.matches_below ?? 0}▼</span>
+                    )}
+                    {p.recommendation_confidence && <span title="O/U confidence">O/U <span className="text-neon-green">{p.recommendation_confidence}</span></span>}
+                    {p.team_winner_confidence && <span title="1X2 confidence">1X2 <span className="text-neon-cyan">{p.team_winner_confidence}</span></span>}
+                    {(p.reduced_over_total != null || p.reduced_under_total != null) && (
+                      <span title="Reduced-risk line source" className="text-neon-green">
+                        reduced:{p.reduced_risk_source ?? "scraper"}
+                      </span>
+                    )}
+                    {p.bet_code && <span title="Betslip code" className="text-neon-cyan">code:{p.bet_code}</span>}
+                    {Array.isArray(p.validation_errors) && p.validation_errors.length > 0 && (
+                      <span title="Validation issues" className="text-neon-yellow">{p.validation_errors.length} issue(s)</span>
+                    )}
+                  </div>
+
                   {/* Bottom row — confidence + badges */}
                   <div className="flex items-center gap-2 pt-1 border-t border-border/10">
                     <ConfidenceBadge level={p.confidence} />
@@ -395,82 +462,93 @@ export function PredictionsTab({
 }
 
 /**
- * UserTotalsToggle — admin-only switch to suspend / re-enable Totals (O/U)
- * picks in the USER view (users then see only 1X2; no totals fields leak
- * from the APIs). Backed by ServiceConfig website/suspend_user_totals via
- * the existing /api/admin/config endpoints — no redeploy involved.
- *
- * Self-gating: the config GET is admin-only, so operators get a 403 and the
- * control renders nothing.
+ * UserVisibilityControls — admin-only cluster to suspend / re-enable each
+ * user-facing market independently:
+ *   - O/U (totals)  → website/suspend_user_totals  (default SUSPENDED)
+ *   - 1X2 (winner)  → website/suspend_user_winner  (default LIVE)
+ * When a market is suspended, /api/predictions strips its fields and
+ * /api/analytics omits its track-record card — nothing leaks. Admins always
+ * see everything. No redeploy — takes effect on the users' next poll.
+ * Self-gating: config GET is admin-only, so operators see nothing.
  */
-function UserTotalsToggle() {
-  const [suspended, setSuspended] = useState<boolean | null>(null);
-  const [visible, setVisible] = useState(false);
-  const [saving, setSaving] = useState(false);
+function UserVisibilityControls() {
+  const [rows, setRows] = useState<Record<string, string> | null>(null);
+  const [saving, setSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/admin/config");
-      if (!res.ok) return; // 403 for operators → control stays hidden
+      if (!res.ok) return; // 403 for operators → cluster stays hidden
       const data = await res.json();
-      const rows = data.configs || [];
-      const row = rows.find((c: { service: string; key: string; value?: string }) =>
-        c.service === "website" && c.key === "suspend_user_totals");
-      // Suspended unless the row explicitly says "false" (absent = suspended).
-      setSuspended((row?.value ?? "") !== "false");
-      setVisible(true);
+      const map: Record<string, string> = {};
+      for (const c of data.configs || []) {
+        if (c.service === "website") map[c.key] = c.value ?? "";
+      }
+      setRows(map);
     } catch {}
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: every setState in load() happens after the first await, not synchronously in the effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: setState runs after the first await, not synchronously in the effect
     load();
-    // Keep in sync if another admin flips it (matches dashboard poll cadence).
     const id = setInterval(load, 60000);
     return () => clearInterval(id);
   }, [load]);
 
-  if (!visible || suspended === null) return null;
+  if (!rows) return null;
 
-  const flip = async (nextSuspended: boolean) => {
-    setSaving(true);
+  const setKey = async (key: string, value: string, msg: string) => {
+    setSaving(key);
     try {
       const res = await fetch("/api/admin/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          service: "website",
-          key: "suspend_user_totals",
-          value: nextSuspended ? "true" : "false",
-          secret: false,
-        }),
+        body: JSON.stringify({ service: "website", key, value, secret: false }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSuspended(nextSuspended);
-      toast.success(nextSuspended
-        ? "O/U picks SUSPENDED for users — they now see only 1X2 picks. Admins keep seeing everything."
-        : "O/U picks are LIVE for users again — totals lines and the O/U track record are visible.");
+      setRows((prev) => ({ ...(prev || {}), [key]: value }));
+      toast.success(msg);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   };
 
+  // O/U: suspended unless explicitly "false". 1X2: suspended only if "true".
+  const ouSuspended = (rows["suspend_user_totals"] ?? "") !== "false";
+  const winnerSuspended = (rows["suspend_user_winner"] ?? "") === "true";
+
+  return (
+    <>
+      <SuspensionPill
+        label="User O/U" suspended={ouSuspended} busy={saving === "suspend_user_totals"}
+        aria="Toggle O/U picks visibility for users"
+        onToggle={(live) => setKey("suspend_user_totals", live ? "false" : "true",
+          live ? "O/U picks LIVE for users again." : "O/U picks SUSPENDED for users.")}
+      />
+      <SuspensionPill
+        label="User 1X2" suspended={winnerSuspended} busy={saving === "suspend_user_winner"}
+        aria="Toggle 1X2 picks visibility for users"
+        onToggle={(live) => setKey("suspend_user_winner", live ? "false" : "true",
+          live ? "1X2 picks LIVE for users again." : "1X2 picks SUSPENDED for users.")}
+      />
+    </>
+  );
+}
+
+/** One SUSPENDED/LIVE pill + switch. Hoisted to module scope (never define a
+ *  component inside another component's render). */
+function SuspensionPill({ label, suspended, busy, onToggle, aria }: {
+  label: string; suspended: boolean; busy: boolean; onToggle: (live: boolean) => void; aria: string;
+}) {
   return (
     <div className={`flex items-center gap-2 rounded-md border px-2.5 h-9 ${suspended ? "border-neon-yellow/40 bg-neon-yellow/5" : "border-neon-green/30 bg-neon-green/5"}`}>
       <span className="text-xs font-semibold whitespace-nowrap">
-        User O/U picks:{" "}
-        <span className={suspended ? "text-neon-yellow" : "text-neon-green"}>
-          {suspended ? "SUSPENDED" : "LIVE"}
-        </span>
+        {label}:{" "}
+        <span className={suspended ? "text-neon-yellow" : "text-neon-green"}>{suspended ? "SUSPENDED" : "LIVE"}</span>
       </span>
-      <Switch
-        checked={!suspended}
-        disabled={saving}
-        onCheckedChange={(checked) => flip(!checked)}
-        aria-label="Toggle Totals (O/U) picks visibility for regular users"
-      />
+      <Switch checked={!suspended} disabled={busy} onCheckedChange={(checked) => onToggle(checked)} aria-label={aria} />
     </div>
   );
 }

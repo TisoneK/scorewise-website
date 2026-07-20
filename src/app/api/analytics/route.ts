@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db-libsql";
 import { computeAnalytics } from "@/lib/analytics";
-import { userTotalsSuspended } from "@/lib/service-config";
+import { userTotalsSuspended, userWinnerSuspended } from "@/lib/service-config";
 export const dynamic = 'force-dynamic';
 
 /**
@@ -65,11 +65,12 @@ export async function GET() {
     // the totals bucket is omitted entirely so the O/U track-record card
     // hides itself and nothing about the totals market leaks.
     const suspendTotals = await userTotalsSuspended();
+    const suspendWinner = await userWinnerSuspended();
     return NextResponse.json({
       updated_at: new Date().toISOString(),
       role: "user",
       ...(suspendTotals ? {} : { totals: publicize(totals) }),
-      winner: publicize(winner),
+      ...(suspendWinner ? {} : { winner: publicize(winner) }),
     });
   } catch (error) { console.error('[analytics] Error:', error); return NextResponse.json({ error: 'Failed' }, { status: 500 }); }
 }

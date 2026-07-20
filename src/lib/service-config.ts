@@ -53,6 +53,17 @@ export async function userTotalsSuspended(): Promise<boolean> {
 }
 
 /**
+ * Are moneyline (1X2 / winner) picks suspended for regular users?
+ *
+ * Symmetric to userTotalsSuspended, but OPPOSITE default: winner is the
+ * working market users should normally see, so it's suspended ONLY when the
+ * row is explicitly "true". Absent/anything-else → NOT suspended (visible).
+ */
+export async function userWinnerSuspended(): Promise<boolean> {
+  return (await getConfig("website", "suspend_user_winner")) === "true";
+}
+
+/**
  * Get the scraper URL — checks DB first, falls back to env/hardcoded.
  */
 export async function getScraperUrl(): Promise<string> {
