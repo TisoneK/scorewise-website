@@ -166,3 +166,13 @@ past entries — append corrections instead.
 - **Scraper autonomous scheduling (c4baa98) confirmed LIVE:** both schedulers running on deploy; scheduled loop fired its first scrape autonomously (scraper_busy went True ~30s after boot). Results scheduler reached "idle" (not no_website_url) → SCOREWISE_WEBSITE_URL is set on the scraper.
 - **NOTE:** the old ServicesTab props (scraperDay/handleTriggerScraper/handleStopScraper/scraperLoading/stopLoading) are now unused-but-still-passed from page.tsx; harmless (eslint config doesn't flag unused destructured props). Could clean up page.tsx later.
 - **Standing:** Results-tab client auto-refresh stays (user wants it). Value Picks still reverted (re-land after stability). Phase-two reduced-line confirmation still pending a clean scrape observation.
+
+---
+## 2026-07-20 — Session 14 (Predictions page upgrade)
+- **Agent:** Claude Code | **Model:** claude-opus-4-8 | **Platform:** Baos-Mac-mini.local (local) | **Role:** engineer | **Core:** 0.2.0
+- **Task:** Redesign/upgrade admin Predictions page — include all suspension features + surface omitted data.
+- **Commit:** website `d215532`.
+- **Suspension (now both markets, independent):** added `userWinnerSuspended()` (service-config.ts) symmetric to totals; /api/predictions strips winner fields when suspended, /api/analytics omits winner bucket. Defaults: totals SUSPENDED (unchanged), winner LIVE. Header cluster `UserVisibilityControls` shows BOTH toggles (User O/U + User 1X2) via website/suspend_user_totals + suspend_user_winner config. Per-market strip logic: keep a prediction if any still-visible market has a pick; both suspended → user sees nothing.
+- **Surfaced data:** breakdown stats bar (O/U/1X2/reduced/HIGH/NO_BET/failed/results-in; market+NO_BET chips are filters); per-card algorithm strip (avg rate, H2H above/below, both confidence tiers, reduced-risk source, bet code, validation-issue count) — was drawer-only.
+- **Lint note:** hoisted SuspensionPill to module scope (never define a component inside render — react/no-unstable-nested-components). Baseline set-state-in-effect warnings remain (repo-wide pattern).
+- **Standing:** phase-2 reduced-line confirmation still pending a scrape observation; Value Picks still reverted (re-land candidate); Results-tab auto-refresh kept per user.
