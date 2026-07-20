@@ -36,6 +36,7 @@ import {
 } from "@/lib/timezone";
 import { computeOverUnderOutcome, computeReducedRiskOutcome, computeWinnerOutcome, computeEffectiveStatus } from "@/lib/result-utils";
 import { useOddsFormat, formatOdds } from "@/lib/odds-format";
+import { useFavoriteTeams, matchHasFavorite } from "@/lib/favorites";
 import { timeToKickoff } from "@/lib/countdown";
 
 /** Map a confidence label to a star count (0-5) for the visual rating. */
@@ -63,6 +64,8 @@ export function PredictionCard({
   onSelect?: (p: Prediction) => void;
 }) {
   const oddsFmt = useOddsFormat();
+  const favs = useFavoriteTeams();
+  const isFav = matchHasFavorite(favs, p.home_team, p.away_team);
   const rec = p.recommendation?.toUpperCase() || "";
   const isOver = rec === "OVER";
   const isUnder = rec === "UNDER";
@@ -231,6 +234,7 @@ export function PredictionCard({
         <div className="flex-1 min-w-0">
           {/* Teams — NO truncate, allow wrapping so full names are visible */}
           <p className="font-bold text-xs sm:text-sm leading-tight break-words">
+            {isFav && <Star className="w-3 h-3 fill-neon-yellow text-neon-yellow inline mr-1 -mt-0.5" />}
             {p.home_team || "Home"}{" "}
             <span className="text-muted-foreground/50 mx-0.5">vs</span>{" "}
             {p.away_team || "Away"}

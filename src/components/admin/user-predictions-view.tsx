@@ -30,6 +30,8 @@ import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-ut
 import { timeToKickoff } from "@/lib/countdown";
 import { useOddsFormat, setOddsFormat, formatOdds, type OddsFormat } from "@/lib/odds-format";
 import { getDefaultTab, setDefaultTab, getAlertsEnabled, setAlertsEnabled, getAlertsLead, setAlertsLead, type DefaultTab } from "@/lib/user-prefs";
+import { useFavoriteTeams, toggleFavoriteTeam, matchHasFavorite } from "@/lib/favorites";
+import { Star } from "lucide-react";
 import {
   parseMatchDateTime,
   isTodayLocal,
@@ -128,6 +130,8 @@ export function UserPredictionsView() {
     for (const p of data?.predictions ?? []) {
       const high = p.confidence?.toUpperCase() === "HIGH" || p.team_winner_confidence?.toUpperCase() === "HIGH";
       if (!high) continue;
+      // When the user has favorites, only alert for matches involving one.
+      if (favs.length > 0 && !matchHasFavorite(favs, p.home_team, p.away_team)) continue;
       const d = parseMatchDateTime(p.date, p.time);
       if (!d) continue;
       const mins = (d.getTime() - now) / 60000;
@@ -167,6 +171,8 @@ export function UserPredictionsView() {
   // "Starting soon" time-window filter (borrowed pattern). Values are minutes
   // to kickoff; null = no window filter.
   const [soonFilter, setSoonFilter] = useState<number | null>(null);
+  const [favOnly, setFavOnly] = useState(false);
+  const favs = useFavoriteTeams();
   // Expanded date groups — dates the user has manually expanded.
   // Today + tomorrow are expanded by DEFAULT. All other dates start collapsed.
   // User can click any date header to toggle expand/collapse.
@@ -349,6 +355,7 @@ export function UserPredictionsView() {
       }
       if (confFilter !== "ALL" && p.confidence?.toUpperCase() !== confFilter) return false;
       if (recFilter !== "ALL" && p.recommendation?.toUpperCase() !== recFilter) return false;
+      if (favOnly && !matchHasFavorite(favs, p.home_team, p.away_team)) return false;
       // Starting-soon window: keep only matches that tip off within N minutes
       // from now (and haven't started yet).
       if (soonFilter != null) {
@@ -377,7 +384,7 @@ export function UserPredictionsView() {
       }
     }
     return groups;
-  }, [data, search, confFilter, recFilter, soonFilter]);
+  }, [data, search, confFilter, recFilter, soonFilter, favOnly, favs]);
 
   const totalCount = grouped.reduce((sum, g) => sum + g.predictions.length, 0);
   const tzAbbr = getTimezoneAbbr();
@@ -809,6 +816,16 @@ export function UserPredictionsView() {
 
         {/* Starting-soon time-window chips — jump to matches about to tip off */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 -mx-1 px-1">
+          {favs.length > 0 && (
+            <button
+              onClick={() => setFavOnly((v) => !v)}
+              className={`shrink-0 text-xs font-semibold px-3 h-8 rounded-full border transition-colors flex items-center gap-1 ${
+                favOnly ? "bg-neon-yellow/15 border-neon-yellow/40 text-neon-yellow" : "bg-card border-border/50 text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Star className={`w-3 h-3 ${favOnly ? "fill-neon-yellow" : ""}`} /> Favorites
+            </button>
+          )}
           {([
             { label: "All", mins: null },
             { label: "30 min", mins: 30 },
@@ -1040,6 +1057,7 @@ export function UserPredictionsView() {
 function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const oddsFmt = useOddsFormat();
+  const favs = useFavoriteTeams();
   const rec = p.recommendation?.toUpperCase();
   const isOU = rec === "OVER" || rec === "UNDER";
   const line = rec === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line)
@@ -1079,6 +1097,18 @@ function MatchDetail({ prediction: p, onClose }: { prediction: Prediction; onClo
         {/* Teams + countdown */}
         <div className="rounded-xl border border-border/40 bg-card/70 p-4 text-center">
           <p className="text-lg font-black leading-tight break-words">{p.home_team || "Home"} <span className="text-muted-foreground/50">vs</span> {p.away_team || "Away"}</p>
+          {/* Favorite either team */}
+          <div className="flex items-center justify-center gap-2 mt-2">
+            {[p.home_team, p.away_team].filter(Boolean).map((team) => {
+              const on = matchHasFavorite(favs, team, null);
+              return (
+                <button key={team} onClick={() => toggleFavoriteTeam(team)}
+                  className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 h-7 rounded-full border transition-colors ${on ? "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow" : "border-border/50 text-muted-foreground hover:text-foreground"}`}>
+                  <Star className={`w-3 h-3 ${on ? "fill-neon-yellow" : ""}`} /> {team}
+                </button>
+              );
+            })}
+          </div>
           <p className="text-xs text-muted-foreground mt-1">
             {md ? md.toLocaleString(undefined, { weekday: "short", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—"}
           </p>
