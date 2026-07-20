@@ -88,6 +88,8 @@ export function UserPredictionsView() {
   const userEmail = (session?.user as { email?: string })?.email || "";
   const userInitial = userName.charAt(0).toUpperCase();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Which view the user is on. A precursor to the bottom-nav shell.
+  const [view, setView] = useState<"predictions" | "history">("predictions");
   const [data, setData] = useState<StoredPredictions | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -364,13 +366,31 @@ export function UserPredictionsView() {
 
         {/* Title */}
         <div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight">Predictions</h1>
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight">{view === "history" ? "Results" : "Predictions"}</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Basketball predictions for today's matches
+            {view === "history" ? "How our settled picks have landed" : "Basketball predictions for today's matches"}
             <span className="ml-2 text-[10px] text-muted-foreground/60">· times shown in your local TZ ({tzAbbr})</span>
           </p>
         </div>
 
+        {/* View toggle — Predictions vs Results (settled history) */}
+        <div className="flex gap-1 p-0.5 rounded-lg bg-card border border-border/50 w-fit">
+          {(["predictions", "history"] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`text-xs font-semibold px-4 h-8 rounded-md transition-colors ${
+                view === v ? "bg-neon-green/15 text-neon-green" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {v === "predictions" ? "Predictions" : "Results"}
+            </button>
+          ))}
+        </div>
+
+        {view === "history" && <ResultsHistory predictions={data?.predictions ?? []} />}
+
+        {view === "predictions" && (<>
         {/* SYSTEM TRACK RECORD — split into two SEPARATE cards per user request:
             1) Over/Under track record (totals algorithm)
             2) Win track record (winner algorithm — moneyline / 1X2)
@@ -707,7 +727,137 @@ export function UserPredictionsView() {
             })}
           </div>
         )}
+        </>)}
       </main>
+    </div>
+  );
+}
+
+/**
+ * ResultsHistory — settled-picks feed (Linebet "Bet history" borrow).
+ *
+ * Each settled market outcome is its own row (a match with both an O/U and a
+ * 1X2 pick contributes two), with a WIN/LOSS/PUSH status dot, the pick, its
+ * line + odds, and the result — topped by a "Statistics for the period"
+ * summary (picks · hit rate · ROI). Reuses the same grading + profit math as
+ * the rest of the app (computeReducedRiskOutcome / computeWinnerOutcome).
+ */
+function ResultsHistory({ predictions }: { predictions: Prediction[] }) {
+  const [period, setPeriod] = useState<7 | 30 | 0>(30); // days; 0 = all
+
+  const entries = useMemo(() => {
+    const cutoff = period === 0 ? 0 : Date.now() - period * 86400_000;
+    type Row = {
+      key: string; date: Date | null; market: "O/U" | "1X2";
+      home: string; away: string; pick: string; line: number | null;
+      odds: number | null; outcome: "WIN" | "LOSS" | "PUSH";
+    };
+    const rows: Row[] = [];
+    for (const p of predictions) {
+      if (p.result_status !== "FINAL") continue;
+      const d = parseMatchDateTime(p.date, p.time);
+      if (period !== 0 && (!d || d.getTime() < cutoff)) continue;
+      const home = p.home_team || "Home", away = p.away_team || "Away";
+
+      // O/U market
+      const rec = p.recommendation?.toUpperCase();
+      if (rec === "OVER" || rec === "UNDER") {
+        const ou = computeReducedRiskOutcome(p);
+        if (ou === "WIN" || ou === "LOSS" || ou === "PUSH") {
+          const line = rec === "OVER" ? (p.reduced_over_total ?? p.bookmaker_line) : (p.reduced_under_total ?? p.bookmaker_line);
+          const odds = rec === "OVER" ? (p.reduced_over_odds ?? p.over_odds) : (p.reduced_under_odds ?? p.under_odds);
+          rows.push({ key: p.match_id + "-ou", date: d, market: "O/U", home, away, pick: `${rec} ${line ?? "?"}`, line: line ?? null, odds: odds ?? null, outcome: ou });
+        }
+      }
+      // 1X2 market
+      const w = p.team_winner?.toUpperCase();
+      if (w === "HOME_TEAM" || w === "AWAY_TEAM") {
+        const win = computeWinnerOutcome(p); // 1X2 has no PUSH
+        if (win === "WIN" || win === "LOSS") {
+          const odds = w === "HOME_TEAM" ? p.home_odds : p.away_odds;
+          rows.push({ key: p.match_id + "-win", date: d, market: "1X2", home, away, pick: w === "HOME_TEAM" ? home : away, line: null, odds: odds ?? null, outcome: win });
+        }
+      }
+    }
+    rows.sort((a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0));
+    return rows;
+  }, [predictions, period]);
+
+  const stats = useMemo(() => {
+    let wins = 0, losses = 0, pushes = 0, profit = 0;
+    for (const r of entries) {
+      if (r.outcome === "PUSH") { pushes++; continue; }
+      if (r.outcome === "WIN") { wins++; profit += r.odds && r.odds > 1 ? r.odds - 1 : 0; }
+      else { losses++; profit -= 1; }
+    }
+    const settled = wins + losses;
+    return { total: entries.length, wins, losses, pushes, hitRate: settled ? (wins / settled) * 100 : 0, roi: settled ? (profit / settled) * 100 : 0, profit };
+  }, [entries]);
+
+  const hitTone = stats.hitRate >= 55 ? "text-neon-green" : stats.hitRate >= 45 ? "text-neon-yellow" : "text-neon-red";
+  const roiTone = stats.roi >= 0 ? "text-neon-green" : "text-neon-red";
+
+  return (
+    <div className="space-y-3">
+      {/* Period chips */}
+      <div className="flex items-center gap-1.5">
+        {([{ l: "7 days", v: 7 }, { l: "30 days", v: 30 }, { l: "All", v: 0 }] as const).map((o) => (
+          <button key={o.v} onClick={() => setPeriod(o.v)}
+            className={`text-xs font-semibold px-3 h-8 rounded-full border transition-colors ${period === o.v ? "bg-neon-green/15 border-neon-green/40 text-neon-green" : "bg-card border-border/50 text-muted-foreground hover:text-foreground"}`}>
+            {o.l}
+          </button>
+        ))}
+      </div>
+
+      {/* Statistics for the period */}
+      <div className="rounded-xl border border-border/40 bg-card/70 overflow-hidden">
+        <div className="px-3 py-1.5 flex items-center gap-1.5">
+          <Activity className="w-3.5 h-3.5 text-foreground shrink-0" />
+          <h3 className="text-[11px] font-bold">Statistics for the period</h3>
+          <span className="ml-auto text-[9px] text-muted-foreground/50">{stats.total} pick{stats.total !== 1 ? "s" : ""}</span>
+        </div>
+        <div className="grid grid-cols-4 divide-x divide-border/30 border-t border-border/20">
+          <div className="p-2.5 text-center"><div className="flex items-center justify-center mb-0.5"><CheckCircle2 className="w-3 h-3 text-neon-green" /></div><p className="text-base font-black font-mono text-neon-green">{stats.wins}</p><p className="text-[8px] text-muted-foreground uppercase tracking-wider">Wins</p></div>
+          <div className="p-2.5 text-center"><div className="flex items-center justify-center mb-0.5"><XCircle className="w-3 h-3 text-neon-red" /></div><p className="text-base font-black font-mono text-neon-red">{stats.losses}</p><p className="text-[8px] text-muted-foreground uppercase tracking-wider">Losses</p></div>
+          <div className="p-2.5 text-center"><div className="flex items-center justify-center mb-0.5"><Target className="w-3 h-3 text-muted-foreground" /></div><p className={`text-base font-black font-mono ${hitTone}`}>{stats.hitRate.toFixed(1)}%</p><p className="text-[8px] text-muted-foreground uppercase tracking-wider">Hit Rate</p></div>
+          <div className="p-2.5 text-center"><div className="flex items-center justify-center mb-0.5"><Coins className="w-3 h-3 text-muted-foreground" /></div><p className={`text-base font-black font-mono ${roiTone}`}>{stats.roi >= 0 ? "+" : ""}{stats.roi.toFixed(1)}%</p><p className="text-[8px] text-muted-foreground uppercase tracking-wider">ROI</p></div>
+        </div>
+      </div>
+
+      {/* Settled rows */}
+      {entries.length === 0 ? (
+        <div className="rounded-xl border border-border/40 bg-card/60 p-8 text-center">
+          <p className="text-sm text-muted-foreground">No settled picks in this period yet.</p>
+          <p className="text-xs text-muted-foreground/50 mt-1">Results appear here once matches finish.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {entries.map((r) => {
+            const won = r.outcome === "WIN", push = r.outcome === "PUSH";
+            return (
+              <div key={r.key} className="rounded-xl border border-border/40 bg-card/70 overflow-hidden flex">
+                {/* status rail */}
+                <div className={`w-1 shrink-0 ${won ? "bg-neon-green" : push ? "bg-neon-yellow" : "bg-neon-red"}`} />
+                <div className="flex-1 p-3">
+                  <div className="flex items-center gap-2">
+                    {won ? <CheckCircle2 className="w-4 h-4 text-neon-green shrink-0" /> : push ? <Activity className="w-4 h-4 text-neon-yellow shrink-0" /> : <XCircle className="w-4 h-4 text-neon-red shrink-0" />}
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border border-border/40 text-muted-foreground shrink-0">{r.market}</span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{r.date ? r.date.toLocaleDateString(undefined, { day: "2-digit", month: "short" }) : "—"}</span>
+                  </div>
+                  <p className="text-sm font-bold mt-1.5 leading-tight break-words">{r.home} <span className="text-muted-foreground/50 mx-0.5">vs</span> {r.away}</p>
+                  <div className="flex items-center gap-2 mt-1 text-xs">
+                    <span className={`font-bold font-mono ${won ? "text-neon-green" : push ? "text-neon-yellow" : "text-neon-red"}`}>{r.pick}</span>
+                    {r.odds != null && <span className="text-[10px] font-mono text-muted-foreground">@{r.odds}</span>}
+                    <span className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full border ${won ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : push ? "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow" : "border-neon-red/40 bg-neon-red/10 text-neon-red"}`}>
+                      {won ? "WON ✓" : push ? "PUSH" : "LOST ✗"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
