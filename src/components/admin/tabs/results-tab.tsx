@@ -52,7 +52,7 @@ import {
 import { computeOverUnderOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 
 type ResultStatus = "PENDING" | "LIVE" | "FINAL" | "POSTPONED" | "CANCELLED";
-type FilterMode = "needs_result" | "awaiting" | "live" | "final" | "all";
+type FilterMode = "needs_result" | "awaiting" | "live" | "final" | "upcoming" | "other" | "all";
 
 const VALID_STATUSES: ResultStatus[] = ["PENDING", "LIVE", "FINAL", "POSTPONED", "CANCELLED"];
 
@@ -770,6 +770,8 @@ export function ResultsTab() {
       if (filter === "awaiting" && category !== "awaiting") return false;
       if (filter === "live" && category !== "live") return false;
       if (filter === "final" && category !== "final") return false;
+      if (filter === "upcoming" && category !== "upcoming") return false;
+      if (filter === "other" && category !== "other") return false;
       // Search
       if (search) {
         const s = search.toLowerCase();
@@ -1094,12 +1096,16 @@ export function ResultsTab() {
               <CheckCircle2 className="w-2.5 h-2.5" /> {stats.final} final
             </Badge>
             {stats.upcoming > 0 && (
-              <Badge variant="outline" className="text-[10px] gap-1 border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5">
+              <Badge variant="outline"
+                className={`text-[10px] gap-1 cursor-pointer transition-colors ${filter === "upcoming" ? "border-neon-cyan/60 text-neon-cyan bg-neon-cyan/15" : "border-neon-cyan/30 text-neon-cyan bg-neon-cyan/5 hover:bg-neon-cyan/10"}`}
+                onClick={() => setFilter("upcoming")} title="Click to filter: upcoming (not started)">
                 <Calendar className="w-2.5 h-2.5" /> {stats.upcoming} upcoming
               </Badge>
             )}
             {stats.other > 0 && (
-              <Badge variant="outline" className="text-[10px] gap-1 border-muted-foreground/30 text-muted-foreground bg-muted/5">
+              <Badge variant="outline"
+                className={`text-[10px] gap-1 cursor-pointer transition-colors ${filter === "other" ? "border-neon-yellow/60 text-neon-yellow bg-neon-yellow/15" : "border-neon-yellow/30 text-neon-yellow bg-neon-yellow/5 hover:bg-neon-yellow/10"}`}
+                onClick={() => setFilter("other")} title="Click to filter: postponed / cancelled — fix or re-scrape">
                 {stats.other} other
               </Badge>
             )}
@@ -1140,6 +1146,8 @@ export function ResultsTab() {
                 <option value="awaiting">Awaiting only (unresolved)</option>
                 <option value="live">Live now</option>
                 <option value="final">Final results</option>
+                <option value="upcoming">Upcoming (not started)</option>
+                <option value="other">Postponed / cancelled</option>
                 <option value="all">All matches</option>
               </select>
             </div>
@@ -1167,6 +1175,8 @@ export function ResultsTab() {
             {filter === "awaiting" && "🎉 No unresolved matches — all finished games have results."}
             {filter === "live" && "No live matches right now."}
             {filter === "final" && "No final results yet."}
+            {filter === "upcoming" && "No upcoming matches."}
+            {filter === "other" && "No postponed or cancelled matches."}
             {filter === "all" && "No matches found."}
           </CardContent>
         </Card>
