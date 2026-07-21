@@ -54,6 +54,7 @@ export function PredictionCard({
   showDateTime = true,
   showBetCode = true,
   onSelect,
+  admin = false,
 }: {
   prediction: Prediction;
   rank?: number;
@@ -62,6 +63,9 @@ export function PredictionCard({
   showBetCode?: boolean;
   /** When provided, the whole card is tappable and opens the match detail. */
   onSelect?: (p: Prediction) => void;
+  /** Admin variant: adds the failure/NO-BET banners + the algorithm data
+      strip. The user variant hides these (algorithm internals stay admin-only). */
+  admin?: boolean;
 }) {
   const oddsFmt = useOddsFormat();
   const favs = useFavoriteTeams();
@@ -69,6 +73,13 @@ export function PredictionCard({
   const rec = p.recommendation?.toUpperCase() || "";
   const isOver = rec === "OVER";
   const isUnder = rec === "UNDER";
+  // Effective O/U line = the reduced (safer) line when present, else the
+  // bookmaker line. For users the reduced_* fields are stripped by the API, so
+  // this degrades to bookmaker_line automatically; for admins it shows the
+  // reduced line with the primary struck through.
+  const reducedLine = isOver ? p.reduced_over_total : isUnder ? p.reduced_under_total : null;
+  const reducedOdds = isOver ? p.reduced_over_odds : isUnder ? p.reduced_under_odds : null;
+  const effectiveLine = reducedLine ?? p.bookmaker_line;
   const hasWinner = !!p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION";
   const winnerName =
     p.team_winner === "HOME_TEAM"
@@ -240,6 +251,19 @@ export function PredictionCard({
             {p.away_team || "Away"}
           </p>
 
+          {/* Admin-only: why a prediction didn't qualify / declined a side. */}
+          {admin && p.success === false && (
+            <div className="mt-1 text-[10px] text-neon-red bg-neon-red/5 border border-neon-red/20 rounded px-2 py-1 break-words">
+              <span className="font-bold">DID NOT QUALIFY: </span>
+              {(p.validation_errors || []).join("; ") || "no reason recorded by the engine"}
+            </div>
+          )}
+          {admin && p.success !== false && p.recommendation === "NO_BET" && (
+            <div className="mt-1 text-[10px] text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20 rounded px-2 py-1">
+              <span className="font-bold">NO BET</span> — processed, but the algorithm declined a side
+            </div>
+          )}
+
           {/* Totals prediction row — UNDER/OVER + line + odds + inline WON/LOST badge */}
           {(isOver || isUnder) && (
             <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -247,16 +271,20 @@ export function PredictionCard({
                 {isOver ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 {p.recommendation}
               </span>
-              {p.bookmaker_line != null && (
+              {effectiveLine != null && (
                 <span className="text-sm font-black font-mono text-neon-cyan">
-                  {p.bookmaker_line}
+                  {effectiveLine}
                 </span>
               )}
-              {odds != null && (
-                <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(odds), oddsFmt)}</span>
+              {(reducedOdds ?? odds) != null && (
+                <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(reducedOdds ?? odds), oddsFmt)}</span>
+              )}
+              {reducedLine != null && p.bookmaker_line != null && (
+                <span className="text-[9px] font-mono text-muted-foreground/50 line-through">{p.bookmaker_line}</span>
               )}
               {/* Inline outcome badge for FINAL matches */}
-              {isFinal && ouOutcome !== "MISSING" && (() => {
+              {isFinal && ouReducedOutcome !== "MISSING" && (() => {
+                const ouOutcome = ouReducedOutcome;
                 const ouTone = ouOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/40 bg-neon-red/10 text-neon-red" : "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow";
                 const ouLabel = ouOutcome === "WIN" ? "WON ✓" : ouOutcome === "LOSS" ? "LOST ✗" : "PUSH";
                 return (
@@ -291,7 +319,7 @@ export function PredictionCard({
           {(isLive || isFinal || isAwaiting) && (() => {
             const hasScores = p.home_score != null && p.away_score != null;
             const total = hasScores ? Number(p.home_score) + Number(p.away_score) : null;
-            const line = p.bookmaker_line != null ? Number(p.bookmaker_line) : null;
+            const line = effectiveLine != null ? Number(effectiveLine) : null;
             const diff = (total != null && line != null) ? total - line : null;
             const diffStr = diff != null ? (diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1)) : null;
             const diffDirection = diff != null ? (diff >= 0 ? "OVER" : "UNDER") : null;
@@ -335,6 +363,24 @@ export function PredictionCard({
               </div>
             );
           })()}
+
+          {/* Admin-only: algorithm data strip (internals stay admin-only). */}
+          {admin && (
+            <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[9px] text-muted-foreground/70 font-mono pt-1 mt-1 border-t border-border/10">
+              {p.average_rate != null && <span title="Average rate">rate {Number(p.average_rate).toFixed(2)}</span>}
+              {(p.matches_above != null || p.matches_below != null) && (
+                <span title="H2H matches above / below the line">{p.matches_above ?? 0}▲ / {p.matches_below ?? 0}▼</span>
+              )}
+              {p.recommendation_confidence && <span title="O/U confidence">O/U <span className="text-neon-green">{p.recommendation_confidence}</span></span>}
+              {p.team_winner_confidence && <span title="1X2 confidence">1X2 <span className="text-neon-cyan">{p.team_winner_confidence}</span></span>}
+              {(p.reduced_over_total != null || p.reduced_under_total != null) && (
+                <span title="Reduced-risk line source" className="text-neon-green">reduced:{p.reduced_risk_source ?? "scraper"}</span>
+              )}
+              {Array.isArray(p.validation_errors) && p.validation_errors.length > 0 && (
+                <span title="Validation issues" className="text-neon-yellow">{p.validation_errors.length} issue(s)</span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Confidence — stars + label (right) */}
