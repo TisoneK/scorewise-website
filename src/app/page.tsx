@@ -835,44 +835,44 @@ function AdminDashboard() {
           {/* Sidebar nav — horizontal scroll strip on mobile, vertical rail on md+ */}
           <div className="overflow-x-auto md:overflow-visible -mx-3 px-3 sm:mx-0 sm:px-0 md:px-0 pb-1 md:pb-0 md:w-52 md:shrink-0 md:sticky md:top-16">
             <TabsList className="bg-card/40 border border-border/30 p-1 h-auto gap-0.5 inline-flex md:flex md:flex-col md:w-full justify-start">
-              <TabsTrigger value="overview" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="overview" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <Gauge className="w-3.5 h-3.5" />Overview
               </TabsTrigger>
-              <TabsTrigger value="predictions" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="predictions" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <Database className="w-3.5 h-3.5" />Predictions
               </TabsTrigger>
               {isOperatorOrAbove && (
-                <TabsTrigger value="betslip-codes" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+                <TabsTrigger value="betslip-codes" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                   <Ticket className="w-3.5 h-3.5" />Betslip Codes
                 </TabsTrigger>
               )}
               {isOperatorOrAbove && (
-                <TabsTrigger value="results" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+                <TabsTrigger value="results" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                   <Trophy className="w-3.5 h-3.5" />Results
                 </TabsTrigger>
               )}
-              <TabsTrigger value="analytics" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="analytics" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <BarChart3 className="w-3.5 h-3.5" />Analytics
               </TabsTrigger>
-              <TabsTrigger value="services" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="services" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <Server className="w-3.5 h-3.5" />Services
               </TabsTrigger>
               {isAdmin && (
-                <TabsTrigger value="configuration" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+                <TabsTrigger value="configuration" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                   <Settings className="w-3.5 h-3.5" />Config
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="logs" className="gap-1 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="logs" className="gap-1 text-xs data-[state=active]:bg-neon-yellow/10 data-[state=active]:text-neon-yellow rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <FileText className="w-3.5 h-3.5" />Activity
               </TabsTrigger>
             )}
             {isAdmin && (
-              <TabsTrigger value="service-logs" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+              <TabsTrigger value="service-logs" className="gap-1 text-xs data-[state=active]:bg-neon-cyan/10 data-[state=active]:text-neon-cyan rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
                 <Terminal className="w-3.5 h-3.5" />Logs
               </TabsTrigger>
             )}
-            <TabsTrigger value="users" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start">
+            <TabsTrigger value="users" className="gap-1 text-xs data-[state=active]:bg-neon-green/10 data-[state=active]:text-neon-green rounded-md whitespace-nowrap md:w-full md:flex-none md:justify-start md:h-auto md:px-3 md:py-2 md:rounded-lg">
               <Users className="w-3.5 h-3.5" />Users
             </TabsTrigger>
           </TabsList>
