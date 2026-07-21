@@ -217,3 +217,11 @@ past entries — append corrections instead.
 ## 2026-07-20 — Session 15 addendum 6 (coming-soon + notify opt-in)
 - `<next>` Menu "Coming soon" section: 2FA Authenticator, Telegram/WhatsApp alerts, Line movement — each opens a ComingSoon screen with a real "Notify me" opt-in → POST /api/feature-interest (logged as FEATURE_INTEREST for admin demand-gauging) + remembered on-device (getOptedFeatures/addOptedFeature in user-prefs). Pattern reusable for any future not-yet-built feature.
 - UI-borrow sprint effectively complete. Outstanding real backend projects if pursued: account-synced favorites, 2FA, server push (Telegram/WhatsApp/web-push), line-movement data capture. Support email placeholder support@scorewise-ke.com needs owner confirmation.
+
+---
+## 2026-07-21 — Session 16 (scraper thread-exhaustion incident)
+- **Agent:** Claude Code | **Model:** claude-opus-4-8 | **Platform:** Baos-Mac-mini.local (local) | **Role:** engineer | **Core:** 0.2.0
+- **Symptom (user console + Services tab):** /api/admin/seed 401 (benign), /api/admin/scraper 500 + 409; scraper Last Run "can't start new thread"; results scrape stuck "Processing… 0/?".
+- **Root cause:** "can't start new thread" = scraper container OUT OF OS THREADS. Cause: Session-12 autonomous schedulers (results + scheduled, default ON) were driving scrapes WHILE the website Results-tab auto-refresh ALSO fired a single-match Chrome scrape per live/awaiting match. Both spawning Chrome (dozens of threads each) + results default max_workers=3 (3 concurrent Chromes) exhausted the thread limit → every scrape 500/wedged.
+- **Fixes:** scraper `ef07f43` — results max_workers default 3→1, single-scrape queue default 3→1, concurrent results scrape falls back to SERIAL (+zombie sweep) on 'can't start new thread'. website `815ca23` — Results tab now DISPLAY-ONLY (60s DB poll; removed the ~155-line auto-scrape effect that fired single scrapes; manual Scrape Results + Heal kept per user); /api/admin/seed ping gated to unauthenticated only (kills the 401 noise). Pushing the scraper redeploys→restarts the thread-exhausted process (immediate heal) + prevents recurrence.
+- **Architecture now:** scraper self-schedules ALL scraping (autonomous); website only DISPLAYS + manual triggers. This is the intended split (removes the double-driving).
