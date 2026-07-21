@@ -230,3 +230,10 @@ past entries — append corrections instead.
 ## 2026-07-21 — Session 16 addendum (batch mutual exclusion)
 - User asked "can results + scheduled scraper run together?". Findings: result SINGLE scrapes wait for any batch (wait_for_batch_idle checks both _state + _results_state). But the two BATCHES (scheduled vs results) used separate busy flags and were INTENTIONALLY allowed to run concurrently — the exact 2-Chrome concurrency behind the thread exhaustion. Fixed `<scraper commit>`: both _prepare_state_for_run and _prepare_results_state_for_run now 409 if the OTHER batch is busy → only one batch/Chrome workload at a time. Scheduled loop already treats 409 as skip-cycle.
 - Net concurrency model now: at most ONE Chrome workload at a time across scheduled batch, results batch, and single scrapes. Safe for the small container.
+
+---
+## 2026-07-21 — Session 17 (unify prediction card + desktop polish)
+- Desktop: user view widened (max-w-5xl), top nav on md+ (bottom nav md:hidden), 2-col all-matches grid; toned down green (Pick of Day + Top Picks → neutral surfaces). `bf88922`.
+- Admin predictions cards 2-up(lg)/3-up(xl) grid. `62829fd`.
+- Results tab: Upcoming & Other (postponed/cancelled) now clickable filters + dropdown + empty states — the "other" match is reachable to fix/re-scrape. `ff116e8`.
+- UNIFIED CARD: admin Predictions tab now uses the shared PredictionCard (was inline). Added `admin` prop → DID-NOT-QUALIFY/NO-BET banners + algorithm strip (internals admin-only; users' data is API-stripped anyway). O/U row uses effective (reduced??primary) line w/ strikethrough; grades via computeReducedRiskOutcome. Same design both places; only click target (drawer vs detail) + admin internals differ.
