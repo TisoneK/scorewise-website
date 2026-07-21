@@ -386,13 +386,30 @@ export function UserPredictionsView() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border/40 bg-card/60 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-3xl mx-auto px-3 sm:px-4 h-12 sm:h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-neon-green/10 border border-neon-green/20">
+        <div className="max-w-3xl lg:max-w-5xl mx-auto px-3 sm:px-4 lg:px-8 h-12 sm:h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-muted border border-border/60">
               <BasketballIcon className="w-4 h-4 text-neon-green" />
             </div>
             <span className="font-black text-base sm:text-lg tracking-tight">ScoreWise</span>
           </div>
+          {/* Desktop top nav (mobile uses the bottom bar) */}
+          <nav className="hidden md:flex items-center gap-1">
+            {([
+              { v: "predictions", label: "Picks", Icon: Flame },
+              { v: "results", label: "Results", Icon: Clock },
+              { v: "stats", label: "Stats", Icon: BarChart3 },
+              { v: "menu", label: "Menu", Icon: LayoutGrid },
+            ] as const).map(({ v, label, Icon }) => {
+              const active = view === v;
+              return (
+                <button key={v} onClick={() => { setView(v); setMenuPage("root"); }}
+                  className={`flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-semibold transition-colors ${active ? "bg-neon-green/10 text-neon-green" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}>
+                  <Icon className="w-4 h-4" /> {label}
+                </button>
+              );
+            })}
+          </nav>
           {/* User menu dropdown */}
           <div className="relative">
             <button
@@ -442,7 +459,7 @@ export function UserPredictionsView() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-4 sm:py-6 pb-28 space-y-5" style={{ paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
+      <main className="max-w-3xl lg:max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 md:pb-10 space-y-5" style={{ paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
 
         {/* Title — per active tab */}
         {(() => {
@@ -869,12 +886,12 @@ export function UserPredictionsView() {
           return (
             <button
               onClick={() => setSelected(p)}
-              className="w-full text-left rounded-xl overflow-hidden border border-neon-green/40 bg-gradient-to-br from-neon-green/10 to-card/40 hover:from-neon-green/15 transition-colors"
+              className="w-full text-left rounded-xl overflow-hidden border border-border/60 bg-card/70 hover:border-neon-green/40 transition-colors"
             >
-              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-neon-green/15">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border/30">
                 <Flame className="w-3.5 h-3.5 text-neon-green" />
-                <span className="text-[10px] font-black text-neon-green uppercase tracking-[0.15em]">Pick of the Day</span>
-                {cd && <span className="ml-auto text-[10px] text-neon-cyan font-bold">⏱ {cd}</span>}
+                <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.15em]">Pick of the Day</span>
+                {cd && <span className="ml-auto text-[10px] text-muted-foreground font-bold">⏱ {cd}</span>}
               </div>
               <div className="p-3">
                 <p className="text-sm font-black leading-tight break-words">{p.home_team || "Home"} <span className="text-muted-foreground/50">vs</span> {p.away_team || "Away"}</p>
@@ -1027,12 +1044,12 @@ export function UserPredictionsView() {
                     <div className="pt-1 space-y-3">
                       {/* ── Per-date Top Picks sub-section ── */}
                       {hasTopPicks && (
-                        <div className="rounded-lg border-2 border-neon-green/30 bg-card/60 overflow-hidden">
+                        <div className="rounded-lg border border-border/60 bg-card/60 overflow-hidden">
                           {/* Header */}
-                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-neon-green/5 border-b border-neon-green/15">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted/30 border-b border-border/30">
                             <Flame className="w-3 h-3 text-neon-green shrink-0" />
-                            <span className="text-[10px] font-bold text-neon-green uppercase tracking-wider">Top Picks</span>
-                            <span className="text-[9px] text-neon-green/80 bg-neon-green/10 px-1.5 py-0.5 rounded-full font-bold border border-neon-green/20 shrink-0">
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Top Picks</span>
+                            <span className="text-[9px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full font-bold border border-border/50 shrink-0">
                               {totalTopPicks}
                             </span>
                           </div>
@@ -1075,7 +1092,7 @@ export function UserPredictionsView() {
                           <span className="text-[10px] text-muted-foreground/50">{group.predictions.length} total</span>
                         </div>
                       )}
-                      <div className="grid gap-2 sm:gap-3">
+                      <div className="grid gap-2 sm:gap-3 lg:grid-cols-2">
                         {group.predictions.map((p) => <PredictionCard key={p.match_id} prediction={p} onSelect={setSelected} />)}
                       </div>
                     </div>
@@ -1090,7 +1107,7 @@ export function UserPredictionsView() {
       </main>
 
       {/* Bottom tab navigation (Linebet borrow #2) */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 border-t border-border/40 bg-card/95 backdrop-blur-md" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border/40 bg-card/95 backdrop-blur-md" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
         <div className="max-w-3xl mx-auto grid grid-cols-4">
           {([
             { v: "predictions", label: "Picks", Icon: Flame },
