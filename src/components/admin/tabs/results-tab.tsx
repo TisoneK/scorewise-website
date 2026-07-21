@@ -226,7 +226,6 @@ export function ResultsTab() {
   const [healing, setHealing] = useState(false);
   // Set while the auto-refresh loops are standing down because a batch
   // scrape is running on the scraper (see isBatchScrapeRunning).
-  const [autoPauseNote, setAutoPauseNote] = useState<string | null>(null);
 
   /**
    * "Heal" button — one-click recovery when the scraper is wedged (stuck
@@ -747,166 +746,18 @@ export function ResultsTab() {
   // detects when matches start and scrapes them automatically.
   //
   // Dirty rows (user manual edits) are ALWAYS skipped — user edits take priority.
-  const scrapeSingleRef = useRef(scrapeSingle);
+
+  // Display-only auto-refresh. The scraper now scrapes results autonomously
+  // (its own live/awaiting scheduler); the website must NOT also drive
+  // single-match scrapes — doing both spawned a Chrome per match on top of
+  // the scraper's own runs and exhausted its OS threads ("can't start new
+  // thread"). So this just POLLS the DB to keep the display fresh. Manual
+  // "Scrape Results" + "Heal" remain for on-demand control.
   useEffect(() => {
-    scrapeSingleRef.current = scrapeSingle;
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    let liveIntervalId: ReturnType<typeof setInterval> | null = null;
-    let awaitingIntervalId: ReturnType<typeof setInterval> | null = null;
-    let liveRunning = false;  // guard against overlapping live runs
-    let awaitingRunning = false;  // guard against overlapping awaiting runs
-
-    /** Is a batch scrape (scheduled or results) running on the scraper?
-     *  While it is, the auto-refresh loops must STAND DOWN: every single-
-     *  match scrape launches its own Chrome, and Chrome-next-to-the-batch
-     *  is what OOM-kills the scraper ("session not created: Chrome instance
-     *  exited"). The deployed scraper enforces this server-side only after
-     *  its next redeploy — this client-side gate works against the current
-     *  build today. */
-    const isBatchScrapeRunning = async (): Promise<boolean> => {
-      try {
-        const res = await fetch("/api/admin/scraper");
-        if (!res.ok) return false;
-        const s = await res.json();
-        return s?.scraper?.scraperStatus === "running";
-      } catch {
-        return false; // status unknown — behave as before
-      }
-    };
-
-    /** Scrape matches that need real-time updates (LIVE + just-started).
-     *  Runs every 30 seconds. Skips if previous run is still in progress. */
-    const refreshLiveMatches = async () => {
-      if (cancelled || liveRunning) return;
-      liveRunning = true;
-      if (await isBatchScrapeRunning()) {
-        setAutoPauseNote("paused — batch scrape running on the scraper (resumes automatically when it finishes)");
-        liveRunning = false;
-        return;
-      }
-      setAutoPauseNote(null);
-      const liveMatchIds: string[] = [];
-      const currentData = dataRef.current;
-      const currentRows = rowsRef.current;
-      if (currentData?.predictions) {
-        for (const p of currentData.predictions) {
-          const rs = p.result_status;
-          const isLive = rs === "LIVE";
-          // Also include matches that have just started but still show PENDING
-          let isJustStarted = false;
-          if (rs === "PENDING" || rs === null) {
-            const matchDate = parseMatchDateTime(p.date, p.time);
-            if (matchDate) {
-              const now = Date.now();
-              const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
-              if (now > matchDate.getTime() && now < likelyFinishedAt) {
-                isJustStarted = true;
-              }
-            }
-          }
-          if (isLive || isJustStarted) {
-            const row = currentRows[p.match_id];
-            if (row?.dirty) continue;
-            liveMatchIds.push(p.match_id);
-          }
-        }
-      }
-
-      if (liveMatchIds.length === 0 || cancelled) {
-        liveRunning = false;
-        return;
-      }
-
-      for (const matchId of liveMatchIds) {
-        if (cancelled) break;
-        try {
-          await scrapeSingleRef.current(matchId);
-        } catch {
-          // Ignore individual failures — keep going
-        }
-      }
-      setLastLiveRefresh(new Date());
-      liveRunning = false;
-    };
-
-    /** Scrape matches that are awaiting results (finished but no score).
-     *  Runs every 2 minutes. Processes ALL old matches — not just today's.
-     *  Skips if previous run is still in progress (prevents queue buildup).
-     *  Processes in batches of 5 to avoid overwhelming the scraper. */
-    const refreshAwaitingMatches = async () => {
-      if (cancelled || awaitingRunning) return;
-      awaitingRunning = true;
-      if (await isBatchScrapeRunning()) {
-        setAutoPauseNote("paused — batch scrape running on the scraper (resumes automatically when it finishes)");
-        awaitingRunning = false;
-        return;
-      }
-      setAutoPauseNote(null);
-      const awaitingMatchIds: string[] = [];
-      const currentData = dataRef.current;
-      const currentRows = rowsRef.current;
-      if (currentData?.predictions) {
-        for (const p of currentData.predictions) {
-          const rs = p.result_status;
-          // Only PENDING/null matches that should have finished by now
-          // This catches BOTH today's finished matches AND old ones from
-          // previous days that were never scraped or had scraping failures
-          if (rs === "PENDING" || rs === null) {
-            const matchDate = parseMatchDateTime(p.date, p.time);
-            if (matchDate) {
-              const now = Date.now();
-              const likelyFinishedAt = matchDate.getTime() + MATCH_DURATION_MS;
-              if (now > likelyFinishedAt) {
-                const row = currentRows[p.match_id];
-                if (row?.dirty) continue;
-                awaitingMatchIds.push(p.match_id);
-              }
-            }
-          }
-        }
-      }
-
-      if (awaitingMatchIds.length === 0 || cancelled) {
-        awaitingRunning = false;
-        return;
-      }
-
-      // Process in batches of 5 to avoid overwhelming the scraper queue.
-      // Each scrapeSingle takes ~10s, so 5 matches = ~50s per batch.
-      // With a 2-minute interval, this leaves time for the batch to finish
-      // before the next run starts (guarded by awaitingRunning flag).
-      const BATCH_SIZE = 5;
-      const batch = awaitingMatchIds.slice(0, BATCH_SIZE);
-
-      for (const matchId of batch) {
-        if (cancelled) break;
-        try {
-          await scrapeSingleRef.current(matchId);
-        } catch {
-          // Ignore individual failures — keep going
-        }
-      }
-      setLastLiveRefresh(new Date());
-      awaitingRunning = false;
-    };
-
-    // Run immediately on mount, then on intervals
-    refreshLiveMatches();
-    refreshAwaitingMatches();
-    // LIVE matches: every 30s (real-time livescore)
-    liveIntervalId = setInterval(refreshLiveMatches, 30_000);
-    // AWAITING matches: every 2 min (less urgent, match is over)
-    awaitingIntervalId = setInterval(refreshAwaitingMatches, 2 * 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      if (liveIntervalId) clearInterval(liveIntervalId);
-      if (awaitingIntervalId) clearInterval(awaitingIntervalId);
-    };
-  }, []); // Empty deps — runs once on mount, always on
+    const poll = () => { fetchPredictions(); setLastLiveRefresh(new Date()); };
+    const id = setInterval(poll, 60_000);
+    return () => clearInterval(id);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const grouped = useMemo(() => {
     if (!data?.predictions) return [];
@@ -1098,14 +949,11 @@ export function ResultsTab() {
             </div>
           )}
 
-          {/* Auto-refresh status indicator — always visible (always on) */}
-          <div className={`text-xs flex items-center gap-1.5 flex-wrap ${autoPauseNote ? "text-neon-yellow" : "text-neon-red"}`}>
-            <Radio className={`w-3.5 h-3.5 ${autoPauseNote ? "" : "animate-pulse"}`} />
-            <span>
-              {autoPauseNote
-                ? `Auto-refresh ${autoPauseNote}`
-                : "Auto-refresh ON — LIVE every 30s · Awaiting every 2 min"}
-            </span>
+          {/* Auto-refresh status — the scraper scrapes results on its own now;
+              this view just polls to stay fresh. */}
+          <div className="text-xs flex items-center gap-1.5 flex-wrap text-muted-foreground">
+            <Radio className="w-3.5 h-3.5 text-neon-green" />
+            <span>Live view — refreshes every 60s. The scraper updates results automatically.</span>
             {lastLiveRefresh && (
               <span className="text-muted-foreground/60 ml-2">· last: {lastLiveRefresh.toLocaleTimeString()}</span>
             )}

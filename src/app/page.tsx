@@ -1090,10 +1090,12 @@ export default function Home() {
   const [seeded, setSeeded] = useState(false);
 
   useEffect(() => {
-    if (seeded) return;
+    // First-admin bootstrap only matters before anyone is signed in. Skipping
+    // it for authenticated sessions avoids a pointless 401 on every load.
+    if (seeded || status !== "unauthenticated") return;
     fetch("/api/admin/seed", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ secret: "scorewise-seed-2024" }), })
       .then(res => res.json()).then(() => setSeeded(true)).catch(() => setSeeded(true));
-  }, [seeded]);
+  }, [seeded, status]);
 
   if (status === "loading") {
     return (
