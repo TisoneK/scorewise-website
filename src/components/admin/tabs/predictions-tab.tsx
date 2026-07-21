@@ -395,9 +395,9 @@ export function PredictionsTab({
                     </div>
                   )}
 
-                  {/* Result line */}
+                  {/* Result line — score on top, total/line/difference below */}
                   {hasScores && (
-                    <div className="flex items-center gap-2 text-[11px] font-bold flex-wrap">
+                    <div className="flex flex-col items-start gap-0.5 text-[11px] font-bold">
                       <span className="font-mono">{p.home_team || "Home"} {p.home_score} - {p.away_score} {p.away_team || "Away"}</span>
                       {total != null && effectiveLine != null && (() => {
                         const diff = total - effectiveLine;

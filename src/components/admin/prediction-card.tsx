@@ -263,17 +263,19 @@ export function PredictionCard({
           })();
 
           return (
-            <div className={`flex items-center gap-2 text-[11px] font-bold flex-wrap ${
+            <div className={`flex flex-col items-start gap-0.5 text-[11px] font-bold ${
               isLive ? "text-neon-red" : isAwaiting ? "text-neon-yellow" : "text-foreground"
             }`}>
-              {isLive && <Radio className="w-3 h-3 animate-pulse shrink-0" />}
-              {isAwaiting && <Clock className="w-3 h-3 shrink-0" />}
               {hasScores ? (
-                <span className="font-mono">
+                <span className="font-mono flex items-center gap-1.5">
+                  {isLive && <Radio className="w-3 h-3 animate-pulse shrink-0" />}
+                  {isAwaiting && <Clock className="w-3 h-3 shrink-0" />}
                   {p.home_team || "Home"} {p.home_score} - {p.away_score} {p.away_team || "Away"}
                 </span>
               ) : (
-                <span className="text-[10px] uppercase tracking-wide">
+                <span className="text-[10px] uppercase tracking-wide flex items-center gap-1.5">
+                  {isLive && <Radio className="w-3 h-3 animate-pulse shrink-0" />}
+                  {isAwaiting && <Clock className="w-3 h-3 shrink-0" />}
                   {isLive ? "Live" : isAwaiting ? "Awaiting result" : "Pending"}
                 </span>
               )}
