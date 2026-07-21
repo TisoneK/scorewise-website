@@ -271,16 +271,30 @@ export function PredictionCard({
                 {isOver ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 {p.recommendation}
               </span>
-              {effectiveLine != null && (
-                <span className="text-sm font-black font-mono text-neon-cyan">
-                  {effectiveLine}
+              {admin && reducedLine != null ? (
+                /* Admin: show BOTH the standard line and the reduced (safer)
+                   line, each with its own odds. */
+                <span className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-baseline gap-1" title="Standard line">
+                    <span className="text-sm font-black font-mono text-muted-foreground">{p.bookmaker_line}</span>
+                    {odds != null && <span className="text-[9px] font-mono text-muted-foreground/70">@{formatOdds(Number(odds), oddsFmt)}</span>}
+                  </span>
+                  <span className="text-muted-foreground/40">→</span>
+                  <span className="inline-flex items-baseline gap-1" title="Reduced (safer) line">
+                    <span className="text-sm font-black font-mono text-neon-green">{reducedLine}</span>
+                    {reducedOdds != null && <span className="text-[9px] font-mono text-neon-green/70">@{formatOdds(Number(reducedOdds), oddsFmt)}</span>}
+                  </span>
                 </span>
-              )}
-              {(reducedOdds ?? odds) != null && (
-                <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(reducedOdds ?? odds), oddsFmt)}</span>
-              )}
-              {reducedLine != null && p.bookmaker_line != null && (
-                <span className="text-[9px] font-mono text-muted-foreground/50 line-through">{p.bookmaker_line}</span>
+              ) : (
+                /* Users (or admin without a reduced line): single line. */
+                <>
+                  {effectiveLine != null && (
+                    <span className="text-sm font-black font-mono text-neon-cyan">{effectiveLine}</span>
+                  )}
+                  {(reducedOdds ?? odds) != null && (
+                    <span className="text-[10px] font-mono text-muted-foreground">@{formatOdds(Number(reducedOdds ?? odds), oddsFmt)}</span>
+                  )}
+                </>
               )}
               {/* Inline outcome badge for FINAL matches */}
               {isFinal && ouReducedOutcome !== "MISSING" && (() => {
