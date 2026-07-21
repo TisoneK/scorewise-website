@@ -298,7 +298,7 @@ export function PredictionsTab({
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-2">
+        <div className="grid gap-2 lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
           {filtered.map((p) => {
             const rec = p.recommendation?.toUpperCase() || "";
             const isOver = rec === "OVER";
