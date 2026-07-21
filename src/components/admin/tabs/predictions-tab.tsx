@@ -28,10 +28,17 @@ import {
   TrendingUp,
   TrendingDown,
   Trophy,
+  Calendar,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  ChevronRight,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Prediction, StoredPredictions } from "@/lib/types";
-import { PredictionCard } from "../prediction-card";
+import { ConfidenceBadge, RecommendationBadge } from "../badges";
+import { computeReducedRiskOutcome, computeWinnerOutcome } from "@/lib/result-utils";
 
 export interface PredictionsTabProps {
   preds: Prediction[];
@@ -292,9 +299,162 @@ export function PredictionsTab({
         </Card>
       ) : (
         <div className="grid gap-2 lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
-          {filtered.map((p) => (
-            <PredictionCard key={p.match_id} prediction={p} admin onSelect={setDrawerPrediction} />
-          ))}
+          {filtered.map((p) => {
+            const rec = p.recommendation?.toUpperCase() || "";
+            const isOver = rec === "OVER";
+            const isUnder = rec === "UNDER";
+            const hasWinner = p.team_winner && p.team_winner !== "NO_WINNER_PREDICTION";
+            const ouOutcome = computeReducedRiskOutcome(p);
+            const winOutcome = computeWinnerOutcome(p);
+            const hasScores = p.home_score != null && p.away_score != null;
+            const total = hasScores ? Number(p.home_score) + Number(p.away_score) : null;
+            const reducedLine = isOver ? p.reduced_over_total : isUnder ? p.reduced_under_total : null;
+            const reducedOdds = isOver ? p.reduced_over_odds : isUnder ? p.reduced_under_odds : null;
+            const effectiveLine = reducedLine ?? p.bookmaker_line;
+
+            return (
+              <div
+                key={p.match_id}
+                className="rounded-lg bg-card/90 border-2 border-border hover:border-neon-green/40 transition-all overflow-hidden cursor-pointer"
+                onClick={() => setDrawerPrediction(p)}
+              >
+                {/* Header — league + date + result status */}
+                <div className="px-3 py-1.5 bg-background/40 border-b border-border/20 flex items-center justify-between gap-2">
+                  <p className="text-[10px] text-muted-foreground/70 truncate text-left">
+                    {[p.league, p.country].filter(Boolean).join(" · ") || "Unknown league"}
+                  </p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                      <Calendar className="w-2.5 h-2.5" />{p.date || "—"}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" />{p.time || "—"}
+                    </span>
+                    {p.result_status === "FINAL" && (
+                      <Badge variant="outline" className="text-[8px] border-neon-green/30 text-neon-green">FINAL</Badge>
+                    )}
+                    {p.result_status === "LIVE" && (
+                      <Badge variant="outline" className="text-[8px] border-neon-red/30 text-neon-red animate-pulse">LIVE</Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body — teams + predictions */}
+                <div className="p-3 space-y-2">
+                  {/* Teams */}
+                  <p className="font-bold text-sm leading-tight break-words">
+                    {p.home_team || "Home"} <span className="text-muted-foreground/50 mx-0.5">vs</span> {p.away_team || "Away"}
+                  </p>
+
+                  {/* Admin transparency — failed predictions show WHY they
+                      didn't qualify instead of being indistinguishable from
+                      qualifying ones (users never see these rows at all). */}
+                  {p.success === false && (
+                    <div className="text-[10px] text-neon-red bg-neon-red/5 border border-neon-red/20 rounded px-2 py-1 break-words">
+                      <span className="font-bold">DID NOT QUALIFY: </span>
+                      {(p.validation_errors || []).join("; ") || "no reason recorded by the engine"}
+                    </div>
+                  )}
+                  {p.success !== false && p.recommendation === "NO_BET" && (
+                    <div className="text-[10px] text-neon-yellow bg-neon-yellow/5 border border-neon-yellow/20 rounded px-2 py-1">
+                      <span className="font-bold">NO BET</span> — processed successfully, but the algorithm declined to pick a side
+                    </div>
+                  )}
+
+                  {/* O/U Prediction row */}
+                  {(isOver || isUnder) && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`flex items-center gap-1 text-xs font-bold ${isOver ? "text-neon-green" : "text-neon-red"}`}>
+                        {isOver ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {p.recommendation}
+                      </span>
+                      <span className="text-sm font-black font-mono text-neon-green">{effectiveLine ?? p.bookmaker_line ?? "—"}</span>
+                      {reducedOdds != null && <span className="text-[10px] font-mono text-muted-foreground">@{reducedOdds}</span>}
+                      {reducedLine != null && p.bookmaker_line != null && (
+                        <span className="text-[9px] font-mono text-muted-foreground/50 line-through">{p.bookmaker_line}</span>
+                      )}
+                      {p.result_status === "FINAL" && ouOutcome !== "MISSING" && (() => {
+                        const tone = ouOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : ouOutcome === "LOSS" ? "border-neon-red/40 bg-neon-red/10 text-neon-red" : "border-neon-yellow/40 bg-neon-yellow/10 text-neon-yellow";
+                        const label = ouOutcome === "WIN" ? "WON ✓" : ouOutcome === "LOSS" ? "LOST ✗" : "PUSH";
+                        return <span className={`px-1.5 py-0 rounded text-[9px] border font-bold ${tone}`}>{label}</span>;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* 1X2 Prediction row */}
+                  {hasWinner && (
+                    <div className="flex items-center gap-2 flex-wrap text-[10px] text-muted-foreground">
+                      <Trophy className="w-2.5 h-2.5 text-neon-cyan" />
+                      <span className="font-bold">{p.team_winner === "HOME_TEAM" ? p.home_team : p.away_team}</span>
+                      {p.team_winner === "HOME_TEAM" ? p.home_odds : p.away_odds != null && <span className="font-mono">@{p.team_winner === "HOME_TEAM" ? p.home_odds : p.away_odds}</span>}
+                      {p.result_status === "FINAL" && winOutcome !== "MISSING" && (() => {
+                        const tone = winOutcome === "WIN" ? "border-neon-green/40 bg-neon-green/10 text-neon-green" : "border-neon-red/40 bg-neon-red/10 text-neon-red";
+                        const label = winOutcome === "WIN" ? "WON ✓" : "LOST ✗";
+                        return <span className={`px-1.5 py-0 rounded text-[9px] border font-bold ${tone}`}>{label}</span>;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Result line */}
+                  {hasScores && (
+                    <div className="flex items-center gap-2 text-[11px] font-bold flex-wrap">
+                      <span className="font-mono">{p.home_team || "Home"} {p.home_score} - {p.away_score} {p.away_team || "Away"}</span>
+                      {total != null && effectiveLine != null && (() => {
+                        const diff = total - effectiveLine;
+                        const isUnderRec = p.recommendation?.toUpperCase() === "UNDER";
+                        const won = (isUnderRec && diff < 0) || (!isUnderRec && diff >= 0);
+                        const diffStr = diff >= 0 ? `+${diff.toFixed(1)}` : diff.toFixed(1);
+                        const diffDir = diff >= 0 ? "OVER" : "UNDER";
+                        return (
+                          <span className="text-[10px] text-muted-foreground/80 font-mono">
+                            Total: <span className="text-foreground font-bold">{total}</span> · Line: <span className="text-neon-cyan">{effectiveLine}</span> · <span className={won ? "text-neon-green" : "text-neon-red"}>{diffStr} {diffDir}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Algorithm data strip — surfaces internals that were
+                      previously only in the detail drawer. Each token renders
+                      only when its data exists. */}
+                  <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-[9px] text-muted-foreground/70 font-mono pt-1">
+                    {p.average_rate != null && <span title="Average rate">rate {Number(p.average_rate).toFixed(2)}</span>}
+                    {(p.matches_above != null || p.matches_below != null) && (
+                      <span title="H2H matches above / below the line">{p.matches_above ?? 0}▲ / {p.matches_below ?? 0}▼</span>
+                    )}
+                    {p.recommendation_confidence && <span title="O/U confidence">O/U <span className="text-neon-green">{p.recommendation_confidence}</span></span>}
+                    {p.team_winner_confidence && <span title="1X2 confidence">1X2 <span className="text-neon-cyan">{p.team_winner_confidence}</span></span>}
+                    {(p.reduced_over_total != null || p.reduced_under_total != null) && (
+                      <span title="Reduced-risk line source" className="text-neon-green">
+                        reduced:{p.reduced_risk_source ?? "scraper"}
+                      </span>
+                    )}
+                    {p.bet_code && <span title="Betslip code" className="text-neon-cyan">code:{p.bet_code}</span>}
+                    {Array.isArray(p.validation_errors) && p.validation_errors.length > 0 && (
+                      <span title="Validation issues" className="text-neon-yellow">{p.validation_errors.length} issue(s)</span>
+                    )}
+                  </div>
+
+                  {/* Bottom row — confidence + badges */}
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/10">
+                    <ConfidenceBadge level={p.confidence} />
+                    {p.recommendation && p.recommendation !== "NO_BET" && <RecommendationBadge rec={p.recommendation} />}
+                    {!p.success && <Badge variant="outline" className="text-[9px] border-neon-red/30 text-neon-red">ERR</Badge>}
+                    <a
+                      href={`https://www.flashscore.co.ke/match/${p.match_id}/`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-muted-foreground/40 hover:text-neon-cyan transition-colors ml-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </>
